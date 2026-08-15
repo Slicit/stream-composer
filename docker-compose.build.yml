@@ -1,0 +1,14 @@
+# Overlay: build the composer image from this checkout instead of pulling it
+# from the registry. Handy for development and for air-gapped installs.
+#
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml:docker-compose.build.yml
+#   docker compose up -d --build
+
+services:
+  composer:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        VERSION: ${COMPOSER_TAG:-dev}
+    image: stream-composer:local

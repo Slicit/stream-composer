@@ -1,0 +1,75 @@
+# MediaMTX configuration for Stream Composer.
+#
+# Deliberately minimal: only keys this product actually needs are set, so the
+# file keeps working across MediaMTX releases. Deployment-specific values
+# (public hostname, ICE hosts) are supplied as MTX_* environment variables from
+# docker-compose, which override anything written here.
+#
+# Security model
+# --------------
+#   * Only the ingest ports (RTMP/SRT) and the WebRTC ICE UDP port are published
+#     to the internet. The API, RTSP, HLS and WHEP ports stay on the internal
+#     container network.
+#   * Every publish and read decision is delegated to the composer service over
+#     HTTP, so new stream keys take effect immediately with no restart here.
+#     (api/metrics/pprof are excluded from that hook by MediaMTX's own default,
+#     and those listeners are either disabled or internal-only.)
+
+logLevel: info
+logDestinations: [stdout]
+
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+
+# ------------------------------------------------------------------------ API
+api: yes
+apiAddress: :9997
+
+metrics: no
+pprof: no
+playback: no
+
+# ------------------------------------------------------------- authentication
+authMethod: http
+authHTTPAddress: http://composer:3000/internal/mediamtx/auth
+
+# ------------------------------------------------------------- RTMP (ingest)
+rtmp: yes
+rtmpAddress: :1935
+rtmpEncryption: "no"
+
+# --------------------------------------------- RTSP (internal transport only)
+# The compositor reads sources and publishes the programme over this.
+rtsp: yes
+rtspAddress: :8554
+rtspEncryption: "no"
+
+# -------------------------------------------------------------- SRT (ingest)
+srt: yes
+srtAddress: :8890
+
+# --------------------------------------------- HLS (proxied by the composer)
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsAlwaysRemux: no
+
+# ------------------------------------------ WebRTC (signalling via composer)
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcIPsFromInterfaces: yes
+# MTX_WEBRTCADDITIONALHOSTS from docker-compose adds the public hostname/IP so
+# browsers outside the host can gather a working ICE candidate.
+
+# ------------------------------------------------------------------- paths
+pathDefaults:
+  # Never let a late publisher steal a path from an active one.
+  overridePublisher: no
+
+paths:
+  all_others:

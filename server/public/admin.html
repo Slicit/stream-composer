@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Admin — Stream Composer</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='5' fill='%233987e5'/%3E%3Crect x='3' y='4' width='6' height='5' rx='1' fill='white'/%3E%3Crect x='11' y='4' width='6' height='5' rx='1' fill='white' opacity='.7'/%3E%3Crect x='3' y='11' width='14' height='5' rx='1' fill='white' opacity='.85'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" id="brand-mark"></span>
+      <span>Stream Composer</span>
+      <span style="color:var(--ink-muted); font-weight:500;">/ admin</span>
+    </div>
+    <span id="header-status" class="status is-idle"><span class="dot"></span>Loading</span>
+    <span class="spacer"></span>
+    <div class="row" id="user-area">
+      <a class="btn" href="/">Viewer</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-panel="streams">Streams</button>
+      <button class="tab" data-panel="composition">Composition</button>
+      <button class="tab" data-panel="users">Users</button>
+      <button class="tab" data-panel="server">Server</button>
+      <button class="tab" data-panel="logs">Logs</button>
+    </nav>
+
+    <section class="panel is-active" id="panel-streams">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head">
+          <h2>Add a stream</h2>
+        </div>
+        <form id="stream-form" class="row" style="align-items:flex-end;">
+          <label class="field" style="flex:1 1 220px; margin:0;">
+            <span>Name</span>
+            <input name="name" placeholder="Camera 1" required maxlength="48">
+          </label>
+          <label class="field" style="flex:1 1 240px; margin:0;">
+            <span>Stream key</span>
+            <input name="key" placeholder="leave empty to generate one" pattern="[A-Za-z0-9_-]{6,64}">
+          </label>
+          <button class="primary" type="submit">Create</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Streams</h2>
+          <span class="spacer"></span>
+          <button id="streams-refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="streams-table"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-composition">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>Layout</h2></div>
+          <div id="layout-buttons" class="row" style="margin-bottom:.9rem;"></div>
+          <div class="layout-preview" id="comp-preview"></div>
+          <label class="field" style="margin-top:.85rem;">
+            <span>Preview with how many sources?</span>
+            <input type="range" id="preview-count" min="1" max="16" value="4">
+            <span class="hint" id="preview-count-label"></span>
+          </label>
+          <hr class="divider">
+          <div class="section-title">Source order</div>
+          <div id="order-list" class="col"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Output</h2><span class="spacer"></span><span id="encoder-chip"></span></div>
+          <form id="comp-form">
+            <label class="inline" style="margin-bottom:.85rem;">
+              <input type="checkbox" name="enabled"> <span>Compose and publish the programme</span>
+            </label>
+
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 120px;">
+                <span>Width</span><input type="number" name="width" min="320" max="3840" step="2">
+              </label>
+              <label class="field" style="flex:1 1 120px;">
+                <span>Height</span><input type="number" name="height" min="180" max="2160" step="2">
+              </label>
+              <label class="field" style="flex:1 1 100px;">
+                <span>FPS</span><input type="number" name="fps" min="1" max="60">
+              </label>
+            </div>
+
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 140px;">
+                <span>Bitrate (kb/s)</span><input type="number" name="bitrateKbps" min="200" max="50000" step="100">
+              </label>
+              <label class="field" style="flex:1 1 140px;">
+                <span>Max rate (kb/s)</span><input type="number" name="maxrateKbps" min="200" max="60000" step="100">
+              </label>
+              <label class="field" style="flex:1 1 140px;">
+                <span>Buffer (kb/s)</span><input type="number" name="bufsizeKbps" min="200" max="120000" step="100">
+              </label>
+            </div>
+
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 160px;">
+                <span>Encoder</span>
+                <select name="encoder" id="encoder-select"></select>
+                <span class="hint" id="encoder-hint"></span>
+              </label>
+              <label class="field" style="flex:1 1 160px;">
+                <span>x264 preset</span>
+                <select name="preset">
+                  <option>ultrafast</option><option>superfast</option><option>veryfast</option>
+                  <option>faster</option><option>fast</option><option>medium</option>
+                </select>
+                <span class="hint">Slower presets look better and cost noticeably more CPU.</span>
+              </label>
+            </div>
+
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 150px;">
+                <span>Scaler</span>
+                <select name="scaleFlags">
+                  <option>fast_bilinear</option><option>bilinear</option><option>bicubic</option>
+                  <option>lanczos</option><option>neighbor</option>
+                </select>
+              </label>
+              <label class="field" style="flex:1 1 120px;">
+                <span>Keyframe (s)</span><input type="number" name="gopSeconds" min="1" max="10">
+              </label>
+              <label class="field" style="flex:1 1 120px;">
+                <span>Threads</span><input type="number" name="threads" min="0" max="64">
+                <span class="hint">0 = automatic</span>
+              </label>
+            </div>
+
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 120px;">
+                <span>Gutter (px)</span><input type="number" name="gapPx" min="0" max="64">
+              </label>
+              <label class="field" style="flex:1 1 130px;">
+                <span>Background</span><input type="color" name="background">
+              </label>
+              <label class="field" style="flex:1 1 130px;">
+                <span>Label size</span><input type="number" name="labelSize" min="10" max="72">
+              </label>
+            </div>
+
+            <label class="inline" style="margin-bottom:.75rem;">
+              <input type="checkbox" name="labels"> <span>Burn the source name into each cell</span>
+            </label>
+
+            <label class="field">
+              <span>Which sources go on air</span>
+              <select name="include">
+                <option value="live">Every stream that is publishing</option>
+                <option value="manual">Only the sources I list, in order</option>
+              </select>
+            </label>
+
+            <div class="row">
+              <button class="primary" type="submit">Save and apply</button>
+              <button type="button" id="comp-restart">Restart encoder</button>
+              <button type="button" id="comp-command" class="ghost">Show ffmpeg command</button>
+            </div>
+          </form>
+          <pre id="command-box" class="log-view" style="display:none; margin-top:.85rem;"></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-users">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Add a user</h2></div>
+        <form id="user-form" class="row" style="align-items:flex-end;">
+          <label class="field" style="flex:1 1 180px; margin:0;">
+            <span>Username</span><input name="username" required pattern="[a-zA-Z0-9._-]{2,32}" autocomplete="off">
+          </label>
+          <label class="field" style="flex:1 1 200px; margin:0;">
+            <span>Password</span><input name="password" type="password" required minlength="8" autocomplete="new-password">
+          </label>
+          <label class="field" style="flex:0 1 150px; margin:0;">
+            <span>Role</span>
+            <select name="role"><option value="viewer">Viewer</option><option value="admin">Administrator</option></select>
+          </label>
+          <button class="primary" type="submit">Create</button>
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Users</h2></div>
+        <div id="users-table"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-server">
+      <div class="stats" id="server-tiles" style="margin-bottom:1rem;"></div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head"><h2>Output bitrate</h2><span class="spacer"></span><span class="mono" id="spark-label" style="font-size:.75rem; color:var(--ink-muted)"></span></div>
+          <svg class="sparkline" id="sparkline" viewBox="0 0 300 44" preserveAspectRatio="none" role="img" aria-label="Output bitrate over the last two minutes"></svg>
+          <p style="font-size:.75rem; color:var(--ink-muted); margin:.5rem 0 0;">Encoder output, sampled every two seconds.</p>
+          <hr class="divider">
+          <dl class="dl" id="server-info"></dl>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Settings</h2></div>
+          <form id="settings-form">
+            <label class="field">
+              <span>Site name</span><input name="siteName" maxlength="64">
+            </label>
+            <label class="inline" style="margin-bottom:.6rem;">
+              <input type="checkbox" name="publicViewing"> <span>Let anyone watch without signing in</span>
+            </label>
+            <label class="inline" style="margin-bottom:.9rem;">
+              <input type="checkbox" name="showIndividualStreams"> <span>Show individual sources to viewers</span>
+            </label>
+
+            <div class="section-title">Reliability</div>
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 150px;">
+                <span>Settle delay (ms)</span><input type="number" name="stabilizeMs" min="0" max="30000" step="100">
+                <span class="hint">Wait this long after a source appears or disappears before rebuilding.</span>
+              </label>
+              <label class="field" style="flex:1 1 150px;">
+                <span>Restart delay (ms)</span><input type="number" name="restartDelayMs" min="250" max="60000" step="250">
+              </label>
+              <label class="field" style="flex:1 1 150px;">
+                <span>Max restart delay (ms)</span><input type="number" name="maxRestartDelayMs" min="1000" max="300000" step="500">
+              </label>
+            </div>
+
+            <div class="section-title">Logging</div>
+            <div class="row" style="gap:.75rem;">
+              <label class="field" style="flex:1 1 130px;">
+                <span>Level</span>
+                <select name="logLevel"><option>error</option><option>warn</option><option>info</option><option>debug</option></select>
+              </label>
+              <label class="field" style="flex:1 1 150px;">
+                <span>Rotate at (MB)</span><input type="number" name="logMaxSizeMb" min="1" max="1024">
+              </label>
+              <label class="field" style="flex:1 1 130px;">
+                <span>Keep files</span><input type="number" name="logMaxFiles" min="1" max="50">
+                <span class="hint" id="log-budget"></span>
+              </label>
+            </div>
+
+            <button class="primary" type="submit">Save settings</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-logs">
+      <div class="card">
+        <div class="card-head">
+          <h2>Logs</h2>
+          <span class="spacer"></span>
+          <select id="log-channel" style="width:auto;"><option value="server">Server</option><option value="ffmpeg">ffmpeg</option></select>
+          <select id="log-lines" style="width:auto;"><option>200</option><option>500</option><option>1000</option><option>2000</option></select>
+          <label class="inline"><input type="checkbox" id="log-auto"> <span>Auto</span></label>
+          <button id="log-refresh" class="ghost">Refresh</button>
+        </div>
+        <div class="log-view" id="log-view"></div>
+        <div id="log-files" style="margin-top:.75rem; font-size:.75rem; color:var(--ink-muted);"></div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="obs-dialog" style="background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:14px; padding:0; max-width:min(560px,92vw); width:100%;">
+    <div style="padding:1.1rem 1.2rem;">
+      <div class="card-head"><h2 id="obs-title">OBS setup</h2><span class="spacer"></span><button class="ghost" id="obs-close">Close</button></div>
+      <div id="obs-body"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/assets/admin.js"></script>
+</body>
+</html>

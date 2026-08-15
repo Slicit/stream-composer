@@ -1,0 +1,17 @@
+node_modules/
+npm-debug.log*
+.env
+.env.local
+.data/
+.devdata/
+backups/
+*.log
+.DS_Store
+.idea/
+.vscode/
+coverage/
+dist/
+*.tar.gz
+selftest*.png
+selftest*.mp4
+.selftest-data/

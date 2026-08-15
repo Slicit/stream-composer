@@ -1,0 +1,21 @@
+{
+  "name": "stream-composer-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stream Composer — dynamic multi-stream grid compositor, control API and web UI",
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "hls.js": "^1.5.20"
+  }
+}

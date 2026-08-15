@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  image:
+    name: Build and publish the image
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+          labels: |
+            org.opencontainers.image.title=Stream Composer
+            org.opencontainers.image.description=Dynamic multi-stream grid compositor with a web UI
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Report what was published
+        run: |
+          echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  release:
+    name: Publish the release bundle
+    runs-on: ubuntu-latest
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the deployment bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          STAGE="stream-composer-$VERSION"
+          mkdir -p "$STAGE"
+
+          cp -R \
+            docker-compose.yml docker-compose.local.yml docker-compose.tls.yml \
+            docker-compose.build.yml .env.example install.sh Makefile \
+            README.md LICENSE config obs scripts docs \
+            "$STAGE/"
+
+          # Pin the bundle to the image built from this exact tag.
+          sed -i "s/^COMPOSER_TAG=.*/COMPOSER_TAG=${VERSION#v}/" "$STAGE/.env.example"
+
+          tar -czf "stream-composer-$VERSION.tar.gz" "$STAGE"
+          sha256sum "stream-composer-$VERSION.tar.gz" > "stream-composer-$VERSION.tar.gz.sha256"
+          ls -lh stream-composer-*
+
+      - name: Write the release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          cat > NOTES.md <<EOF
+          ## Install
+
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+          \`\`\`
+
+          The installer asks for a domain (or a port), creates the first administrator
+          account and starts everything with Docker Compose.
+
+          ## Upgrade
+
+          \`\`\`bash
+          cd /opt/stream-composer && docker compose pull && docker compose up -d
+          \`\`\`
+
+          ## Image
+
+          \`\`\`
+          ghcr.io/${{ github.repository }}:${VERSION#v}
+          \`\`\`
+          Built for \`linux/amd64\` and \`linux/arm64\`.
+          EOF
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: NOTES.md
+          generate_release_notes: true
+          files: |
+            stream-composer-*.tar.gz
+            stream-composer-*.tar.gz.sha256
