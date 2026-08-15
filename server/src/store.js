@@ -78,6 +78,10 @@ function mergeDefaults(loaded) {
   };
   out.users = Array.isArray(loaded.users) ? loaded.users : [];
   out.streams = Array.isArray(loaded.streams) ? loaded.streams : [];
+  // Streams created before playback ids existed get one on load.
+  for (const s of out.streams) {
+    if (!s.playbackId) s.playbackId = crypto.randomBytes(12).toString('hex');
+  }
   return out;
 }
 
@@ -88,17 +92,25 @@ function load() {
     data = mergeDefaults(JSON.parse(raw));
     log.info('configuration loaded', { file: config.configFile, users: data.users.length, streams: data.streams.length });
   } catch (err) {
-    if (err.code !== 'ENOENT') {
-      log.error('configuration unreadable, starting from defaults', err.message);
+    if (err.code === 'ENOENT') {
+      data = defaults();
+      persist();
+      log.info('created a fresh configuration', { file: config.configFile });
+    } else {
+      // Never silently factory-reset: that would invalidate every stream key,
+      // every session and the administrator account because of one bad read.
+      // Keep a copy and refuse to start so an operator can restore a backup.
       try {
         fs.copyFileSync(config.configFile, `${config.configFile}.corrupt-${Date.now()}`);
       } catch (_) {
-        /* ignore */
+        /* best effort */
       }
+      log.error('configuration is unreadable — refusing to start', err.message);
+      throw new Error(
+        `Could not read ${config.configFile}: ${err.message}. A copy has been kept alongside it. ` +
+        'Restore a backup, or move the file aside to start with a fresh configuration.',
+      );
     }
-    data = defaults();
-    persist();
-    log.info('created a fresh configuration', { file: config.configFile });
   }
 
   // Environment always wins for the session secret when it is supplied.
@@ -109,8 +121,23 @@ function load() {
 function persist() {
   const tmp = `${config.configFile}.${process.pid}.tmp`;
   const payload = JSON.stringify(data, null, 2);
-  fs.writeFileSync(tmp, payload, { mode: 0o600 });
+  // Flush the temp file to disk before the rename, so an unclean shutdown can
+  // never leave a half-written config in place of the real one.
+  const fd = fs.openSync(tmp, 'w', 0o600);
+  try {
+    fs.writeFileSync(fd, payload);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, config.configFile);
+  try {
+    const dir = fs.openSync(config.dataDir, 'r');
+    fs.fsyncSync(dir);
+    fs.closeSync(dir);
+  } catch (_) {
+    /* directory fsync is not available everywhere; the rename is still atomic */
+  }
 }
 
 /** Coalesce rapid writes into one flush per tick. */

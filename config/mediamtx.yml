@@ -32,7 +32,12 @@ playback: no
 
 # ------------------------------------------------------------- authentication
 authMethod: http
-authHTTPAddress: http://composer:3000/internal/mediamtx/auth
+# The URL carries a shared secret, supplied by docker-compose as
+# MTX_AUTHHTTPADDRESS. Behind a reverse proxy every request reaches the composer
+# from the container network, so a source-address check alone cannot tell an
+# internal call from one forwarded off the internet — the secret can.
+# This value is only a placeholder; the environment variable overrides it.
+authHTTPAddress: http://composer:3000/internal/CHANGE_ME/mediamtx/auth
 
 # ------------------------------------------------------------- RTMP (ingest)
 rtmp: yes

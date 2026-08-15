@@ -156,7 +156,12 @@ function ensureBootstrapAdmin() {
     password = crypto.randomBytes(12).toString('base64url');
     generated = true;
   }
-  const user = createUser({ username: config.adminUser || 'admin', password, role: 'admin' });
+  let username = String(config.adminUser || 'admin').trim();
+  if (!/^[a-zA-Z0-9._-]{2,32}$/.test(username)) {
+    log.warn(`ADMIN_USER "${username}" is not a valid username — using "admin" instead`);
+    username = 'admin';
+  }
+  const user = createUser({ username, password, role: 'admin' });
   if (generated) {
     const banner = [
       '',
@@ -212,7 +217,14 @@ function parseCookies(header) {
   for (const part of String(header || '').split(';')) {
     const idx = part.indexOf('=');
     if (idx < 0) continue;
-    out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+    const name = part.slice(0, idx).trim();
+    const raw = part.slice(idx + 1).trim();
+    try {
+      out[name] = decodeURIComponent(raw);
+    } catch (_) {
+      // A malformed cookie from anywhere on the domain must not 500 the site.
+      out[name] = raw;
+    }
   }
   return out;
 }
@@ -262,6 +274,17 @@ function requireViewAccess(req, res, next) {
   return requireUser(req, res, next);
 }
 
+/**
+ * Same rule, but for machine endpoints: never redirect to the sign-in page.
+ * A redirect would be followed by fetch() and hand the WHEP client an HTML
+ * page with a 200, instead of a 401 it can report as "please sign in again".
+ */
+function requireViewAccessApi(req, res, next) {
+  if (store.get().settings.publicViewing) return next();
+  if (req.user) return next();
+  return res.status(401).json({ error: 'Sign in to continue.' });
+}
+
 module.exports = {
   COOKIE,
   hashPassword,
@@ -285,4 +308,5 @@ module.exports = {
   requireUser,
   requireAdmin,
   requireViewAccess,
+  requireViewAccessApi,
 };

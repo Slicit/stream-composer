@@ -20,6 +20,8 @@ process.env.LOG_CONSOLE = 'false';
 process.env.ADMIN_USER = 'tester';
 process.env.ADMIN_PASSWORD = 'super-secret-1';
 process.env.MEDIAMTX_API = 'http://127.0.0.1:59997'; // deliberately dead
+process.env.MEDIAMTX_INTERNAL_USER = 'composer';
+process.env.MEDIAMTX_INTERNAL_PASSWORD = 'internal-test-secret';
 
 const { app } = require('../src/index');
 const store = require('../src/store');
@@ -29,9 +31,12 @@ const hooks = require('../src/routes/hooks');
 store.load();
 auth.ensureBootstrapAdmin();
 
+const INTERNAL = { user: 'composer', password: 'internal-test-secret' };
+
 let server;
 let base;
 let cookie = '';
+let playbackId = null;
 
 test.before(async () => {
   await new Promise((resolve) => {
@@ -131,6 +136,9 @@ test('creating a stream generates a key and OBS settings', async () => {
   const { stream } = await res.json();
   assert.strictEqual(stream.name, 'Camera 1');
   assert.match(stream.key, /^[a-z0-9]{20}$/);
+  assert.match(stream.playbackId, /^[0-9a-f]{24}$/, 'a stream gets an opaque playback id');
+  assert.notStrictEqual(stream.playbackId, stream.key, 'the playback id is not the ingest key');
+  playbackId = stream.playbackId;
   assert.ok(stream.ingest.rtmp.server.startsWith('rtmp://'));
   assert.strictEqual(stream.ingest.rtmp.key, stream.key);
   streamId = stream.id;
@@ -162,6 +170,25 @@ test('the auth hook admits a publisher holding a valid key', () => {
   assert.strictEqual(verdict.allow, true);
 });
 
+test('SECURITY: an anonymous read is refused, so the public ingest ports cannot serve playback', () => {
+  // Regression: MediaMTX's RTMP and SRT listeners serve reads as well as
+  // publishes and are internet-facing, so `ffmpeg -i rtmp://host/program`
+  // previously bypassed viewer authentication entirely.
+  assert.strictEqual(hooks.decide({ action: 'read', path: 'program', user: '', password: '' }).allow, false);
+  assert.strictEqual(hooks.decide({ action: 'read', path: `live/${streamKey}`, user: '', password: '' }).allow, false);
+  assert.strictEqual(hooks.decide({ action: 'read', path: 'program', user: 'composer', password: 'wrong' }).allow, false);
+});
+
+test('the auth hook admits reads that carry the internal credential', () => {
+  assert.strictEqual(hooks.decide({ action: 'read', path: 'program', ...INTERNAL }).allow, true);
+  assert.strictEqual(hooks.decide({ action: 'read', path: `live/${streamKey}`, ...INTERNAL }).allow, true);
+});
+
+test('SECURITY: only the compositor may publish the programme', () => {
+  assert.strictEqual(hooks.decide({ action: 'publish', path: 'program', ...INTERNAL }).allow, true);
+  assert.strictEqual(hooks.decide({ action: 'publish', path: 'program', user: 'composer', password: 'guess' }).allow, false);
+});
+
 test('the auth hook rejects an unknown key', () => {
   const verdict = hooks.decide({ action: 'publish', path: 'live/not-a-real-key', user: '', password: '' });
   assert.strictEqual(verdict.allow, false);
@@ -182,21 +209,24 @@ test('the auth hook rejects a disabled stream', async () => {
 test('the auth hook rejects nested paths and unknown actions', () => {
   assert.strictEqual(hooks.decide({ action: 'publish', path: `live/${streamKey}/extra` }).allow, false);
   assert.strictEqual(hooks.decide({ action: 'playback', path: 'program' }).allow, false);
-  assert.strictEqual(hooks.decide({ action: 'read', path: 'something/else' }).allow, false);
+  assert.strictEqual(hooks.decide({ action: 'read', path: 'something/else', ...INTERNAL }).allow, false);
 });
 
-test('the auth hook allows reading the programme', () => {
-  assert.strictEqual(hooks.decide({ action: 'read', path: 'program' }).allow, true);
-});
-
-test('the internal hook endpoint is closed to the public internet', async () => {
-  // The request below arrives from 127.0.0.1, which is allowed; the guard is
-  // exercised by asserting a public address is refused.
-  const res = await call('/internal/mediamtx/auth', {
+test('the hook endpoint answers only when the shared secret matches', async () => {
+  const good = await call(`/internal/${INTERNAL.password}/mediamtx/auth`, {
     method: 'POST',
     body: { action: 'publish', path: `live/${streamKey}` },
   });
-  assert.strictEqual(res.status, 200, 'loopback is treated as internal');
+  assert.strictEqual(good.status, 200, 'the right token is accepted');
+
+  // Regression: behind a reverse proxy every request arrives from the container
+  // network, so the source-address check alone left this endpoint reachable
+  // from the internet as a stream-key oracle.
+  const bad = await call('/internal/not-the-secret/mediamtx/auth', {
+    method: 'POST',
+    body: { action: 'publish', path: `live/${streamKey}` },
+  });
+  assert.strictEqual(bad.status, 404, 'a wrong token gives nothing away');
 });
 
 // -------------------------------------------------------------- composition
@@ -274,9 +304,68 @@ test('the media proxy refuses paths that are not configured streams', async () =
   assert.strictEqual(res.status, 404);
 });
 
-test('the media proxy refuses traversal attempts', async () => {
-  const res = await call('/mtx/hls/../../etc/passwd');
-  assert.ok(res.status === 404 || res.status === 400, `expected a refusal, got ${res.status}`);
+test('SECURITY: the media proxy addresses streams by playback id, never by ingest key', () => {
+  const proxy = require('../src/proxy');
+  assert.strictEqual(proxy.resolvePlayback(`s/${playbackId}`), `live/${streamKey}`);
+  // The ingest key must not be a usable playback reference.
+  assert.strictEqual(proxy.resolvePlayback(`live/${streamKey}`), null);
+  assert.strictEqual(proxy.resolvePlayback(`s/${streamKey}`), null);
+});
+
+test('SECURITY: the viewer API never discloses an ingest stream key', async () => {
+  const res = await call('/api/state');
+  const body = await res.json();
+  const serialised = JSON.stringify(body);
+  assert.ok(!serialised.includes(streamKey), 'the publishing credential is absent from the viewer API');
+  assert.ok(body.streams.some((s) => s.path === `s/${playbackId}`), 'streams are addressed by playback id');
+});
+
+test('SECURITY: percent-encoded traversal cannot reach another MediaMTX path', () => {
+  const proxy = require('../src/proxy');
+  // Regression: validation ran on the raw path while the forwarded URL was
+  // built by new URL(), which decodes %2e and resolves "..", so the checked
+  // path and the forwarded path were not the same path.
+  const attacks = [
+    `/s/${playbackId}/%2e%2e/%2e%2e/secretpath/whep`,
+    `/s/${playbackId}/whep/../../../../etc/passwd/whep`,
+    `/program/whep/../../live/${streamKey}/whep`,
+    `/s/${playbackId}/..%2f..%2fadmin/whep`,
+    '/..%2f..%2fetc/whep',
+  ];
+  for (const url of attacks) {
+    assert.strictEqual(proxy.parseRequest(url, 'webrtc'), null, `refused: ${url}`);
+  }
+  for (const url of [`/s/${playbackId}/../../anything/index.m3u8`, '/%2e%2e/secret/index.m3u8']) {
+    assert.strictEqual(proxy.parseRequest(url, 'hls'), null, `refused: ${url}`);
+  }
+});
+
+test('SECURITY: the media proxy never routes WHIP, which is a publish verb', async () => {
+  const proxy = require('../src/proxy');
+  assert.strictEqual(proxy.parseRequest(`/s/${playbackId}/whip`, 'webrtc'), null);
+
+  // GET is refused too: it would otherwise reach MediaMTX's built-in publish page.
+  const res = await call(`/mtx/webrtc/s/${playbackId}/whep`, { method: 'GET' });
+  assert.strictEqual(res.status, 405);
+});
+
+test('the proxy accepts a well-formed WHEP request and its session URL', () => {
+  const proxy = require('../src/proxy');
+  const create = proxy.parseRequest(`/s/${playbackId}/whep`, 'webrtc');
+  assert.strictEqual(create.upstreamPath, `/live/${streamKey}/whep`);
+  const session = proxy.parseRequest(`/s/${playbackId}/whep/abc-123`, 'webrtc');
+  assert.strictEqual(session.upstreamPath, `/live/${streamKey}/whep/abc-123`);
+  const hls = proxy.parseRequest('/program/index.m3u8', 'hls');
+  assert.strictEqual(hls.upstreamPath, '/program/index.m3u8');
+});
+
+test('SECURITY: a client-supplied Authorization header is not forwarded upstream', async () => {
+  // Regression: forwarding it made the stack-internal MediaMTX credential an
+  // internet-facing password, and a correct guess authorised publishing.
+  const src = fs.readFileSync(require.resolve('../src/proxy'), 'utf8');
+  assert.match(src, /'authorization'/, 'authorization is in the strip list');
+  const stripped = /const STRIP_REQUEST = new Set\(\[([\s\S]*?)\]\)/.exec(src)[1];
+  assert.ok(stripped.includes("'authorization'"), 'the client Authorization header is stripped');
 });
 
 // ----------------------------------------------------------------- settings

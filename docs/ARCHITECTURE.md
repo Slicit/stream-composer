@@ -96,9 +96,42 @@ the internal Docker network.
 
 **Playback is proxied and authenticated.** Browsers never talk to MediaMTX
 directly. WHEP and HLS requests go to the composer, which checks the session
-cookie, checks the requested path is a configured stream or the programme, and
-only then forwards. One hostname, one certificate, one place where access is
-decided.
+cookie, resolves the requested playback id, and only then forwards. One
+hostname, one certificate, one place where access is decided.
+
+Four rules in the proxy each exist because the obvious version was exploitable:
+
+1. **Viewers address streams by an opaque playback id, never by the ingest
+   key.** The key is a publishing credential; handing it to a browser would let
+   any viewer publish into the grid. Redirects from MediaMTX are rewritten so
+   the internal path cannot leak through a `Location` header either.
+2. **The forwarded URL is rebuilt from validated components.** Validating the
+   raw path and then letting `new URL()` build the upstream request meant the
+   checked path and the forwarded path could differ — `%2e%2e` reached
+   arbitrary MediaMTX paths.
+3. **Only playback verbs are routed.** WHIP is a *publish* verb; routing it
+   behind view access let a viewer take over a camera slot. `GET` on the WebRTC
+   mount is refused too, because it reaches MediaMTX's built-in publish page.
+4. **The client's `Authorization` header is stripped**, and the internal
+   credential is attached by the proxy itself. Forwarding it turned a
+   container-internal password into an internet-facing one with unlimited
+   guesses.
+
+**Reads require the internal credential.** It is tempting to let the auth hook
+approve any read of a known path on the grounds that playback only arrives
+through the authenticated proxy. That reasoning is wrong: MediaMTX's RTMP and
+SRT listeners are internet-facing and serve *reads* as well as publishes, so
+`ffmpeg -i rtmp://host/program` walked straight past viewer authentication.
+Reads are now allowed only for the compositor and the proxy, which present the
+internal credential; the proxy adds it on the viewer's behalf after checking the
+session.
+
+**The auth hook URL carries a shared secret.** A source-address check is not
+enough on its own: behind Traefik every request reaches the composer from the
+container network, so "is this caller internal?" is unanswerable from the socket
+address alone. The secret travels only on the internal network, never to a
+browser. Without it the endpoint was an unauthenticated oracle for testing
+whether a stream key is valid.
 
 **Publishing is authenticated by stream key.** MediaMTX delegates every
 publish/read decision to the composer over HTTP, so a new key works immediately
@@ -108,7 +141,9 @@ uses, and the reason OBS setup is two fields.
 
 **Sessions** are stateless signed cookies (HMAC-SHA256, `HttpOnly`, `SameSite=Lax`,
 `Secure` under TLS). Passwords are hashed with scrypt and a per-user salt. Sign-in
-attempts are rate limited per address.
+attempts are rate limited per address — and `trust proxy` is off unless
+`TRUST_PROXY` names a hop count, because trusting `X-Forwarded-For`
+unconditionally lets any client invent its own address and walk past that limit.
 
 **The internal hook endpoint** (`/internal/*`) refuses any request that does not
 come from a private address.

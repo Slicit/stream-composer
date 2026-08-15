@@ -28,6 +28,23 @@ function parseLinkHeader(value) {
   return servers;
 }
 
+/**
+ * Whether this browser can receive H.264, which is what the compositor and
+ * every OBS publisher produce. Nearly all browsers can, but some Linux builds
+ * of Chromium and Firefox ship without it, and the failure is otherwise
+ * opaque — MediaMTX simply closes the session with "codecs not supported by
+ * client" and the player spins for ever.
+ */
+export function canReceiveH264() {
+  try {
+    const caps = RTCRtpReceiver.getCapabilities('video');
+    if (!caps || !caps.codecs) return true; // unknown: let it try
+    return caps.codecs.some((c) => /h264/i.test(c.mimeType));
+  } catch (_) {
+    return true;
+  }
+}
+
 export class WhepClient extends EventTarget {
   /**
    * @param {string} url    proxied WHEP endpoint, e.g. /mtx/webrtc/program/whep
@@ -82,6 +99,16 @@ export class WhepClient extends EventTarget {
 
   async connect() {
     this.teardownPeer();
+
+    if (this.wantVideo && !canReceiveH264()) {
+      this.stopped = true;
+      this.setState('error', {
+        message: 'This browser cannot decode H.264 video, which every stream here uses. Try Chrome, Edge, Safari, or a Firefox build with H.264 support.',
+        fatal: true,
+      });
+      return;
+    }
+
     this.setState('connecting');
 
     let iceServers = [];

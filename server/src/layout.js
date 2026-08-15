@@ -11,6 +11,22 @@
  * subsampling requires even dimensions.
  */
 
+/**
+ * Keep a rectangle inside the canvas. Cell sizes bottom out at 2px but the
+ * running offset does not, so a large gutter with many rows could otherwise
+ * place cells past the edge, where they simply vanish with no error.
+ */
+function clampToCanvas(cell, width, height) {
+  const w = Math.min(cell.w, width);
+  const h = Math.min(cell.h, height);
+  return {
+    x: even(Math.max(0, Math.min(cell.x, width - w)), 0),
+    y: even(Math.max(0, Math.min(cell.y, height - h)), 0),
+    w,
+    h,
+  };
+}
+
 /** Round down to the nearest even number, never below `min`. */
 function even(n, min = 2) {
   const v = Math.floor(n / 2) * 2;
@@ -47,7 +63,7 @@ function gridCells(count, { width, height, gap, cols, rows, fill = false }) {
     const rowW = w * inRow + gap * (inRow - 1);
     let x = even((width - rowW) / 2, 0);
     for (let i = 0; i < inRow; i++) {
-      cells.push({ x, y, w, h: cellH });
+      cells.push(clampToCanvas({ x, y, w, h: cellH }, width, height));
       x += w + gap;
     }
     y += cellH + gap;
@@ -66,16 +82,19 @@ function spotlightCells(count, { width, height, gap }) {
   const mainH = even(height - gap * 2);
   const sideH = even((height - gap * (sideCount + 1)) / sideCount);
 
-  const cells = [{ x: gap, y: gap, w: mainW, h: mainH }];
+  const cells = [clampToCanvas({ x: gap, y: gap, w: mainW, h: mainH }, width, height)];
   let y = gap;
   for (let i = 0; i < sideCount; i++) {
-    cells.push({ x: gap * 2 + mainW, y, w: sideW, h: sideH });
+    cells.push(clampToCanvas({ x: gap * 2 + mainW, y, w: sideW, h: sideH }, width, height));
     y += sideH + gap;
   }
   return { cells, cols: 2, rows: sideCount, spotlight: true };
 }
 
-const FIXED = /^(\d+)x(\d+)$/;
+// Bounded on purpose: an unbounded digit run becomes Infinity via parseInt,
+// which propagates NaN through every cell and yields a filtergraph ffmpeg
+// cannot configure — leaving the encoder in a permanent restart loop.
+const FIXED = /^([1-9]|1[0-9]|2[0-4])x([1-9]|1[0-9]|2[0-4])$/;
 
 /**
  * @param {number} count  number of sources to place (>= 0)
@@ -128,7 +147,7 @@ function computeLayout(count, opts = {}) {
     for (let i = 0; i < used; i++) {
       const r = Math.floor(i / cols);
       const c = i % cols;
-      cells.push({ x: gap + c * (cellW + gap), y: gap + r * (cellH + gap), w: cellW, h: cellH });
+      cells.push(clampToCanvas({ x: gap + c * (cellW + gap), y: gap + r * (cellH + gap), w: cellW, h: cellH }, width, height));
     }
     return { cells, cols, rows, layout, capacity, width, height };
   }

@@ -22,7 +22,14 @@ const config = {
   // --- HTTP ---
   port: int(process.env.PORT, 3000),
   bindAddress: process.env.BIND_ADDRESS || '0.0.0.0',
-  trustProxy: bool(process.env.TRUST_PROXY, true),
+  // Trusting forwarded headers by default would let any client dictate its own
+  // address and walk straight past the sign-in throttle. Opt in, with a hop
+  // count, only when there really is a proxy in front (the TLS overlay sets it).
+  trustProxy: process.env.TRUST_PROXY === undefined || process.env.TRUST_PROXY === ''
+    ? false
+    : /^\d+$/.test(process.env.TRUST_PROXY)
+      ? parseInt(process.env.TRUST_PROXY, 10)
+      : bool(process.env.TRUST_PROXY, false),
 
   // --- Storage ---
   dataDir,

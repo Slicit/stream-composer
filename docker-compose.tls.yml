@@ -58,7 +58,9 @@ services:
       RTMPS_ENABLED: "true"
       RTMPS_PUBLIC_PORT: ${RTMPS_PORT:-1936}
       SECURE_COOKIES: "true"
-      TRUST_PROXY: "true"
+      # Exactly one proxy hop (Traefik). Trusting every hop would let a client
+      # forge its own address via X-Forwarded-For and bypass the login throttle.
+      TRUST_PROXY: "1"
     labels:
       traefik.enable: "true"
       traefik.docker.network: streamnet

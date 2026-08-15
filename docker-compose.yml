@@ -20,6 +20,9 @@ services:
       # Advertised to browsers as an ICE candidate host. Without this, viewers
       # outside the server cannot establish WebRTC.
       MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_HOST:-}
+      # The authentication hook URL carries a shared secret so it cannot be
+      # driven from outside the stack.
+      MTX_AUTHHTTPADDRESS: http://composer:3000/internal/${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}/mediamtx/auth
     volumes:
       - ./config/mediamtx.yml:/mediamtx.yml:ro
     ports:

@@ -52,6 +52,8 @@ let stabiliseTimer = null;
 let restartTimer = null;
 let desiredSignature = null;
 let currentSignature = null;
+let pendingSince = 0;
+let applying = false;
 let restartDelay = 0;
 let stopping = false;
 
@@ -74,15 +76,19 @@ function rtspBase() {
   return `rtsp://${creds}${url.hostname}:8554`;
 }
 
-/** drawtext is picky: colons, backslashes, quotes and percent signs must go. */
+/**
+ * drawtext is picky. Truncate *before* escaping so a cut can never land in the
+ * middle of an escape sequence, and leave `%` alone: the filter is used with
+ * `expansion=none`, where a literal percent is fine and a backslash-escaped one
+ * is rejected ("Stray %") — which silently drops the entire label.
+ */
 function escapeDrawtext(text) {
   return String(text)
-    .replace(/\\/g, '\\\\\\\\')
-    .replace(/:/g, '\\:')
-    .replace(/'/g, "’")
-    .replace(/%/g, '\\%')
     .replace(/[\r\n]+/g, ' ')
-    .slice(0, 48);
+    .slice(0, 48)
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, '’');
 }
 
 function hexColor(value, fallback = '0x0b1220') {
@@ -129,8 +135,11 @@ function selectSources(live) {
 }
 
 function signatureOf(sources, comp) {
+  // Only things that change the ffmpeg command belong here. Audio tracks
+  // notably do not — the programme is video-only, and OBS reconnects make
+  // track lists flap, which would otherwise cause pointless restarts.
   return JSON.stringify({
-    keys: sources.map((s) => `${s.key}:${s.hasAudio ? 'a' : ''}`),
+    keys: sources.map((s) => s.key),
     c: {
       l: comp.layout, w: comp.width, h: comp.height, f: comp.fps, b: comp.bitrateKbps,
       mr: comp.maxrateKbps, bs: comp.bufsizeKbps, p: comp.preset, e: comp.encoder,
@@ -157,7 +166,11 @@ function buildArgs(sources, comp, encoderKind) {
   const placed = sources.slice(0, layout.cells.length);
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin'];
 
-  if (encoderKind === 'vaapi' || encoderKind === 'qsv') {
+  // VA-API needs its device up front so the filtergraph can hwupload into it.
+  // Quick Sync deliberately does not: -vaapi_device would give the graph a
+  // VAAPI frames context, and h264_qsv accepts only nv12/qsv frames, so the
+  // graph would fail to configure on every start.
+  if (encoderKind === 'vaapi') {
     args.push('-vaapi_device', config.vaapiDevice);
   }
 
@@ -192,7 +205,7 @@ function buildArgs(sources, comp, encoderKind) {
       const size = Math.max(10, Math.min(72, comp.labelSize || 22));
       const font = encoderCaps.caps.fontFile ? `fontfile='${encoderCaps.caps.fontFile}':` : '';
       chain +=
-        `,drawtext=${font}text='${escapeDrawtext(src.name)}':` +
+        `,drawtext=${font}text='${escapeDrawtext(src.name)}':expansion=none:` +
         `fontcolor=white:fontsize=${size}:` +
         'box=1:boxcolor=black@0.55:boxborderw=8:' +
         `x=12:y=h-th-12`;
@@ -213,7 +226,7 @@ function buildArgs(sources, comp, encoderKind) {
   if (encoderKind === 'vaapi') {
     parts.push(`[${last}]format=nv12,hwupload[outv]`);
   } else if (encoderKind === 'qsv') {
-    parts.push(`[${last}]format=nv12,hwupload=extra_hw_frames=16[outv]`);
+    parts.push(`[${last}]format=nv12[outv]`);
   } else {
     parts.push(`[${last}]format=yuv420p[outv]`);
   }
@@ -307,7 +320,7 @@ function start(sources, comp) {
   const encoderKind = encoderCaps.resolve(comp.encoder);
   const { args, layout, placed } = buildArgs(sources, comp, encoderKind);
 
-  state.sources = placed.map((s) => ({ key: s.key, name: s.name, hasAudio: s.hasAudio }));
+  state.sources = placed.map((s) => ({ key: s.key, name: s.name, path: s.path, hasAudio: s.hasAudio }));
   state.layout = layout;
   state.encoder = encoderKind;
   state.command = `${config.ffmpegPath} ${args.map((a) => (/[\s;'"]/.test(a) ? `'${a}'` : a)).join(' ')}`;
@@ -371,7 +384,11 @@ function scheduleRestart() {
   log.info('restarting shortly', { inMs: restartDelay, restarts: state.restarts });
   restartTimer = setTimeout(() => {
     restartTimer = null;
-    currentSignature = null; // force a rebuild on the next poll
+    // Both must be cleared. tick() only acts when the signature differs from
+    // `desiredSignature`; leaving that set meant a crashed encoder was never
+    // rebuilt whenever the stream set had not otherwise changed.
+    currentSignature = null;
+    desiredSignature = null;
     tick().catch((err) => log.error('restart tick failed', err.message));
   }, restartDelay);
   restartTimer.unref();
@@ -404,12 +421,22 @@ async function tick() {
   if (signature !== desiredSignature) {
     // The set changed — wait for it to settle before acting.
     desiredSignature = signature;
+    const s = settings();
+    const wait = Math.max(0, Number.isFinite(s.stabilizeMs) ? s.stabilizeMs : 1500);
+
+    // Re-arming on every change means a source flapping faster than the settle
+    // delay would postpone the rebuild for ever. Cap the total wait so churn
+    // degrades to "rebuilds a little late" rather than "never starts".
+    const now = Date.now();
+    if (!pendingSince) pendingSince = now;
+    const maxWait = Math.max(10000, wait * 4);
+    const remaining = Math.max(0, Math.min(wait, pendingSince + maxWait - now));
+
     if (stabiliseTimer) clearTimeout(stabiliseTimer);
-    const wait = Math.max(0, settings().stabilizeMs || 1500);
     stabiliseTimer = setTimeout(() => {
       stabiliseTimer = null;
       apply(sources, comp, signature).catch((err) => log.error('apply failed', err.message));
-    }, wait);
+    }, remaining);
     stabiliseTimer.unref();
   }
 }
@@ -417,30 +444,42 @@ async function tick() {
 async function apply(sources, comp, signature) {
   if (stopping) return;
   if (signature !== desiredSignature) return; // superseded while we waited
+  // Without this guard two applies overlapping in the 250ms window below both
+  // spawn an encoder, and the first child is orphaned — two processes
+  // publishing to the same path, one of them no longer tracked or killable.
+  if (applying) return;
+  applying = true;
+  try {
+    pendingSince = 0;
+    killCurrent('configuration or stream set changed');
 
-  killCurrent('configuration or stream set changed');
+    if (!comp.enabled) {
+      log.info('composition is switched off — nothing to encode');
+      currentSignature = signature;
+      return;
+    }
+    if (sources.length === 0) {
+      log.info('no live streams — the encoder stays idle');
+      currentSignature = signature;
+      state.sources = [];
+      state.layout = computeLayout(0, { width: comp.width, height: comp.height, gap: comp.gapPx, layout: comp.layout });
+      return;
+    }
 
-  if (!comp.enabled) {
-    log.info('composition is switched off — nothing to encode');
-    currentSignature = signature;
-    return;
+    // Give MediaMTX a moment to release the previous publisher on the program path.
+    await new Promise((r) => setTimeout(r, 250));
+    // Anything could have changed while we slept, including a shutdown.
+    if (stopping || signature !== desiredSignature) return;
+    start(sources, comp);
+  } finally {
+    applying = false;
   }
-  if (sources.length === 0) {
-    log.info('no live streams — the encoder stays idle');
-    currentSignature = signature;
-    state.sources = [];
-    state.layout = computeLayout(0, { width: comp.width, height: comp.height, gap: comp.gapPx, layout: comp.layout });
-    return;
-  }
-
-  // Give MediaMTX a moment to release the previous publisher on the program path.
-  await new Promise((r) => setTimeout(r, 250));
-  start(sources, comp);
 }
 
 function nudge() {
   currentSignature = null;
   desiredSignature = null;
+  pendingSince = 0;
   tick().catch((err) => log.error('nudge failed', err.message));
 }
 

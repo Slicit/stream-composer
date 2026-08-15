@@ -19,6 +19,14 @@ const log = logger.scope('streams');
 // Unambiguous alphabet: no 0/O, 1/l/I.
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
 
+/**
+ * Public, non-secret handle a browser uses to ask for a stream. Viewers must
+ * never see the ingest key: it is the publishing credential.
+ */
+function generatePlaybackId() {
+  return crypto.randomBytes(12).toString('hex');
+}
+
 function generateKey(length = 20) {
   const bytes = crypto.randomBytes(length);
   let out = '';
@@ -58,6 +66,7 @@ function create({ name, key, enabled = true, note = '' }) {
     id: crypto.randomUUID(),
     name: label,
     key: finalKey,
+    playbackId: generatePlaybackId(),
     enabled: !!enabled,
     note: String(note || '').slice(0, 200),
     createdAt: new Date().toISOString(),
@@ -162,4 +171,4 @@ async function withLiveState() {
   return [...configured, ...unknown];
 }
 
-module.exports = { generateKey, isValidKey, list, find, findByKey, create, update, rotateKey, remove, withLiveState, ingestInfo };
+module.exports = { generateKey, generatePlaybackId, isValidKey, list, find, findByKey, create, update, rotateKey, remove, withLiveState, ingestInfo };

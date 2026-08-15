@@ -15,7 +15,11 @@ const log = logger.scope('server');
 
 const app = express();
 app.disable('x-powered-by');
-if (config.trustProxy) app.set('trust proxy', true);
+// `trust proxy` decides whether req.ip comes from X-Forwarded-For. Trusting it
+// unconditionally lets any client forge its own address and slip past the
+// sign-in throttle, so this is off unless TRUST_PROXY says how many hops to
+// trust (the TLS overlay sets 1 for Traefik).
+if (config.trustProxy) app.set('trust proxy', config.trustProxy === true ? 1 : config.trustProxy);
 
 // --------------------------------------------------------------- middleware
 
@@ -44,9 +48,10 @@ app.get('/healthz', (_req, res) => {
 // --------------------------------------------------- MediaMTX auth hook
 
 /**
- * The hook must only be callable from inside the deployment. MediaMTX talks to
- * us over the container network; nothing on the public side has any business
- * here.
+ * Defence in depth for the hook. The shared secret in the URL (checked in the
+ * route) is the real control, because behind Traefik every request arrives from
+ * the container network and a source-address test would pass for internet
+ * traffic too. This still blocks the obvious case of a directly exposed port.
  */
 function privateNetworkOnly(req, res, next) {
   const ip = String(req.socket.remoteAddress || '').replace(/^::ffff:/, '');
@@ -64,13 +69,16 @@ function privateNetworkOnly(req, res, next) {
 
 app.use('/internal', privateNetworkOnly, require('./routes/hooks').router);
 
+// Nothing else lives under /internal.
+app.use('/internal', (_req, res) => res.status(404).json({ error: 'Not found.' }));
+
 // -------------------------------------------------------------------- auth
 
 app.use('/api/auth', require('./routes/auth'));
 
 // ------------------------------------------------------------ media proxy
 
-proxy.mount(app, auth.requireViewAccess);
+proxy.mount(app, auth.requireViewAccessApi);
 
 // ----------------------------------------------------------------- admin API
 // Mounted before the viewer API so administration never inherits the

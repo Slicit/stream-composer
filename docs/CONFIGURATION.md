@@ -79,6 +79,7 @@ After the first start these are ignored; manage accounts in the admin console.
 | Variable | Default | |
 |---|---|---|
 | `ENCODER` | *(empty)* | Force `x264`, `vaapi`, `nvenc` or `qsv`. Empty means automatic. Overrides the admin console setting. |
+| `TRUST_PROXY` | *(off)* | Number of reverse-proxy hops in front. The TLS overlay sets `1` for Traefik. Leave it off when the service is reached directly: trusting `X-Forwarded-For` otherwise lets a client forge its own address and bypass the sign-in throttle. |
 | `TZ` | `UTC` | Timestamps in logs and the UI |
 
 ## Admin console

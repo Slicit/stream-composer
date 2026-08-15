@@ -5,10 +5,23 @@
  *
  * MediaMTX itself is never exposed to the internet: only its RTMP/SRT ingest
  * ports and the WebRTC ICE UDP range are published. Playback signalling
- * (WHEP) and HLS go through here, which means:
- *   - one hostname and one TLS certificate for the whole product,
- *   - viewer authentication is enforced before any media is handed out,
- *   - only known stream paths are reachable.
+ * (WHEP) and HLS go through here.
+ *
+ * Security rules this file enforces — every one of them exists because the
+ * naive version was exploitable:
+ *
+ *  1. Viewers address streams by an opaque *playback id*, never by the ingest
+ *     stream key. The key is a publishing credential and must not reach a
+ *     browser, not even in a `Location` header.
+ *  2. The forwarded URL is rebuilt from validated components. Nothing from the
+ *     client's raw path is passed upstream, so percent-encoded traversal
+ *     (`%2e%2e`) cannot make the validated path and the forwarded path differ.
+ *  3. Only playback actions are routed. WHIP is a *publish* verb and is
+ *     rejected outright, as is anything that would reach MediaMTX's built-in
+ *     publish page.
+ *  4. The client's `Authorization` header is stripped and replaced with the
+ *     stack-internal credential. Forwarding it would expose that credential to
+ *     unlimited guessing from the internet.
  *
  * Written against node:http directly so the server keeps a single dependency.
  */
@@ -21,43 +34,143 @@ const logger = require('./logger');
 
 const log = logger.scope('proxy');
 
-const HOP_BY_HOP = new Set([
+// Headers that must never be relayed in either direction. `authorization` and
+// `cookie` are ours to control, not the client's.
+const STRIP_REQUEST = new Set([
   'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade', 'host', 'cookie',
+  'authorization', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto',
+  'forwarded',
 ]);
+
+const STRIP_RESPONSE = new Set([
+  'connection', 'keep-alive', 'proxy-authenticate', 'transfer-encoding',
+  'upgrade', 'www-authenticate',
+]);
+
+// Our own session cookie is never something upstream gets to set.
+const PROTECTED_COOKIE = 'sc_session';
 
 const WEBRTC_MOUNT = '/mtx/webrtc';
 const HLS_MOUNT = '/mtx/hls';
 
-/** Only the composed program and configured ingest keys may be played. */
-function isAllowedPath(mediaPath) {
-  if (!mediaPath) return false;
-  const clean = mediaPath.replace(/^\/+/, '');
-  if (clean === config.programPath) return true;
-  const prefix = `${config.ingestPrefix}/`;
-  if (!clean.startsWith(prefix)) return false;
-  const key = clean.slice(prefix.length).split('/')[0];
-  if (!/^[A-Za-z0-9_-]{3,64}$/.test(key)) return false;
+/** The public alias for the composed programme, independent of its internal path. */
+const PUBLIC_PROGRAM = 'program';
+
+const PLAYBACK_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const SESSION_ID = /^[A-Za-z0-9_.-]{1,128}$/;
+const HLS_FILE = /^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$/;
+const SAFE_QUERY = /^[A-Za-z0-9_.\-=&%~+/]*$/;
+
+/**
+ * Map a public playback reference onto the real MediaMTX path.
+ * Returns null when the reference is unknown or not currently playable.
+ */
+function resolvePlayback(publicPath) {
+  if (publicPath === PUBLIC_PROGRAM) return config.programPath;
+
+  const parts = publicPath.split('/');
+  if (parts.length !== 2 || parts[0] !== 's' || !PLAYBACK_ID.test(parts[1])) return null;
+
   const d = store.get();
-  if (!d.settings.showIndividualStreams) return false;
-  const stream = d.streams.find((s) => s.key === key);
-  return !!stream && stream.enabled !== false;
+  if (!d.settings.showIndividualStreams) return null;
+  const stream = d.streams.find((s) => s.playbackId === parts[1]);
+  if (!stream || stream.enabled === false) return null;
+  return `${config.ingestPrefix}/${stream.key}`;
 }
 
-/** Split "/live/cam1/whep/abc" into the media path and the trailing action. */
-function splitTarget(rest) {
-  const clean = rest.replace(/^\/+/, '');
-  const segments = clean.split('/');
-  // Actions we recognise at the end of a MediaMTX media URL.
-  const actionIdx = segments.findIndex((s) => s === 'whep' || s === 'whip' || s.endsWith('.m3u8') || s.endsWith('.mp4') || s.endsWith('.ts'));
-  if (actionIdx <= 0) return { mediaPath: segments.slice(0, -1).join('/'), ok: false };
-  return { mediaPath: segments.slice(0, actionIdx).join('/'), ok: true };
+/**
+ * Strictly parse a proxied request into validated components.
+ * Anything unexpected returns null — there is no lenient path here.
+ */
+function parseRequest(rawUrl, kind) {
+  const queryAt = rawUrl.indexOf('?');
+  const pathPart = queryAt >= 0 ? rawUrl.slice(0, queryAt) : rawUrl;
+  const query = queryAt >= 0 ? rawUrl.slice(queryAt + 1) : '';
+
+  // Reject percent-encoding wholesale. Every path this proxy serves is built
+  // from an unreserved character set, so an encoded byte can only be an
+  // attempt to smuggle a separator past validation.
+  if (pathPart.includes('%') || pathPart.includes('\\')) return null;
+  if (!SAFE_QUERY.test(query)) return null;
+
+  const segments = pathPart.split('/').filter((s) => s !== '');
+  if (segments.length < 2 || segments.length > 4) return null;
+  if (segments.some((s) => s === '.' || s === '..')) return null;
+
+  if (kind === 'webrtc') {
+    const idx = segments.indexOf('whep');
+    // `whep` must be the last segment, or the one before a session id.
+    if (idx < 1 || idx < segments.length - 2) return null;
+    const sessionId = segments[idx + 1];
+    if (sessionId !== undefined && !SESSION_ID.test(sessionId)) return null;
+
+    const publicPath = segments.slice(0, idx).join('/');
+    const mediaPath = resolvePlayback(publicPath);
+    if (!mediaPath) return null;
+
+    return {
+      publicPath,
+      mediaPath,
+      upstreamPath: `/${mediaPath}/whep${sessionId ? `/${sessionId}` : ''}`,
+      query,
+      sessionId,
+    };
+  }
+
+  // HLS: the last segment is a playlist or a segment file.
+  const file = segments[segments.length - 1];
+  if (!HLS_FILE.test(file)) return null;
+  const publicPath = segments.slice(0, -1).join('/');
+  const mediaPath = resolvePlayback(publicPath);
+  if (!mediaPath) return null;
+
+  return { publicPath, mediaPath, upstreamPath: `/${mediaPath}/${file}`, query };
 }
 
-function forward({ base, mount, req, res, rest }) {
+/**
+ * Map an upstream redirect back into our address space.
+ * `/live/<key>/index.m3u8?x=1` becomes `/mtx/hls/s/<playbackId>/index.m3u8?x=1`.
+ */
+function rewriteLocation(location, mount, parsed) {
+  let pathname = location;
+  let search = '';
+  try {
+    if (/^https?:\/\//i.test(location)) {
+      const u = new URL(location);
+      pathname = u.pathname;
+      search = u.search;
+    } else {
+      const q = location.indexOf('?');
+      if (q >= 0) {
+        pathname = location.slice(0, q);
+        search = location.slice(q);
+      }
+    }
+  } catch (_) {
+    return `${mount}/${parsed.publicPath}`;
+  }
+
+  const prefix = `/${parsed.mediaPath}`;
+  if (pathname === prefix || pathname.startsWith(`${prefix}/`)) {
+    const suffix = pathname.slice(prefix.length);
+    return `${mount}/${parsed.publicPath}${suffix}${search}`;
+  }
+  // Anything unexpected goes back to the public entry point rather than
+  // exposing wherever upstream was pointing.
+  return `${mount}/${parsed.publicPath}${search}`;
+}
+
+function internalAuthHeader() {
+  if (!config.mediamtx.internalPassword) return null;
+  const raw = `${config.mediamtx.internalUser}:${config.mediamtx.internalPassword}`;
+  return `Basic ${Buffer.from(raw).toString('base64')}`;
+}
+
+function forward({ base, mount, req, res, parsed }) {
   let target;
   try {
-    target = new URL(`${base}${rest.startsWith('/') ? '' : '/'}${rest}`);
+    target = new URL(`${base}${parsed.upstreamPath}${parsed.query ? `?${parsed.query}` : ''}`);
   } catch (_) {
     res.status(400).json({ error: 'Bad media path.' });
     return;
@@ -65,14 +178,13 @@ function forward({ base, mount, req, res, rest }) {
 
   const headers = {};
   for (const [k, v] of Object.entries(req.headers)) {
-    if (!HOP_BY_HOP.has(k.toLowerCase())) headers[k] = v;
+    if (!STRIP_REQUEST.has(k.toLowerCase())) headers[k] = v;
   }
   headers.host = target.host;
-  // MediaMTX trusts the stack-internal network; strip any inbound forwarding
-  // headers so a client cannot spoof its own address to the media server.
-  delete headers['x-forwarded-for'];
-  delete headers['x-forwarded-host'];
-  delete headers['x-forwarded-proto'];
+
+  // The stack-internal credential is added here and only here.
+  const auth = internalAuthHeader();
+  if (auth) headers.authorization = auth;
 
   const upstream = http.request(
     {
@@ -86,18 +198,26 @@ function forward({ base, mount, req, res, rest }) {
     (up) => {
       const out = {};
       for (const [k, v] of Object.entries(up.headers)) {
-        if (HOP_BY_HOP.has(k.toLowerCase())) continue;
+        if (STRIP_RESPONSE.has(k.toLowerCase())) continue;
         out[k] = v;
       }
-      // Rewrite the WHEP session URL so the browser keeps talking to us.
+
+      // Rewrite redirects so the browser keeps talking to us, and so the
+      // internal path — which contains the ingest key — never leaks. This
+      // covers both the WHEP session URL and MediaMTX's HLS `cookieCheck`
+      // bounce; a WHEP-specific rewrite mangled the latter into a dead end.
       if (out.location) {
-        try {
-          const loc = out.location.startsWith('http') ? new URL(out.location).pathname : out.location;
-          out.location = `${mount}${loc.startsWith('/') ? '' : '/'}${loc}`;
-        } catch (_) {
-          /* leave as-is */
-        }
+        out.location = rewriteLocation(String(out.location), mount, parsed);
       }
+
+      // MediaMTX sets a `cookieCheck` cookie as part of that bounce, so its
+      // cookies have to survive — but never one that could shadow our session.
+      if (out['set-cookie']) {
+        const cookies = [].concat(out['set-cookie']).filter((c) => !String(c).trim().toLowerCase().startsWith(`${PROTECTED_COOKIE}=`));
+        if (cookies.length) out['set-cookie'] = cookies;
+        else delete out['set-cookie'];
+      }
+
       res.status(up.statusCode || 502);
       for (const [k, v] of Object.entries(out)) res.setHeader(k, v);
       up.pipe(res);
@@ -105,7 +225,7 @@ function forward({ base, mount, req, res, rest }) {
   );
 
   upstream.on('error', (err) => {
-    log.warn('upstream media request failed', { url: target.href, error: err.message });
+    log.warn('upstream media request failed', { path: parsed.upstreamPath, error: err.message });
     if (!res.headersSent) res.status(502).json({ error: 'The media server is not responding.' });
     else res.end();
   });
@@ -115,28 +235,30 @@ function forward({ base, mount, req, res, rest }) {
 }
 
 function mount(app, guard) {
-  // ---- WebRTC / WHEP ----
+  // ---- WebRTC / WHEP (playback only) ----
+  //
+  // GET is deliberately absent: MediaMTX serves its built-in publish and read
+  // pages over GET, and WHIP (publishing) is never routed from here at all.
   app.use(WEBRTC_MOUNT, guard, (req, res) => {
-    const rest = req.url.split('?')[0];
-    const { mediaPath, ok } = splitTarget(rest);
-    if (!ok || !isAllowedPath(mediaPath)) {
-      return res.status(404).json({ error: 'Unknown stream.' });
+    if (!['POST', 'PATCH', 'DELETE', 'OPTIONS'].includes(req.method)) {
+      return res.status(405).json({ error: 'Method not allowed.' });
     }
-    return forward({ base: config.mediamtx.webrtc, mount: WEBRTC_MOUNT, req, res, rest: req.url });
+    const parsed = parseRequest(req.url, 'webrtc');
+    if (!parsed) return res.status(404).json({ error: 'Unknown stream.' });
+    return forward({ base: config.mediamtx.webrtc, mount: WEBRTC_MOUNT, req, res, parsed });
   });
 
-  // ---- Low-latency HLS (fallback for browsers or networks where WebRTC fails) ----
+  // ---- Low-latency HLS (fallback where WebRTC cannot get through) ----
   app.use(HLS_MOUNT, guard, (req, res) => {
-    const rest = req.url.split('?')[0];
-    const segments = rest.replace(/^\/+/, '').split('/');
-    const mediaPath = segments.slice(0, -1).join('/');
-    if (!isAllowedPath(mediaPath)) {
-      return res.status(404).json({ error: 'Unknown stream.' });
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      return res.status(405).json({ error: 'Method not allowed.' });
     }
-    return forward({ base: config.mediamtx.hls, mount: HLS_MOUNT, req, res, rest: req.url });
+    const parsed = parseRequest(req.url, 'hls');
+    if (!parsed) return res.status(404).json({ error: 'Unknown stream.' });
+    return forward({ base: config.mediamtx.hls, mount: HLS_MOUNT, req, res, parsed });
   });
 
   log.info('media proxy mounted', { webrtc: WEBRTC_MOUNT, hls: HLS_MOUNT });
 }
 
-module.exports = { mount, WEBRTC_MOUNT, HLS_MOUNT, isAllowedPath };
+module.exports = { mount, WEBRTC_MOUNT, HLS_MOUNT, resolvePlayback, parseRequest, PUBLIC_PROGRAM };

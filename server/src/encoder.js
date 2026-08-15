@@ -181,6 +181,10 @@ function outputArgs(kind, comp) {
         ...common,
       ];
     case 'qsv':
+      // No hwupload for this path: the filtergraph ends in software NV12 and
+      // h264_qsv takes it directly. Uploading to a VAAPI frames context (which
+      // is what -vaapi_device would give us) produces frames this encoder
+      // cannot accept, and the graph fails to configure.
       return [
         '-c:v', 'h264_qsv',
         '-preset', 'veryfast',

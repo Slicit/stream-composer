@@ -25,7 +25,8 @@ router.get('/state', async (req, res) => {
       publicViewing: d.settings.publicViewing,
     },
     program: {
-      path: config.programPath,
+      // Public alias; the real MediaMTX path stays server-side.
+      path: 'program',
       ready: program.ready,
       readers: program.readers,
       width: d.composition.width,
@@ -41,16 +42,23 @@ router.get('/state', async (req, res) => {
     layout: status.layout
       ? { name: status.layout.layout, cols: status.layout.cols, rows: status.layout.rows, cells: status.layout.cells, width: status.layout.width, height: status.layout.height }
       : null,
-    onAir: status.sources,
+    // The on-air list is keyed by playback id like `streams` above: the
+    // compositor tracks sources by ingest key, which must not reach a browser.
+    onAir: status.sources
+      .map((s) => {
+        const known = all.find((x) => x.key === s.key);
+        return known && known.playbackId ? { key: known.playbackId, name: s.name } : { key: null, name: s.name };
+      }),
     streams: all
-      .filter((s) => s.enabled !== false)
+      .filter((s) => s.enabled !== false && s.playbackId)
       .map((s) => ({
-        key: s.key,
+        // The ingest key is a publishing credential and is deliberately absent.
+        key: s.playbackId,
         name: s.name,
         live: s.live,
         hasAudio: s.hasAudio,
-        // Media paths the player can subscribe to, via the authenticated proxy.
-        path: `${config.ingestPrefix}/${s.key}`,
+        // Media path the player subscribes to, via the authenticated proxy.
+        path: `s/${s.playbackId}`,
       })),
     version: config.version,
     serverTime: new Date().toISOString(),

@@ -27,11 +27,18 @@ async function api(pathname, { method = 'GET', body, timeoutMs = 4000 } = {}) {
       const text = await res.text().catch(() => '');
       throw new Error(`${method} ${pathname} -> ${res.status} ${text.slice(0, 200)}`);
     }
+    if (res.status === 204) {
+      reachable = true;
+      lastError = null;
+      return null;
+    }
+    // Read the body *before* clearing the timeout, otherwise a half-open
+    // response leaves the caller hanging with the abort no longer armed.
+    const ct = res.headers.get('content-type') || '';
+    const parsed = ct.includes('json') ? await res.json() : await res.text();
     reachable = true;
     lastError = null;
-    if (res.status === 204) return null;
-    const ct = res.headers.get('content-type') || '';
-    return ct.includes('json') ? res.json() : res.text();
+    return parsed;
   } catch (err) {
     reachable = false;
     lastError = err.message;

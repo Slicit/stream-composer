@@ -8,9 +8,19 @@
  * keys work immediately with no media-server restart.
  *
  * Contract: 200 = allow, 401 = deny.
+ *
+ * Reads require the stack-internal credential
+ * -------------------------------------------
+ * An earlier version allowed any read of a known path, on the assumption that
+ * playback could only arrive through the authenticated proxy. That assumption
+ * was wrong: the RTMP and SRT listeners are published to the internet and serve
+ * *reads* as well as publishes, so `ffmpeg -i rtmp://host/program` bypassed
+ * viewer authentication completely. Reads are now allowed only for the
+ * compositor and the proxy, both of which present the internal credential.
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const config = require('../config');
 const store = require('../store');
 const streams = require('../streams');
@@ -32,20 +42,31 @@ function logDenial(reason, body) {
   log.warn('denied', { reason, action: body.action, path: body.path, ip: body.ip, protocol: body.protocol });
 }
 
+function safeEqual(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  if (bufA.length !== bufB.length || bufA.length === 0) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
 function isInternal(body) {
   if (!config.mediamtx.internalPassword) return false;
-  return body.user === config.mediamtx.internalUser && body.password === config.mediamtx.internalPassword;
+  return safeEqual(body.user, config.mediamtx.internalUser) && safeEqual(body.password, config.mediamtx.internalPassword);
 }
 
 function decide(body) {
   const action = String(body.action || '');
   const path = String(body.path || '').replace(/^\/+/, '');
   const prefix = `${config.ingestPrefix}/`;
-
-  if (isInternal(body)) return { allow: true, reason: 'internal' };
+  const internal = isInternal(body);
 
   if (action === 'publish') {
-    if (path === config.programPath) return { allow: false, reason: 'the program path is written by the compositor only' };
+    // Only the compositor may write the programme, and it authenticates.
+    if (path === config.programPath) {
+      return internal
+        ? { allow: true, reason: 'compositor' }
+        : { allow: false, reason: 'the program path is written by the compositor only' };
+    }
     if (!path.startsWith(prefix)) return { allow: false, reason: `publish to "${config.ingestPrefix}/<stream key>"` };
     const key = path.slice(prefix.length);
     if (key.includes('/')) return { allow: false, reason: 'nested paths are not allowed' };
@@ -56,10 +77,11 @@ function decide(body) {
   }
 
   if (action === 'read') {
-    // Playback ports are not published to the internet; the browser reaches
-    // them through the authenticated proxy in this same process. So a read
-    // request here has already passed viewer authentication.
-    if (path === config.programPath) return { allow: true, reason: 'program' };
+    // Playback is authorised by the composer, which then reads on the viewer's
+    // behalf holding the internal credential. A read presented without it is
+    // someone talking to the ingest ports directly.
+    if (!internal) return { allow: false, reason: 'reads require the internal credential' };
+    if (path === config.programPath) return { allow: true, reason: 'programme' };
     if (path.startsWith(prefix)) {
       const key = path.slice(prefix.length).split('/')[0];
       const stream = streams.findByKey(key);
@@ -69,10 +91,33 @@ function decide(body) {
     return { allow: false, reason: 'unknown path' };
   }
 
+  if (internal) return { allow: true, reason: 'internal' };
   return { allow: false, reason: `action "${action}" is not permitted` };
 }
 
-router.post('/mediamtx/auth', express.json({ limit: '16kb' }), (req, res) => {
+/**
+ * The hook path carries a shared secret.
+ *
+ * `privateNetworkOnly` alone is not enough: behind Traefik every request
+ * arrives from the container network, so a source-address check passes for
+ * traffic from the internet too. MediaMTX cannot send custom headers to the
+ * auth backend, so the secret travels in the URL — which is only ever seen on
+ * the internal container network, never by a browser.
+ */
+function verifyHookToken(req, res, next) {
+  const expected = config.mediamtx.internalPassword;
+  if (!expected) {
+    log.error('MEDIAMTX_INTERNAL_PASSWORD is not set — refusing every authentication request');
+    return res.status(401).json({ error: 'not configured' });
+  }
+  if (!safeEqual(req.params.token, expected)) {
+    log.warn('rejected an authentication call with a bad token', { ip: req.ip });
+    return res.status(404).json({ error: 'Not found.' });
+  }
+  return next();
+}
+
+function handle(req, res) {
   const body = req.body || {};
   let verdict;
   try {
@@ -82,7 +127,7 @@ router.post('/mediamtx/auth', express.json({ limit: '16kb' }), (req, res) => {
     return res.status(401).json({ error: 'internal error' });
   }
   if (verdict.allow) {
-    if (body.action === 'publish') {
+    if (body.action === 'publish' && verdict.reason !== 'compositor') {
       log.info('publisher accepted', { path: body.path, ip: body.ip, protocol: body.protocol });
     } else {
       log.debug('allowed', { action: body.action, path: body.path });
@@ -91,9 +136,9 @@ router.post('/mediamtx/auth', express.json({ limit: '16kb' }), (req, res) => {
   }
   logDenial(verdict.reason, body);
   return res.status(401).json({ error: verdict.reason });
-});
+}
+
+router.post('/:token/mediamtx/auth', verifyHookToken, express.json({ limit: '16kb' }), handle);
 
 module.exports = { router, decide };
-
-// Keep the store reachable for tests that stub it.
 module.exports.store = store;

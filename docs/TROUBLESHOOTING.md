@@ -68,6 +68,16 @@ Almost always WebRTC media cannot get through.
 4. Some corporate networks block UDP entirely. HLS is the answer there; a TURN
    server would also work but is out of scope here.
 
+## "This browser cannot play the stream"
+
+The browser has no H.264 decoder, and every stream here is H.264. This is rare
+but real: some Linux builds of Chromium and Firefox ship without it for patent
+reasons.
+
+Use Chrome, Edge or Safari, or install the H.264-enabled build for your
+distribution (`chromium-codecs-ffmpeg-extra` on Debian and Ubuntu). Switching to
+HLS does not help — it carries the same codec.
+
 ## Playback stutters or drops frames
 
 Check **Admin → Server → Encoder**. Speed below 1.0× means the machine cannot

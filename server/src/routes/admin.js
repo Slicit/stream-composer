@@ -183,7 +183,9 @@ router.put('/composition', (req, res) => {
     }
     if (body.order !== undefined) {
       if (!Array.isArray(body.order)) throw Object.assign(new Error('Order must be a list of stream keys.'), { status: 400 });
-      next.order = body.order.filter((k) => typeof k === 'string').slice(0, 64);
+      // De-duplicate: repeated keys would spawn one ffmpeg input per copy of
+      // the same stream.
+      next.order = [...new Set(body.order.filter((k) => typeof k === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(k)))].slice(0, 32);
     }
 
     if (next.maxrateKbps < next.bitrateKbps) next.maxrateKbps = next.bitrateKbps;

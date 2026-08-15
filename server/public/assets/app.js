@@ -1,7 +1,7 @@
 /* Viewer application. */
 /* eslint-env browser */
 
-import { WhepClient } from './whep.js';
+import { WhepClient, canReceiveH264 } from './whep.js';
 import { $, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, formatDuration, copyToClipboard } from './ui.js';
 
 const WEBRTC = '/mtx/webrtc';
@@ -64,7 +64,7 @@ function startProgram() {
     else if (state === 'connecting') setPlayerMessage('Connecting to the programme feed', null, true);
     else if (state === 'offline') setPlayerMessage('Nothing on air', 'Start streaming from OBS and the grid appears here automatically.');
     else if (state === 'reconnecting') setPlayerMessage('Reconnecting', `Retrying in ${Math.round((inMs || 0) / 1000)}s…`, true);
-    else if (state === 'error') setPlayerMessage('Playback problem', message, false);
+    else if (state === 'error') setPlayerMessage(e.detail.fatal ? 'This browser cannot play the stream' : 'Playback problem', message, false);
     renderProgramStatus();
   });
 

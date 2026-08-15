@@ -41,10 +41,11 @@ function openChannel(name) {
   } catch (_) {
     size = 0;
   }
-  const ch = { name, file, size, stream: fs.createWriteStream(file, { flags: 'a' }) };
-  ch.stream.on('error', () => {
-    /* never crash the process because of logging */
-  });
+  // Writes are synchronous on purpose. A WriteStream opens its descriptor
+  // asynchronously, so a burst (an ffmpeg error storm is exactly that) could
+  // trigger a second rotation before the first open landed — the rename was
+  // then skipped and the file grew without limit, which defeats the point.
+  const ch = { name, file, size };
   channels.set(name, ch);
   return ch;
 }
@@ -55,29 +56,48 @@ function channel(name) {
 
 function rotate(ch) {
   try {
-    ch.stream.end();
+    if (state.maxFiles <= 1) {
+      // Only one generation is kept, so there is nowhere to rotate to:
+      // truncate. Reopening in append mode here would have let the file grow
+      // for ever while the size counter believed it had reset.
+      fs.writeFileSync(ch.file, '');
+      ch.size = 0;
+      return;
+    }
     for (let i = state.maxFiles - 1; i >= 1; i--) {
       const src = i === 1 ? ch.file : `${ch.file}.${i - 1}`;
       const dst = `${ch.file}.${i}`;
-      if (fs.existsSync(src)) {
-        if (i === state.maxFiles - 1 && fs.existsSync(dst)) fs.unlinkSync(dst);
+      try {
         fs.renameSync(src, dst);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+    // Drop anything beyond the retention window (for instance after maxFiles
+    // was lowered at runtime).
+    for (let i = state.maxFiles; i < state.maxFiles + 20; i++) {
+      try {
+        fs.unlinkSync(`${ch.file}.${i}`);
+      } catch (_) {
+        break;
       }
     }
   } catch (_) {
-    /* ignore */
+    /* logging must never take the process down */
   }
   ch.size = 0;
-  ch.stream = fs.createWriteStream(ch.file, { flags: 'a' });
-  ch.stream.on('error', () => {});
 }
 
 function writeRaw(name, line) {
   const ch = channel(name);
   const buf = Buffer.byteLength(line);
   if (ch.size + buf > state.maxSize) rotate(ch);
-  ch.size += buf;
-  ch.stream.write(line);
+  try {
+    fs.appendFileSync(ch.file, line);
+    ch.size += buf;
+  } catch (_) {
+    /* disk full or permissions: drop the line rather than crash */
+  }
 }
 
 function fmt(level, scope, msg, extra) {
