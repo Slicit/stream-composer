@@ -165,26 +165,32 @@ The first page load after issuance can take a few seconds.
 ```
 ERR Failed to retrieve information of the docker client and server host
     error="client version 1.24 is too old. Minimum supported API version is 1.40"
-ERR Provider error, retrying in 9.55s  providerName=docker
+ERR Provider error, retrying in 4.75s  providerName=docker
 ```
 
-Traefik's Docker client does not negotiate an API version, so it asks for 1.24,
-which Docker Engine 25 and later refuse. Traefik then retries for ever, routes
-nothing, and the installer sits on *Waiting for the service to answer* because
-nothing is listening on 443.
+Traefik before 3.6.1 asks the Docker daemon for API version 1.24 and ignores
+`DOCKER_API_VERSION`. Docker Engine 29 raised the daemon minimum to 1.40, so the
+Docker provider never connects: Traefik retries for ever, discovers no routers,
+and nothing is served on 443 — the installer then sits on *Waiting for the
+service to answer*. Traefik 3.6.1 replaced the hardcoded version with
+negotiation.
 
-The TLS overlay sets `DOCKER_API_VERSION=1.41` on the Traefik container to
-prevent this. If you are on an older copy of the overlay, add it:
+The overlay pins `v3.7`. If your `.env` still names an older one:
 
-```yaml
-  traefik:
-    environment:
-      DOCKER_API_VERSION: "1.41"
+```bash
+cd /opt/stream-composer
+sed -i 's/^TRAEFIK_VERSION=.*/TRAEFIK_VERSION=v3.7/' .env
+docker compose up -d traefik
+docker compose logs traefik | tail -20     # no provider errors
 ```
 
-then `docker compose up -d traefik`. Any version the daemon supports will do —
-`docker version` prints the range as `API version: <max> (minimum version <min>)`.
-Override it with `DOCKER_API_VERSION` in `.env` if you need a different one.
+`.env` is written by the installer and keeps the version you installed with, so
+an existing install does not pick up a new default until you change it there or
+re-run the installer.
+
+Downgrading Docker also works but is the wrong way round. Setting
+`min-api-version` in `/etc/docker/daemon.json` re-enables the old API globally —
+possible, but it weakens the whole host to work around one container.
 
 ## I cannot sign in
 
