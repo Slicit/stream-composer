@@ -7,6 +7,7 @@ retouching. They are 1440-wide pages captured at 2× and downscaled to 1600 px.
 |---|---|
 | [viewer.png](viewer.png) | Viewer page: composed programme, source strip, layout map |
 | [viewer-audio.png](viewer-audio.png) | Viewer page with one source unmuted in the audio monitor |
+| [viewer-web.png](viewer-web.png) | Viewer page with the grid composed in the browser, no encoder running |
 | [login.png](login.png) | Sign-in |
 | [admin-streams.png](admin-streams.png) | Admin → Streams: keys, nicknames, live status |
 | [admin-composition.png](admin-composition.png) | Admin → Composition: layout, output, encoder |
