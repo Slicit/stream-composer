@@ -5,6 +5,10 @@ encoder is running, the last ffmpeg message and the restart count.
 **Admin → Logs** has both channels, with `ffmpeg` carrying the exact command line
 for every run.
 
+![The Server tab, showing CPU, encoder frame rate, measured output bitrate, restart count and the last ffmpeg message](screenshots/admin-server.png)
+
+![The Logs tab, showing the server channel with a level filter and line count](screenshots/admin-logs.png)
+
 ```bash
 cd /opt/stream-composer
 docker compose ps
