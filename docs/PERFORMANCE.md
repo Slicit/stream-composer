@@ -78,6 +78,42 @@ too. Halve every source count in the 1080p30 table.
 > **Memory** is not the constraint: the service itself sits around 60–90 MB, and
 > ffmpeg uses roughly 40–60 MB per source. 2 GB is plenty up to about 12 sources.
 
+## A worked example
+
+Say the box is an **Intel Xeon E3-1225 v2** — 4 cores, no hyperthreading,
+3.2 GHz base and about 3.4 GHz all-core turbo. A typical small on-premises
+server, and a good illustration of how to read the model.
+
+Take the measured cost, `0.24 + 0.111 × sources` core-seconds at 2.1 GHz, and
+scale by the clock ratio (≈1.5×):
+
+```
+cores needed ≈ (0.24 + 0.111 × sources) / 1.5  ≈  0.16 + 0.074 × sources
+```
+
+| Sources | Cores of work | Verdict on 4 cores |
+|--------:|--------------:|:-------------------|
+| 4  | 0.46 | trivial |
+| 9  | 0.83 | comfortable |
+| 16 | 1.34 | fine on paper — near the practical ceiling |
+| 24 | 1.94 | past what the mostly single-threaded filter chain will deliver |
+
+So: **plan for about 12 sources at 1080p30, with 16 as the realistic ceiling.**
+Note where the limit comes from — not the four cores, which are barely half
+used, but the serial filter chain described below. Dropping the output to 720p30
+roughly doubles those figures, because the constraint is pixels, not streams.
+
+Two caveats worth stating plainly. The scaling factor is an approximation: the
+reference measurement came from a virtualised CPU whose reported clock moved
+between 2.1 and 2.8 GHz during testing, so treat these numbers as ±30%. And
+this generation of Intel graphics (HD P4000, Ivy Bridge) does have Quick Sync,
+which works through the `i965` driver in the image — but on a grid the encode is
+only ~12% of the total, so it frees roughly a tenth of a core rather than
+transforming the picture.
+
+Run `./scripts/benchmark.sh` on the actual machine and believe that over this
+table.
+
 ## The bottleneck is clock speed, not core count
 
 A measured surprise worth knowing about: on the test machine the pipeline never
@@ -138,6 +174,24 @@ and greys out the rest with the reason.
 | **VA-API** | Intel or AMD GPU, `/dev/dri` passed into the container | Removes the encode cost (~0.24 cores); scaling stays on the CPU |
 | **NVENC** | NVIDIA GPU with the container toolkit | Same, plus more headroom for high resolutions |
 | **Quick Sync** | Intel iGPU with `/dev/dri` | Same as VA-API |
+
+The image ships the VA-API drivers as well as ffmpeg, because they are separate
+packages and hardware encoding fails without them. Both Intel generations are
+covered: `i965` for Ivy Bridge and earlier, `iHD` for Broadwell and newer. libva
+picks the right one from the PCI id.
+
+Availability is confirmed by **actually encoding two frames** at boot, not by
+checking whether ffmpeg lists the encoder. That distinction matters: an encoder
+can be compiled in and the device node present while the driver is missing, and
+the old check would have offered you an option that fails on every start. If a
+test encode fails, the admin console says so and quotes ffmpeg's error, and the
+service stays on libx264.
+
+Verify inside the container with:
+
+```bash
+docker compose exec composer vainfo
+```
 
 To enable VA-API, uncomment the `devices` block for the `composer` service in
 `docker-compose.yml`:
