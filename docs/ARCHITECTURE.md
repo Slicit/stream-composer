@@ -95,6 +95,14 @@ are drawn as text with the same white-on-black-outline treatment.
 | Recording or restreaming the programme | yes | there is no programme |
 | Sources reachable by viewers | optional | necessarily |
 
+One practical wrinkle belongs with that table. Browsers refuse H.264 containing
+B-frames over WebRTC, and OBS emits them unless told otherwise — so a source
+that is perfectly happy feeding the encoder may be unplayable directly. The
+server probes each publishing source once with ffprobe, records the verdict, and
+either plays that cell over HLS instead (the default, badged, a couple of
+seconds behind) or leaves it empty with an explanation. Server composition never
+meets this, because ffmpeg re-encodes.
+
 That last row is the one to think about before switching. "Show individual
 sources to viewers" hides the sources behind the programme; in web mode the
 sources *are* what the player composes, so the setting cannot apply — the proxy

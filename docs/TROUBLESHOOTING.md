@@ -121,6 +121,32 @@ Use Chrome, Edge or Safari, or install the H.264-enabled build for your
 distribution (`chromium-codecs-ffmpeg-extra` on Debian and Ubuntu). Switching to
 HLS does not help — it carries the same codec.
 
+## A source is black, or the log says "B-frames"
+
+```
+[WebRTC] [session ...] closed: WebRTC doesn't support H264 streams with B-frames
+```
+
+The publisher is sending H.264 with B-frames, which browsers cannot play over
+WebRTC. It only shows up where a browser reads the source directly: the Preview
+buttons, and every cell when the grid is composed in the browser. The composed
+programme is unaffected — ffmpeg re-encodes it.
+
+Three ways out, in order of preference:
+
+1. **Fix the publisher.** In OBS set **Tune: zerolatency** (x264) or
+   **B-frames: 0** (NVENC/QuickSync/AMD), then restart streaming. See
+   [OBS.md](OBS.md#b-frames-turn-them-off).
+2. **Let it fall back to HLS.** *Admin → Composition → When a source cannot be
+   played over WebRTC → Play that source over HLS instead* — the default. No
+   change at the publisher, no cost to the server, a couple of seconds of extra
+   delay on that cell, badged in the player.
+3. **Compose on the server.** The encoder normalises everything, so the problem
+   disappears — at the cost of a continuous encode.
+
+Admin → Streams marks any source in this state with **not playable**, and the
+server log records it once per publishing session.
+
 ## Playback stutters or drops frames
 
 Check **Admin → Server → Encoder**. Speed below 1.0× means the machine cannot

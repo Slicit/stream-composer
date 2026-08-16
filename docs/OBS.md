@@ -112,6 +112,31 @@ ffmpeg -re -i input.mp4 -c:v libx264 -preset veryfast -tune zerolatency \
 
 That is also the quickest way to test a fresh install without setting up a camera.
 
+## B-frames: turn them off
+
+Browsers freeze when presentation timestamps stop increasing, so MediaMTX
+refuses to serve H.264 containing B-frames over WebRTC. Any stream a browser
+reads **directly** is affected — the per-source Preview buttons, and every cell
+when the grid is composed in the browser. The composed programme is not, because
+ffmpeg re-encodes and emits none.
+
+In **Settings → Output → Output Mode: Advanced → Streaming**:
+
+| Encoder | Setting |
+|---|---|
+| x264 | **Tune: zerolatency**, or add `bframes=0` to *x264 Options* |
+| NVENC | **Max B-frames: 0** |
+| QuickSync | **B Frames: 0** |
+| AMD / AMF | **B-Frames: 0** |
+
+Restart streaming afterwards. Admin → Streams flags any source that is
+publishing but cannot be played directly, so you do not have to guess.
+
+If you would rather not touch every publisher, leave **Admin → Composition →
+When a source cannot be played over WebRTC** on *Play that source over HLS
+instead* — it needs no change at the encoder and costs the server nothing, at
+a couple of seconds of extra delay on that cell.
+
 ## Common problems
 
 **"Failed to connect to server"** — the RTMP port is not reachable. Check the

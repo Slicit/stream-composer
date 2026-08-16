@@ -155,6 +155,7 @@ its cell** under Composition, and their size set with **Label size**.
 | Setting | Notes |
 |---|---|
 | **Where the grid is made** | *On the server* — ffmpeg composes one programme; every viewer gets one stream and HLS works. *In the browser* — no encoder runs at all; each viewer receives the sources and their browser arranges them into the same layout. See [ARCHITECTURE.md](ARCHITECTURE.md#where-the-grid-is-made) for the trade-off. |
+| **When a source cannot be played over WebRTC** | Web composition only. *HLS* plays that source over HLS instead — no change at the publisher, no server cost, a couple of seconds behind, badged in the player. *Warn* leaves the cell empty with an explanation. Caused by H.264 with B-frames; see [OBS.md](OBS.md#b-frames-turn-them-off). |
 | **Compose and publish** | Off stops the encoder entirely. Sources keep arriving and individual previews keep working. |
 | **Layout** | `Auto` adapts to the source count. Fixed grids keep their shape and drop anything that does not fit. `Spotlight` gives the first source a large cell. |
 | **Width / height / FPS** | Odd values are rounded down to even — H.264 requires it. |
