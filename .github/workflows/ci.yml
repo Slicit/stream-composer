@@ -71,6 +71,25 @@ jobs:
             echo "::endgroup::"
           done
 
+  compose-v1:
+    name: Compose v1 fallback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PyYAML
+        run: pip install --quiet pyyaml
+
+      - name: The generated fallback is up to date
+        run: python3 scripts/make-compat.py --check
+
+      - name: It parses under a real Compose v1, and resolves to the same stack
+        # Compose v1 is EOL and unbuildable from source on modern Python, so use
+        # the official image. `config` needs no Docker daemon.
+        run: |
+          python3 scripts/check-compose-parity.py \
+            --v1 "docker run --rm -v $PWD:/w -w /w docker/compose:1.29.2"
+
   image:
     name: Build image
     runs-on: ubuntu-latest

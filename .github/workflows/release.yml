@@ -90,7 +90,9 @@ jobs:
 
           cp -R \
             docker-compose.yml docker-compose.local.yml docker-compose.tls.yml \
-            docker-compose.build.yml .env.example install.sh Makefile \
+            docker-compose.build.yml \
+            docker-compose.v1.yml docker-compose.v1.local.yml docker-compose.v1.tls.yml \
+            .env.example install.sh Makefile \
             README.md LICENSE config obs scripts docs \
             "$STAGE/"
 
