@@ -11,12 +11,8 @@
 #   curl -fsSL .../install.sh | bash -s -- --yes \
 #       --domain stream.example.com --email me@example.com --admin-password 'sekrit'
 
-set -euo pipefail
+set -Eeuo pipefail
 
-# `set -e` aborts without a word if any command fails somewhere unguarded. For
-# an installer that is the worst possible failure mode — the user sees the
-# banner, then their prompt back. Turn it into something reportable.
-trap 'status=$?; [ "$status" -eq 0 ] && exit 0; printf "\n\033[31m✗ The installer stopped unexpectedly (exit %s at line %s).\033[0m\n  This is a bug. Please report it with the output above:\n  https://github.com/%s/issues\n" "$status" "${BASH_LINENO[0]:-?}" "${SC_REPO:-Slicit/stream-composer}" >&2' ERR
 
 REPO="${SC_REPO:-Slicit/stream-composer}"
 INSTALL_DIR="${SC_INSTALL_DIR:-/opt/stream-composer}"
@@ -47,6 +43,20 @@ info() { printf '%s→%s %s\n' "$BLUE" "$RESET" "$*"; }
 ok()   { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 die()  { printf '%s✗ %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
+
+# `set -e` aborts without a word if a command fails somewhere unguarded, and for
+# an installer that is the worst failure mode there is: the user sees the banner
+# and then their prompt back. `-E` propagates this trap into functions too, so
+# wherever it happens we say where.
+on_error() {
+  local status=$?
+  printf '\n%s✗ The installer stopped unexpectedly (exit %s at line %s).%s\n' \
+    "$RED" "$status" "${BASH_LINENO[0]:-?}" "$RESET" >&2
+  printf '  This is a bug. Please report it with the output above:\n  https://github.com/%s/issues\n' \
+    "${SC_REPO:-Slicit/stream-composer}" >&2
+  exit "$status"
+}
+trap on_error ERR
 
 banner() {
   printf '\n%s' "$BOLD"
