@@ -47,14 +47,17 @@ router.get('/state', async (req, res) => {
     onAir: status.sources
       .map((s) => {
         const known = all.find((x) => x.key === s.key);
-        return known && known.playbackId ? { key: known.playbackId, name: s.name } : { key: null, name: s.name };
+        const caption = s.label || s.name;
+        return known && known.playbackId ? { key: known.playbackId, name: caption } : { key: null, name: caption };
       }),
     streams: all
       .filter((s) => s.enabled !== false && s.playbackId)
       .map((s) => ({
         // The ingest key is a publishing credential and is deliberately absent.
         key: s.playbackId,
-        name: s.name,
+        // The nickname is the on-air name, so viewers see the same words that
+        // are burnt into the cell rather than the operator's internal label.
+        name: (s.nickname || '').trim() || s.name,
         live: s.live,
         hasAudio: s.hasAudio,
         // Media path the player subscribes to, via the authenticated proxy.
