@@ -705,3 +705,68 @@ test('changing mode changes the encoder signature', () => {
   assert.strictEqual(serverPlan, webPlan, 'the layout itself does not depend on the mode');
   assert.notStrictEqual(comp.mode, undefined);
 });
+
+// ------------------------------------------------- direct playback probing
+
+test('a stream with B-frames is reported as unplayable, with a fix', () => {
+  const playability = require('../src/playability');
+
+  const withB = playability.reasonFor({ codec: 'h264', profile: 'High', bFrames: 2 });
+  assert.ok(withB, 'B-frames must be flagged');
+  assert.strictEqual(withB.code, 'b-frames');
+  assert.match(withB.summary, /B-frames/);
+  // The message is useless without telling the operator what to change.
+  assert.match(withB.fix, /zerolatency|bframes=0/);
+
+  assert.strictEqual(playability.reasonFor({ codec: 'h264', profile: 'Main', bFrames: 0 }), null);
+  assert.strictEqual(playability.reasonFor(null), null);
+});
+
+test('an unprobed source reports nothing rather than guessing', () => {
+  const playability = require('../src/playability');
+  playability.forget('never-seen');
+  assert.strictEqual(playability.status('never-seen'), null);
+});
+
+test('sources that stop publishing are forgotten', async () => {
+  const playability = require('../src/playability');
+  // A probe against a path that cannot be reached resolves to "unknown"
+  // rather than throwing, and must not wedge the poll loop.
+  playability.inspect('gone', 'rtsp://127.0.0.1:1/live/gone', 'now');
+  playability.keep(new Set());
+  assert.strictEqual(playability.status('gone'), null);
+});
+
+test('the viewer API carries the problem so a tile can explain itself', async () => {
+  const res = await call('/api/state');
+  const body = await res.json();
+  for (const s of body.streams) {
+    // Present as a key on every stream, null when there is nothing wrong.
+    assert.ok(Object.prototype.hasOwnProperty.call(s, 'problem'));
+  }
+});
+
+test('the fallback for unplayable sources is validated and defaults to HLS', async () => {
+  const store = require('../src/store');
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'tester', password: 'super-secret-1' }),
+  });
+  cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+
+  assert.strictEqual(store.DEFAULT_COMPOSITION.fallback, 'hls');
+
+  const bad = await call('/api/admin/composition', { method: 'PUT', body: { fallback: 'transcode-everything' } });
+  assert.strictEqual(bad.status, 400);
+
+  for (const choice of ['warn', 'hls']) {
+    const res = await call('/api/admin/composition', { method: 'PUT', body: { fallback: choice } });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual((await res.json()).composition.fallback, choice);
+  }
+
+  // The player needs it to decide per tile.
+  const state = await (await call('/api/state')).json();
+  assert.strictEqual(state.program.fallback, 'hls');
+});
