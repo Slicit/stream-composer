@@ -70,6 +70,45 @@ function obsDialog(stream) {
 
 $('#obs-close').addEventListener('click', () => $('#obs-dialog').close());
 
+/**
+ * The nickname is burnt into the video, so it is edited in place rather than
+ * behind a prompt: you tend to nudge the wording a few times before it looks
+ * right, and each save re-renders the grid within a couple of seconds.
+ */
+function nicknameField(stream) {
+  const input = h('input', {
+    value: stream.nickname || '',
+    maxlength: 32,
+    placeholder: stream.name,
+    style: 'min-width:9rem',
+    title: 'Shown on air, bottom-centre of this stream. Empty falls back to the name.',
+  });
+
+  let saved = stream.nickname || '';
+  const commit = async () => {
+    const value = input.value.trim();
+    if (value === saved) return;
+    try {
+      await api(`/api/admin/streams/${stream.id}`, { method: 'PATCH', body: { nickname: value } });
+      saved = value;
+      stream.nickname = value;
+      toast(value ? `On air as “${value}”.` : `Nickname cleared — “${stream.name}” will be shown.`, 'good');
+    } catch (_) {
+      input.value = saved; // the toast already explained why
+    }
+  };
+
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') {
+      input.value = saved;
+      input.blur();
+    }
+  });
+  return input;
+}
+
 function renderStreams() {
   const box = $('#streams-table');
   if (admin.streams.length === 0) {
@@ -83,7 +122,10 @@ function renderStreams() {
         h('div', { style: 'font-weight:600', text: s.name }),
         s.unknown ? h('div', { style: 'font-size:.72rem; color:var(--warning)', text: 'publishing but not configured' }) : null,
       ]),
-      h('td', {}, [
+      h('td', {}, [s.id ? nicknameField(s) : h('span', { style: 'color:var(--ink-muted)', text: '—' })]),
+      // nowrap: the nickname column widened the table enough that the copy
+      // button was wrapping below the key.
+      h('td', { style: 'white-space:nowrap' }, [
         h('span', { class: 'key-chip' }, [
           h('span', { text: maskKey(s.key), title: 'Click to reveal', style: 'cursor:pointer', onclick: (e) => { e.target.textContent = e.target.textContent.includes('•') ? s.key : maskKey(s.key); } }),
         ]),
@@ -111,6 +153,7 @@ function renderStreams() {
       h('thead', {}, [
         h('tr', {}, [
           h('th', { text: 'Name' }),
+          h('th', { text: 'Nickname' }),
           h('th', { text: 'Stream key' }),
           h('th', { text: 'Status' }),
           h('th', { class: 'num', text: 'On air' }),
@@ -127,6 +170,9 @@ function renderStreams() {
 async function loadStreams() {
   const data = await api('/api/admin/streams', { quiet: true }).catch(() => null);
   if (!data) return;
+  // The table re-renders every few seconds; doing that under someone's cursor
+  // would wipe a half-typed nickname.
+  if (document.activeElement && document.activeElement.closest('#streams-table')) return;
   admin.streams = data.streams;
   renderStreams();
   renderOrderList();
@@ -164,6 +210,7 @@ $('#stream-form').addEventListener('submit', async (event) => {
   const form = event.currentTarget;
   const body = Object.fromEntries(new FormData(form).entries());
   if (!body.key) delete body.key;
+  if (!body.nickname) delete body.nickname;
   try {
     const data = await api('/api/admin/streams', { method: 'POST', body });
     form.reset();
