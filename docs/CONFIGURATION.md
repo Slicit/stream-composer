@@ -16,6 +16,42 @@ Two places hold settings:
 | Variable | Default | What it does |
 |---|---|---|
 | `COMPOSE_FILE` | `docker-compose.yml:docker-compose.local.yml` | Which overlay to use. Swap `local` for `tls` to move to HTTPS. |
+| `COMPOSE_PROJECT_NAME` | `stream-composer` | Names containers and volumes. Set explicitly so Compose v1 and v2 agree — v2 can read it from the file's `name:` key, v1 has no such key. |
+
+### Running on Compose v1
+
+The canonical files follow the Compose Specification: no `version:` key, and a
+top-level `name:`. The old standalone `docker-compose` (v1, end of life July
+2023) reads a version-less file as the 2015 schema, where every top-level key is
+a service name, and fails with the memorable
+`'name' does not match any of the regexes: '^x-'`.
+
+There is a generated fallback for that case:
+
+| Instead of | Use |
+|---|---|
+| `docker-compose.yml:docker-compose.local.yml` | `docker-compose.v1.yml:docker-compose.v1.local.yml` |
+| `docker-compose.yml:docker-compose.tls.yml` | `docker-compose.v1.yml:docker-compose.v1.tls.yml` |
+
+The installer selects these automatically when it finds only v1. To switch by
+hand, change `COMPOSE_FILE` in `.env`.
+
+The fallback is **generated, not hand-maintained** — `scripts/make-compat.py`
+produces it from the canonical files by adding `version: "3.7"` and dropping
+`name:`, and nothing else. Two CI jobs keep it honest: one fails if the
+committed output is stale, the other runs a real Compose v1.29.2 and compares
+the resolved services, images, ports, environment and volumes against what
+Compose v2 resolves from the canonical files. So it cannot silently drift.
+
+To change anything, edit the canonical file and run:
+
+```bash
+make compat        # regenerate
+make compat-check  # verify it is current and equivalent
+```
+
+`docker-compose.build.yml` has no v1 counterpart: building from source is a
+development path, and development should use v2.
 
 ### Versions
 

@@ -40,6 +40,45 @@ in it:
 | `publish to "live/<stream key>"` | The server URL is missing `/live`, or the key ended up in the URL. |
 | `the program path is written by the compositor only` | Something is publishing to `program`. Use a stream key. |
 
+## Compose errors about `name` or a "wrong Compose file version"
+
+```
+The Compose file './docker-compose.yml' is invalid because:
+'name' does not match any of the regexes: '^x-'
+```
+
+That is Compose v1 reading files written to the Compose Specification. Either
+install v2 (recommended — v1 has been end of life since July 2023):
+
+```bash
+sudo apt-get install -y docker-compose-plugin
+```
+
+or switch `.env` to the generated v1 fallback, which describes the same stack:
+
+```ini
+COMPOSE_FILE=docker-compose.v1.yml:docker-compose.v1.local.yml
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md#running-on-compose-v1).
+
+## `docker compose` prints Docker's help, or "unknown shorthand flag: 'd'"
+
+Docker does not recognise `compose` as a command, which almost always means the
+v2 plugin is installed for your user under `~/.docker/cli-plugins/` but you are
+running as root through `sudo`. Install it system-wide:
+
+```bash
+sudo apt-get install -y docker-compose-plugin
+```
+
+or copy it where root can see it:
+
+```bash
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+sudo cp ~/.docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/
+```
+
 ## Publishing, but not in the grid
 
 - Give it two seconds — the composer waits for the source set to settle.
