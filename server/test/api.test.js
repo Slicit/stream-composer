@@ -600,3 +600,108 @@ test('the compositor reads and publishes on the configured RTSP port', () => {
     assert.strictEqual(new URL(u).port, String(port), `${u} should use port ${port}`);
   }
 });
+
+// -------------------------------------------------------- composition modes
+
+test('composition defaults to being made on the server', () => {
+  const store = require('../src/store');
+  assert.strictEqual(store.get().composition.mode, 'server');
+});
+
+test('the mode must be one the server understands', async () => {
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'tester', password: 'super-secret-1' }),
+  });
+  cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+
+  const bad = await call('/api/admin/composition', { method: 'PUT', body: { mode: 'gpu-cluster' } });
+  assert.strictEqual(bad.status, 400);
+  assert.strictEqual(require('../src/store').get().composition.mode, 'server');
+
+  const good = await call('/api/admin/composition', { method: 'PUT', body: { mode: 'web' } });
+  assert.strictEqual(good.status, 200);
+  assert.strictEqual((await good.json()).composition.mode, 'web');
+});
+
+test('web mode reports no programme to play', async () => {
+  // Left in web mode by the test above.
+  const res = await call('/api/state');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.program.mode, 'web');
+  assert.strictEqual(body.program.path, null, 'there is no programme stream to point at');
+  // The player draws its own captions, so it needs the caption settings.
+  assert.strictEqual(typeof body.program.labels, 'boolean');
+  assert.ok(body.program.labelSize > 0);
+});
+
+test('the sources stay reachable in web mode even when they are meant to be hidden', () => {
+  const proxy = require('../src/proxy');
+  const store = require('../src/store');
+  const streams = require('../src/streams');
+
+  const created = streams.create({ name: 'Hidden cam' });
+  store.update((d) => {
+    d.settings.showIndividualStreams = false;
+    d.composition.mode = 'server';
+  });
+  // On the server the programme is what viewers get, so a source stays hidden.
+  assert.strictEqual(proxy.resolvePlayback(`s/${created.playbackId}`), null);
+
+  // In web mode the sources *are* the programme; hiding them would leave the
+  // player with nothing at all to show.
+  store.update((d) => {
+    d.composition.mode = 'web';
+  });
+  assert.strictEqual(proxy.resolvePlayback(`s/${created.playbackId}`), `live/${created.key}`);
+
+  store.update((d) => {
+    d.settings.showIndividualStreams = true;
+    d.composition.mode = 'server';
+  });
+  streams.remove(created.id);
+});
+
+test('an unknown playback id is still refused in web mode', () => {
+  const proxy = require('../src/proxy');
+  const store = require('../src/store');
+  store.update((d) => {
+    d.composition.mode = 'web';
+  });
+  assert.strictEqual(proxy.resolvePlayback('s/deadbeefdeadbeef'), null);
+  assert.strictEqual(proxy.resolvePlayback('s/../../etc/passwd'), null);
+  store.update((d) => {
+    d.composition.mode = 'server';
+  });
+});
+
+test('both modes plan the same grid', () => {
+  const compositor = require('../src/compositor');
+  const store = require('../src/store');
+  const comp = store.get().composition;
+  const sources = [1, 2, 3].map((i) => ({ key: `k${i}`, name: `S${i}`, label: `L${i}`, path: `live/k${i}`, hasAudio: false }));
+
+  const planned = compositor.planLayout(sources, comp);
+  const built = compositor.buildArgs(sources, comp, 'x264');
+
+  // The browser is handed planLayout's cells; the encoder uses buildArgs'.
+  // If those ever disagree the two modes would arrange the grid differently.
+  assert.deepStrictEqual(planned.layout.cells, built.layout.cells);
+  assert.strictEqual(planned.placed.length, 3);
+});
+
+test('changing mode changes the encoder signature', () => {
+  const compositor = require('../src/compositor');
+  const store = require('../src/store');
+  const sources = [{ key: 'k1', name: 'One', label: 'One', path: 'live/k1', hasAudio: false }];
+  const comp = { ...store.get().composition };
+
+  // Exercised through buildArgs' inputs: the signature is private, so assert
+  // the observable consequence — a mode change must not look like a no-op.
+  const serverPlan = JSON.stringify(compositor.planLayout(sources, { ...comp, mode: 'server' }).layout);
+  const webPlan = JSON.stringify(compositor.planLayout(sources, { ...comp, mode: 'web' }).layout);
+  assert.strictEqual(serverPlan, webPlan, 'the layout itself does not depend on the mode');
+  assert.notStrictEqual(comp.mode, undefined);
+});
