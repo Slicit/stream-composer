@@ -13,6 +13,11 @@
 
 set -euo pipefail
 
+# `set -e` aborts without a word if any command fails somewhere unguarded. For
+# an installer that is the worst possible failure mode — the user sees the
+# banner, then their prompt back. Turn it into something reportable.
+trap 'status=$?; [ "$status" -eq 0 ] && exit 0; printf "\n\033[31m✗ The installer stopped unexpectedly (exit %s at line %s).\033[0m\n  This is a bug. Please report it with the output above:\n  https://github.com/%s/issues\n" "$status" "${BASH_LINENO[0]:-?}" "${SC_REPO:-Slicit/stream-composer}" >&2' ERR
+
 REPO="${SC_REPO:-Slicit/stream-composer}"
 INSTALL_DIR="${SC_INSTALL_DIR:-/opt/stream-composer}"
 VERSION="${SC_VERSION:-latest}"
@@ -177,8 +182,14 @@ resolve_privileges() {
 #     service name, so it misreads `services:` and `name:` as containers and
 #     fails in a thoroughly confusing way. Better to say so up front.
 
-compose_major() { # compose_major <command...>  -> prints the major version, or nothing
-  "$@" version 2>/dev/null | grep -oiE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d 'vV' | cut -d. -f1
+# Prints the major version, or nothing. Must never return non-zero: this runs
+# inside a command substitution, and under `set -e` with `pipefail` a failing
+# pipeline there kills the whole installer with no output at all — which is
+# exactly what "docker compose is not installed" used to do.
+compose_major() { # compose_major <command...>
+  local out=""
+  out="$("$@" version 2>/dev/null)" || return 0
+  printf '%s\n' "$out" | grep -oiE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d 'vV' | cut -d. -f1 || return 0
 }
 
 resolve_compose() {
@@ -389,7 +400,7 @@ configure() {
     if [ -z "$PUBLIC_HOST" ]; then
       local guess
       guess="$(fetch_stdout https://api.ipify.org 2>/dev/null || true)"
-      [ -n "$guess" ] || guess="$(hostname -I 2>/dev/null | awk '{print $1}')"
+      [ -n "$guess" ] || guess="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
       PUBLIC_HOST="$guess"
     fi
     ask PUBLIC_HOST "  Address OBS and viewers will use (IP or hostname):" "$PUBLIC_HOST"
@@ -532,7 +543,7 @@ summary() {
   say "  ${DIM}Next: open the admin console, create a stream, and paste the key into"
   say "  OBS under Settings → Stream with the server URL above.${RESET}"
   say ""
-  local c; c="$(echo "$COMPOSE" | sed 's/^sudo /sudo /')"
+  local c="$COMPOSE"
   say "  ${DIM}Manage it with:${RESET}"
   say "    cd $INSTALL_DIR"
   say "    $c ps          ${DIM}# what is running${RESET}"
