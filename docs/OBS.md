@@ -8,6 +8,9 @@ The goal is two fields and a button. Everything else on this page is optional.
 
 1. In the admin console, **Streams → Create**, give it a name.
 2. Press **OBS** next to the new stream. You get the server URL and the key.
+
+![The Streams tab, where each row has an OBS button that reveals the server URL and key](screenshots/admin-streams.png)
+
 3. In OBS: **Settings → Stream**
    - **Service:** `Custom...`
    - **Server:** `rtmp://your-server/live`

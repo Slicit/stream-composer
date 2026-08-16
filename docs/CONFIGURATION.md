@@ -99,6 +99,7 @@ After the first start these are ignored; manage accounts in the admin console.
 | `RTMPS_PORT` | `1936` | RTMPS ingest (TLS overlay) |
 | `SRT_PORT` | `8890` | SRT ingest, UDP |
 | `WEBRTC_UDP_PORT` | `8189` | WebRTC media, UDP — must be open for playback |
+| `MEDIAMTX_RTSP_PORT` | `8554` | The stack's internal transport: the compositor reads its sources and publishes the programme over it. Never exposed. Only needs changing if you run MediaMTX outside the supplied Compose file on a non-default port. |
 
 ### Logging
 
@@ -121,6 +122,8 @@ After the first start these are ignored; manage accounts in the admin console.
 ## Admin console
 
 ### Streams
+
+![The Streams tab: four streams with editable nickname fields, masked keys, live status and per-stream actions](screenshots/admin-streams.png)
 
 Each stream is a name plus a key. The key is the credential OBS uses, so treat it
 like a password — the table masks it until clicked.
@@ -147,6 +150,8 @@ its cell** under Composition, and their size set with **Label size**.
 
 ### Composition
 
+![The Composition tab: layout choices with a live preview, source ordering, and the output settings](screenshots/admin-composition.png)
+
 | Setting | Notes |
 |---|---|
 | **Compose and publish** | Off stops the encoder entirely. Sources keep arriving and individual previews keep working. |
@@ -167,6 +172,8 @@ configuration — useful for a bug report, or for reproducing the pipeline by ha
 
 ### Users
 
+![The Users tab: three accounts with role selectors, last sign-in, and password and delete actions](screenshots/admin-users.png)
+
 Two roles:
 
 - **Viewer** — the player page only.
@@ -175,6 +182,8 @@ Two roles:
 The last administrator cannot be demoted or deleted.
 
 ### Server settings
+
+![The Server tab: CPU, memory, encoder and output tiles above the bitrate chart and the settings form](screenshots/admin-server.png)
 
 | Setting | Notes |
 |---|---|

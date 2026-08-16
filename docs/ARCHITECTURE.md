@@ -79,6 +79,8 @@ Two useful side effects: no AAC encode in the programme pipeline (a few percent
 of CPU back), and switching what you are listening to costs nothing on the
 server.
 
+![The viewer's audio monitor with one source selected and its level meter moving, the others muted](screenshots/viewer-audio.png)
+
 ## Security model
 
 **Nothing reaches MediaMTX from the internet except media.** Published ports:
