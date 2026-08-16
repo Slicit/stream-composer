@@ -99,6 +99,7 @@ After the first start these are ignored; manage accounts in the admin console.
 | `RTMPS_PORT` | `1936` | RTMPS ingest (TLS overlay) |
 | `SRT_PORT` | `8890` | SRT ingest, UDP |
 | `WEBRTC_UDP_PORT` | `8189` | WebRTC media, UDP — must be open for playback |
+| `DOCKER_API_VERSION` | `1.41` | Docker API version Traefik asks the daemon for (TLS overlay). Traefik does not negotiate one, and its 1.24 default is refused by Docker Engine 25 and later. Any version inside the daemon's supported range works — `docker version` prints it. |
 | `MEDIAMTX_RTSP_PORT` | `8554` | The stack's internal transport: the compositor reads its sources and publishes the programme over it. Never exposed. Only needs changing if you run MediaMTX outside the supplied Compose file on a non-default port. |
 
 ### Logging

@@ -160,6 +160,32 @@ docker compose logs traefik | grep -i acme
 
 The first page load after issuance can take a few seconds.
 
+## Traefik logs `client version 1.24 is too old`
+
+```
+ERR Failed to retrieve information of the docker client and server host
+    error="client version 1.24 is too old. Minimum supported API version is 1.40"
+ERR Provider error, retrying in 9.55s  providerName=docker
+```
+
+Traefik's Docker client does not negotiate an API version, so it asks for 1.24,
+which Docker Engine 25 and later refuse. Traefik then retries for ever, routes
+nothing, and the installer sits on *Waiting for the service to answer* because
+nothing is listening on 443.
+
+The TLS overlay sets `DOCKER_API_VERSION=1.41` on the Traefik container to
+prevent this. If you are on an older copy of the overlay, add it:
+
+```yaml
+  traefik:
+    environment:
+      DOCKER_API_VERSION: "1.41"
+```
+
+then `docker compose up -d traefik`. Any version the daemon supports will do —
+`docker version` prints the range as `API version: <max> (minimum version <min>)`.
+Override it with `DOCKER_API_VERSION` in `.env` if you need a different one.
+
 ## I cannot sign in
 
 **Forgotten administrator password.** Reset it by hand: stop the service, edit the
