@@ -125,6 +125,20 @@ After the first start these are ignored; manage accounts in the admin console.
 Each stream is a name plus a key. The key is the credential OBS uses, so treat it
 like a password — the table masks it until clicked.
 
+Each stream also has a **nickname**: the caption burnt into the bottom-centre of
+its cell, in white with a black outline so it stays legible over any picture.
+Edit it in place in the Streams table; it saves when you leave the field or press
+Enter, and the grid rebuilds within a couple of seconds.
+
+The nickname is separate from the name on purpose. The name identifies the slot
+to whoever runs the server ("Backstage laptop"); the nickname is what the
+audience reads ("Green Room"). Leave it empty and the name is used, so nothing
+changes for installs that never touch it. Viewers see the nickname too, in the
+source list and the audio monitor, so the page and the picture always agree.
+
+Captions can be switched off entirely with **Burn each source's nickname into
+its cell** under Composition, and their size set with **Label size**.
+
 - **OBS** shows the exact server URL and key, with copy buttons, for RTMP, RTMPS
   and SRT.
 - **Disable** stops a stream being published without deleting it. An active
