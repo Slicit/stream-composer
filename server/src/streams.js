@@ -34,6 +34,22 @@ function generateKey(length = 20) {
   return out;
 }
 
+/**
+ * The on-air caption. Separate from `name` on purpose: the name identifies the
+ * slot to whoever runs the server ("Camera 1", "Backstage laptop"), while the
+ * nickname is what the audience reads, and those are rarely the same words.
+ * Kept short because it has to stay legible inside a grid cell.
+ */
+function cleanNickname(value) {
+  const text = String(value === null || value === undefined ? '' : value)
+    .replace(/[\r\n\t]+/g, ' ')
+    .trim();
+  if (text.length > 32) {
+    throw Object.assign(new Error('A nickname can be at most 32 characters.'), { status: 400 });
+  }
+  return text;
+}
+
 function isValidKey(key) {
   return /^[A-Za-z0-9_-]{6,64}$/.test(String(key || ''));
 }
@@ -50,7 +66,7 @@ function findByKey(key) {
   return store.get().streams.find((s) => s.key === key);
 }
 
-function create({ name, key, enabled = true, note = '' }) {
+function create({ name, key, enabled = true, note = '', nickname = '' }) {
   const label = String(name || '').trim();
   if (!label || label.length > 48) {
     throw Object.assign(new Error('Give the stream a name of 1-48 characters.'), { status: 400 });
@@ -67,6 +83,7 @@ function create({ name, key, enabled = true, note = '' }) {
     name: label,
     key: finalKey,
     playbackId: generatePlaybackId(),
+    nickname: cleanNickname(nickname),
     enabled: !!enabled,
     note: String(note || '').slice(0, 200),
     createdAt: new Date().toISOString(),
@@ -86,6 +103,7 @@ function update(id, patch) {
     if (!label || label.length > 48) throw Object.assign(new Error('Give the stream a name of 1-48 characters.'), { status: 400 });
     changes.name = label;
   }
+  if (patch.nickname !== undefined) changes.nickname = cleanNickname(patch.nickname);
   if (patch.note !== undefined) changes.note = String(patch.note).slice(0, 200);
   if (patch.enabled !== undefined) changes.enabled = !!patch.enabled;
   if (patch.key !== undefined) {
@@ -171,4 +189,4 @@ async function withLiveState() {
   return [...configured, ...unknown];
 }
 
-module.exports = { generateKey, generatePlaybackId, isValidKey, list, find, findByKey, create, update, rotateKey, remove, withLiveState, ingestInfo };
+module.exports = { generateKey, generatePlaybackId, isValidKey, cleanNickname, list, find, findByKey, create, update, rotateKey, remove, withLiveState, ingestInfo };

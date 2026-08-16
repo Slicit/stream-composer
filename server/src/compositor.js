@@ -125,9 +125,14 @@ function selectSources(live) {
   return keys.map((key) => {
     const meta = configured.get(key);
     const liveInfo = live.find((s) => s.key === key) || {};
+    const name = (meta && meta.name) || key;
     return {
       key,
-      name: (meta && meta.name) || key,
+      name,
+      // What gets burnt into the cell. The nickname wins when it is set;
+      // otherwise fall back to the name, so installs that never touch the
+      // field keep captioning exactly as before.
+      label: ((meta && meta.nickname) || '').trim() || name,
       path: `${config.ingestPrefix}/${key}`,
       hasAudio: !!(liveInfo.tracks && liveInfo.tracks.audio),
     };
@@ -139,7 +144,9 @@ function signatureOf(sources, comp) {
   // notably do not — the programme is video-only, and OBS reconnects make
   // track lists flap, which would otherwise cause pointless restarts.
   return JSON.stringify({
-    keys: sources.map((s) => s.key),
+    // The caption is burnt into the video, so changing a nickname has to
+    // rebuild the encoder — it is part of the ffmpeg command, not metadata.
+    keys: sources.map((s) => `${s.key}\u0000${s.label || s.name}`),
     c: {
       l: comp.layout, w: comp.width, h: comp.height, f: comp.fps, b: comp.bitrateKbps,
       mr: comp.maxrateKbps, bs: comp.bufsizeKbps, p: comp.preset, e: comp.encoder,
@@ -201,14 +208,21 @@ function buildArgs(sources, comp, encoderKind) {
       `[${i}:v]fps=${fps},` +
       `scale=${cell.w}:${cell.h}:force_original_aspect_ratio=decrease:flags=${scaleFlags},` +
       `pad=${cell.w}:${cell.h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1`;
-    if (useLabels) {
+    const caption = (src.label || src.name || '').trim();
+    if (useLabels && caption) {
       const size = Math.max(10, Math.min(72, comp.labelSize || 22));
       const font = encoderCaps.caps.fontFile ? `fontfile='${encoderCaps.caps.fontFile}':` : '';
+      // White with a black outline rather than a filled box: an outline stays
+      // legible over any picture without covering it, and it scales with the
+      // font so it reads the same in a 3x3 cell as it does full frame.
+      const border = Math.max(2, Math.round(size / 8));
+      const margin = Math.max(8, Math.round(size / 2));
       chain +=
-        `,drawtext=${font}text='${escapeDrawtext(src.name)}':expansion=none:` +
+        `,drawtext=${font}text='${escapeDrawtext(caption)}':expansion=none:` +
         `fontcolor=white:fontsize=${size}:` +
-        'box=1:boxcolor=black@0.55:boxborderw=8:' +
-        `x=12:y=h-th-12`;
+        `borderw=${border}:bordercolor=black:` +
+        // Centred horizontally, sitting just above the bottom edge.
+        `x=(w-text_w)/2:y=h-th-${margin}`;
     }
     parts.push(`${chain}[c${i}]`);
   });
@@ -320,7 +334,7 @@ function start(sources, comp) {
   const encoderKind = encoderCaps.resolve(comp.encoder);
   const { args, layout, placed } = buildArgs(sources, comp, encoderKind);
 
-  state.sources = placed.map((s) => ({ key: s.key, name: s.name, path: s.path, hasAudio: s.hasAudio }));
+  state.sources = placed.map((s) => ({ key: s.key, name: s.name, label: s.label, path: s.path, hasAudio: s.hasAudio }));
   state.layout = layout;
   state.encoder = encoderKind;
   state.command = `${config.ffmpegPath} ${args.map((a) => (/[\s;'"]/.test(a) ? `'${a}'` : a)).join(' ')}`;
