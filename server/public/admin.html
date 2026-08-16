@@ -41,6 +41,10 @@
             <span>Name</span>
             <input name="name" placeholder="Camera 1" required maxlength="48">
           </label>
+          <label class="field" style="flex:1 1 200px; margin:0;">
+            <span>Nickname <span style="color:var(--ink-muted); font-weight:400;">(on air)</span></span>
+            <input name="nickname" placeholder="shown on the stream" maxlength="32">
+          </label>
           <label class="field" style="flex:1 1 240px; margin:0;">
             <span>Stream key</span>
             <input name="key" placeholder="leave empty to generate one" pattern="[A-Za-z0-9_-]{6,64}">
@@ -152,7 +156,7 @@
             </div>
 
             <label class="inline" style="margin-bottom:.75rem;">
-              <input type="checkbox" name="labels"> <span>Burn the source name into each cell</span>
+              <input type="checkbox" name="labels"> <span>Burn each source's nickname into its cell</span>
             </label>
 
             <label class="field">
