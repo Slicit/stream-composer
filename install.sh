@@ -152,6 +152,7 @@ need() { command -v "$1" >/dev/null 2>&1; }
 
 SUDO=""
 COMPOSE=""
+COMPOSE_KIND="" # v2 = Compose Specification files; v1 = generated fallback
 
 # Everything that touches the install directory or Docker runs through the same
 # privilege as the eventual `compose up`, so a tool that exists for one user but
@@ -176,11 +177,12 @@ resolve_privileges() {
 #     unprivileged and then running it with sudo is how you end up with docker
 #     printing its own help and "unknown shorthand flag: 'd' in -d".
 #  2. Compose v1 (the standalone Python `docker-compose`, EOL since July 2023)
-#     cannot read these files at all. They follow the Compose Specification —
-#     no `version:` key, and a top-level `name:`. v1 treats a file without
-#     `version:` as the ancient v1 schema, where every top-level key is a
-#     service name, so it misreads `services:` and `name:` as containers and
-#     fails in a thoroughly confusing way. Better to say so up front.
+#     cannot read the canonical files: they follow the Compose Specification,
+#     with no `version:` key and a top-level `name:`, and v1 reads a
+#     version-less file as the 2015 schema where every top-level key is a
+#     service name. There is a generated fallback for exactly that case
+#     (docker-compose.v1*.yml), so v1 is supported rather than refused — we
+#     just have to know which set of files to point it at.
 
 # Prints the major version, or nothing. Must never return non-zero: this runs
 # inside a command substitution, and under `set -e` with `pipefail` a failing
@@ -201,10 +203,22 @@ resolve_compose() {
     [ -n "$major" ] || continue
     if [ "$major" -ge 2 ] 2>/dev/null; then
       COMPOSE="$candidate"
+      COMPOSE_KIND="v2"
       return
     fi
     found_v1="$candidate"
   done
+
+  # No v2 anywhere, but a working v1: use the generated fallback files.
+  if [ -n "$found_v1" ]; then
+    COMPOSE="$found_v1"
+    COMPOSE_KIND="v1"
+    warn "Only Compose v1 ($found_v1) is available; it reached end of life in July 2023."
+    warn "Using the generated docker-compose.v1*.yml fallback, which CI verifies resolves"
+    warn "to the same stack. Upgrading is still worth it:"
+    warn "    sudo apt-get install -y docker-compose-plugin"
+    return
+  fi
 
   # Nothing usable with the privileges we will actually run under. Work out why
   # so the message names the real problem.
@@ -229,19 +243,6 @@ Make it system-wide, then re-run:
 Or copy the plugin where root can see it:
     sudo mkdir -p /usr/local/lib/docker/cli-plugins
     sudo cp ~/.docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/"
-  fi
-
-  if [ -n "$found_v1" ]; then
-    die "Found Compose v1 ($found_v1), which cannot read these files.
-
-They follow the Compose Specification — no \`version:\` key — and v1 misreads such
-a file as the 2015 schema, treating every top-level key as a service name.
-Compose v1 reached end of life in July 2023.
-
-Install v2 alongside or instead of it:
-    sudo apt-get install -y docker-compose-plugin      # Debian / Ubuntu
-    sudo dnf install -y docker-compose-plugin          # Fedora / RHEL
-Then check with:  docker compose version"
   fi
 
   die "Docker Compose is not installed. Add it with:
@@ -332,7 +333,9 @@ download_bundle() {
   $SUDO mkdir -p "$INSTALL_DIR"
   # Everything except .env is replaced, so upgrades pick up new compose files.
   for item in docker-compose.yml docker-compose.local.yml docker-compose.tls.yml \
-              docker-compose.build.yml config obs scripts docs README.md LICENSE \
+              docker-compose.build.yml \
+              docker-compose.v1.yml docker-compose.v1.local.yml docker-compose.v1.tls.yml \
+              config obs scripts docs README.md LICENSE \
               .env.example Makefile install.sh; do
     [ -e "$src/$item" ] || continue
     $SUDO rm -rf "$INSTALL_DIR/${item:?}"
@@ -427,11 +430,16 @@ configure() {
 }
 
 write_env() {
+  # Compose v1 cannot read the Compose Specification files; the generated
+  # fallback beside them says the same thing in the 3.7 schema.
+  local prefix="docker-compose"
+  [ "$COMPOSE_KIND" = "v1" ] && prefix="docker-compose.v1"
+
   local compose_files
   if [ "$MODE" = "tls" ]; then
-    compose_files="docker-compose.yml:docker-compose.tls.yml"
+    compose_files="${prefix}.yml:${prefix}.tls.yml"
   else
-    compose_files="docker-compose.yml:docker-compose.local.yml"
+    compose_files="${prefix}.yml:${prefix}.local.yml"
   fi
 
   # Releases publish a semver tag; the main branch publishes `edge`.
@@ -444,6 +452,9 @@ write_env() {
 # Re-running the installer keeps these values.
 
 COMPOSE_FILE=$compose_files
+# Set explicitly so Compose v1 and v2 name containers and volumes identically:
+# v2 can take the project name from the file's `name:` key, v1 has no such key.
+COMPOSE_PROJECT_NAME=stream-composer
 
 COMPOSER_IMAGE=ghcr.io/${REPO,,}
 COMPOSER_TAG=$image_tag

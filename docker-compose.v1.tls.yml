@@ -1,0 +1,111 @@
+# ---------------------------------------------------------------------------
+# GENERATED FILE — do not edit.
+#
+# Compose v1 fallback, generated from docker-compose.tls.yml by scripts/make-compat.py.
+# Edit that file and re-run:  python3 scripts/make-compat.py
+#
+# Differences from the canonical file:
+#   * `version: "3.7"` added — v1 reads a version-less file as the 2015
+#     schema and misparses every top-level key as a service name.
+#   * top-level `name:` removed — Compose Spec only; the project name comes
+#     from COMPOSE_PROJECT_NAME in .env instead.
+# ---------------------------------------------------------------------------
+
+version: "3.7"
+
+# Overlay: Traefik in front, with automatic Let's Encrypt certificates.
+#
+# What this adds
+#   * HTTPS on 443 with an ACME certificate for ${DOMAIN}, renewed automatically.
+#   * A permanent redirect from port 80, plus HSTS.
+#   * RTMPS on 1936: Traefik terminates TLS using the same certificate and
+#     forwards plain RTMP to MediaMTX, so OBS can push over an encrypted link
+#     without any extra certificate management.
+#
+# Requirements: ${DOMAIN} must already resolve to this host, and ports 80, 443
+# and 1936 must be reachable from the internet (80 is needed for the ACME
+# HTTP-01 challenge and for the redirect).
+
+services:
+  traefik:
+    image: traefik:${TRAEFIK_VERSION:-v3.3}
+    container_name: sc-traefik
+    restart: unless-stopped
+    command:
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --accesslog=${TRAEFIK_ACCESS_LOG:-false}
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=streamnet
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --entrypoints.rtmps.address=:1936
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # Point at the staging directory while testing to avoid rate limits:
+      # - --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    ports:
+      - "80:80"
+      - "443:443"
+      - "${RTMPS_PORT:-1936}:1936"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/letsencrypt
+    networks: [streamnet]
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+        max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
+  composer:
+    environment:
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+      RTMP_PUBLIC_HOST: ${DOMAIN}
+      RTMPS_ENABLED: "true"
+      RTMPS_PUBLIC_PORT: ${RTMPS_PORT:-1936}
+      SECURE_COOKIES: "true"
+      # Exactly one proxy hop (Traefik). Trusting every hop would let a client
+      # forge its own address via X-Forwarded-For and bypass the login throttle.
+      TRUST_PROXY: "1"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: streamnet
+      traefik.http.routers.composer.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.composer.entrypoints: websecure
+      traefik.http.routers.composer.tls.certresolver: le
+      traefik.http.routers.composer.middlewares: sc-headers@docker
+      traefik.http.services.composer.loadbalancer.server.port: "3000"
+      # HSTS plus the usual hardening. Framing is left to SAMEORIGIN so the
+      # player can be embedded on the same site.
+      traefik.http.middlewares.sc-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.sc-headers.headers.stsIncludeSubdomains: "false"
+      traefik.http.middlewares.sc-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.sc-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.sc-headers.headers.customFrameOptionsValue: SAMEORIGIN
+
+  mediamtx:
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${DOMAIN}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: streamnet
+      # RTMPS: TLS is terminated here and plain RTMP is forwarded onward.
+      traefik.tcp.routers.rtmps.rule: HostSNI(`*`)
+      traefik.tcp.routers.rtmps.entrypoints: rtmps
+      traefik.tcp.routers.rtmps.tls: "true"
+      traefik.tcp.routers.rtmps.tls.certresolver: le
+      traefik.tcp.routers.rtmps.tls.domains[0].main: ${DOMAIN}
+      traefik.tcp.services.rtmps.loadbalancer.server.port: "1935"
+
+volumes:
+  traefik-acme:
+    name: sc-traefik-acme

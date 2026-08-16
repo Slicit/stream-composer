@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# GENERATED FILE — do not edit.
+#
+# Compose v1 fallback, generated from docker-compose.local.yml by scripts/make-compat.py.
+# Edit that file and re-run:  python3 scripts/make-compat.py
+#
+# Differences from the canonical file:
+#   * `version: "3.7"` added — v1 reads a version-less file as the 2015
+#     schema and misparses every top-level key as a service name.
+#   * top-level `name:` removed — Compose Spec only; the project name comes
+#     from COMPOSE_PROJECT_NAME in .env instead.
+# ---------------------------------------------------------------------------
+
+version: "3.7"
+
+# Overlay: publish the web interface straight to the host over plain HTTP.
+#
+# Use this on a LAN, behind your own reverse proxy, or while evaluating.
+# There is no TLS here, so sign-in credentials travel in the clear — do not
+# expose this to the internet. Use docker-compose.v1.tls.yml for that.
+
+services:
+  composer:
+    ports:
+      - "${HTTP_PORT:-8080}:3000"

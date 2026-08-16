@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+# GENERATED FILE — do not edit.
+#
+# Compose v1 fallback, generated from docker-compose.yml by scripts/make-compat.py.
+# Edit that file and re-run:  python3 scripts/make-compat.py
+#
+# Differences from the canonical file:
+#   * `version: "3.7"` added — v1 reads a version-less file as the 2015
+#     schema and misparses every top-level key as a service name.
+#   * top-level `name:` removed — Compose Spec only; the project name comes
+#     from COMPOSE_PROJECT_NAME in .env instead.
+# ---------------------------------------------------------------------------
+
+version: "3.7"
+
+# Stream Composer — base stack (plain HTTP).
+#
+# This file on its own does not publish the web interface — pick an overlay:
+#
+#   COMPOSE_FILE=docker-compose.v1.yml:docker-compose.v1.local.yml   plain HTTP on a port
+#   COMPOSE_FILE=docker-compose.v1.yml:docker-compose.v1.tls.yml     Traefik + Let's Encrypt
+#
+# The installer writes the right line into .env, so a plain `docker compose up -d`
+# always picks up the correct pair.
+
+services:
+  # ------------------------------------------------------------------ ingest
+  mediamtx:
+    image: bluenviron/mediamtx:${MEDIAMTX_VERSION:-1.19.1}
+    container_name: sc-mediamtx
+    restart: unless-stopped
+    environment:
+      # Advertised to browsers as an ICE candidate host. Without this, viewers
+      # outside the server cannot establish WebRTC.
+      MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_HOST:-}
+      # The authentication hook URL carries a shared secret so it cannot be
+      # driven from outside the stack.
+      MTX_AUTHHTTPADDRESS: http://composer:3000/internal/${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}/mediamtx/auth
+    volumes:
+      - ./config/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      # RTMP ingest from OBS.
+      - "${RTMP_PORT:-1935}:1935"
+      # SRT ingest (better over lossy links).
+      - "${SRT_PORT:-8890}:8890/udp"
+      # WebRTC media. Must be reachable for viewers outside the host.
+      - "${WEBRTC_UDP_PORT:-8189}:8189/udp"
+    networks: [streamnet]
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+        max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
+  # -------------------------------------------------- compositor, API and UI
+  composer:
+    image: ${COMPOSER_IMAGE:-ghcr.io/slicit/stream-composer}:${COMPOSER_TAG:-latest}
+    container_name: sc-composer
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    environment:
+      PORT: 3000
+      DATA_DIR: /data
+      LOG_DIR: /data/logs
+      MEDIAMTX_API: http://mediamtx:9997
+      MEDIAMTX_RTMP: rtmp://mediamtx:1935
+      MEDIAMTX_WEBRTC: http://mediamtx:8889
+      MEDIAMTX_HLS: http://mediamtx:8888
+      MEDIAMTX_INTERNAL_USER: composer
+      MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      RTMP_PUBLIC_HOST: ${PUBLIC_HOST:-}
+      RTMP_PUBLIC_PORT: ${RTMP_PORT:-1935}
+      SRT_PUBLIC_PORT: ${SRT_PORT:-8890}
+      SRT_ENABLED: "true"
+      RTMPS_ENABLED: "false"
+      SECURE_COOKIES: "false"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_MAX_SIZE_MB: ${LOG_MAX_SIZE_MB:-20}
+      LOG_MAX_FILES: ${LOG_MAX_FILES:-5}
+      ENCODER: ${ENCODER:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - composer-data:/data
+    # Uncomment to give the encoder access to an Intel/AMD GPU for VA-API.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    #
+    # The web port is published by an overlay file, never here:
+    #   docker-compose.v1.local.yml  → straight to the host on ${HTTP_PORT}
+    #   docker-compose.v1.tls.yml    → behind Traefik with Let's Encrypt
+    networks: [streamnet]
+    logging: *logging
+
+networks:
+  streamnet:
+    name: streamnet
+    driver: bridge
+
+volumes:
+  composer-data:
+    name: sc-composer-data

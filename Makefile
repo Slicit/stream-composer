@@ -61,6 +61,15 @@ dev: ## Run the server on the host against a local MediaMTX
 test: ## Run the unit tests
 	cd server && npm ci && npm test
 
+.PHONY: compat
+compat: ## Regenerate the Compose v1 fallback files
+	python3 scripts/make-compat.py
+
+.PHONY: compat-check
+compat-check: ## Verify the Compose v1 fallback is current and equivalent
+	python3 scripts/make-compat.py --check
+	python3 scripts/check-compose-parity.py
+
 .PHONY: bench
 bench: ## Measure how many streams this machine can compose
 	./scripts/benchmark.sh

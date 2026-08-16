@@ -122,7 +122,7 @@ node scripts/selftest.js --count 6   # render a synthetic grid to a PNG
 | Document | What is in it |
 |---|---|
 | [docs/OBS.md](docs/OBS.md) | Connecting OBS, encoder settings, the helper script, multiple instances |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every environment variable and admin setting |
+| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every environment variable and admin setting, including the Compose v1 fallback |
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | CPU sizing, measurements, tuning, hardware encoders |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the pieces fit, security model, design decisions |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something is not working |
