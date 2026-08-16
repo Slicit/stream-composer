@@ -16,6 +16,14 @@ services:
     image: traefik:${TRAEFIK_VERSION:-v3.3}
     container_name: sc-traefik
     restart: unless-stopped
+    environment:
+      # Traefik's Docker client does not negotiate an API version, so it asks
+      # for 1.24 — which Docker Engine 25 and later refuse ("client version
+      # 1.24 is too old. Minimum supported API version is 1.40"), leaving
+      # Traefik retrying for ever and nothing routed. Pin a version every
+      # engine since 20.10 accepts; the daemon serves any version in its
+      # supported range, so this needs no maintenance as Docker moves on.
+      DOCKER_API_VERSION: "${DOCKER_API_VERSION:-1.41}"
     command:
       - --global.checknewversion=false
       - --global.sendanonymoususage=false
