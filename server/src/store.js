@@ -30,6 +30,17 @@ const DEFAULT_COMPOSITION = {
   //
   // See docs/ARCHITECTURE.md, "Where the grid is made".
   mode: 'server', // server | web
+  // What to do about a source the browser cannot play directly — in practice
+  // H.264 with B-frames, which MediaMTX refuses to serve over WebRTC.
+  //
+  //   hls  — play that source over HLS instead. Costs the server nothing and
+  //          needs no change at the publisher, at a couple of seconds of extra
+  //          latency on that cell only.
+  //   warn — leave the cell empty and explain what to change in OBS.
+  //
+  // Only consulted when the browser composes; the encoder normalises
+  // everything, so server composition never meets the problem.
+  fallback: 'hls', // hls | warn
   layout: 'auto', // auto | solo | 1x2 | 2x1 | 2x2 | 3x3 | 4x4 | spotlight
   width: 1920,
   height: 1080,

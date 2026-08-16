@@ -13,6 +13,7 @@ const store = require('./store');
 const config = require('./config');
 const logger = require('./logger');
 const mediamtx = require('./mediamtx');
+const playability = require('./playability');
 
 const log = logger.scope('streams');
 
@@ -176,6 +177,9 @@ async function withLiveState() {
       readers: l ? l.readers : 0,
       since: l ? l.readyTime : null,
       source: l ? l.source : null,
+      // Whether a browser could play this source directly. Only meaningful
+      // while it is publishing; null means "not probed yet".
+      playback: l && l.ready ? playability.status(s.key) : null,
       ingest: ingestInfo(s),
     };
   });

@@ -27,6 +27,7 @@ const logger = require('./logger');
 const store = require('./store');
 const mediamtx = require('./mediamtx');
 const encoderCaps = require('./encoder');
+const playability = require('./playability');
 const { computeLayout } = require('./layout');
 
 const log = logger.scope('compositor');
@@ -435,6 +436,17 @@ async function tick() {
   const sources = comp.enabled ? selectSources(live) : [];
   const signature = signatureOf(sources, comp);
   events.emit('sources', sources);
+
+  // Check whether a browser could play each source directly. Only web
+  // composition and the preview buttons need this, but it is cheap, it runs
+  // once per publishing session, and knowing early is what turns a black
+  // rectangle into a sentence the operator can act on.
+  const liveKeys = new Set(live.filter((l) => l.ready).map((l) => l.key));
+  playability.keep(liveKeys);
+  for (const l of live) {
+    if (!l.ready) continue;
+    playability.inspect(l.key, `${rtspBase()}/${config.ingestPrefix}/${l.key}`, l.readyTime || 'unknown');
+  }
 
   if (signature === currentSignature && (proc || sources.length === 0)) {
     desiredSignature = signature;
