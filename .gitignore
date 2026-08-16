@@ -16,3 +16,6 @@ selftest*.png
 selftest*.mp4
 .selftest-data/
 .env.parity
+# MediaMTX writes a self-signed pair beside its working directory
+auto.crt
+auto.key

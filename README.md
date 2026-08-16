@@ -11,6 +11,10 @@ live programme — automatically laid out, sub-second latency, no GPU required.
 [![Release](https://github.com/Slicit/stream-composer/actions/workflows/release.yml/badge.svg)](https://github.com/Slicit/stream-composer/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<br>
+
+<img src="docs/screenshots/viewer.png" alt="The viewer page: four sources composed into a 1080p grid, each labelled with its nickname, with the audio picker and programme details alongside" width="900">
+
 </div>
 
 ---
@@ -53,6 +57,33 @@ the whole setup.
   server load all live in one admin console.
 - **Simple for OBS.** Server URL plus stream key. Optionally a Lua script that
   fills both in for you.
+
+## A look around
+
+**Viewers** get the composed programme, a strip of the individual sources, and an
+audio picker. The programme itself is silent; choosing a source unmutes just that
+one, so a producer can listen to the drum cam while watching all four.
+
+<img src="docs/screenshots/viewer-audio.png" alt="The viewer page with the Main Stage source selected in the audio monitor, its level meter active while the other sources stay muted" width="820">
+
+**Admin → Streams** is where keys live. Each row has a nickname you can edit in
+place — that is the text burnt into the stream's cell — and the key stays masked
+until you copy it.
+
+<img src="docs/screenshots/admin-streams.png" alt="The admin Streams tab listing four streams with editable nickname fields, masked stream keys, live status, uptime and per-stream actions" width="820">
+
+**Admin → Composition** picks the layout, the output size and bitrate, the
+encoder, and whether nicknames are burnt in. The preview redraws as you change it.
+
+<img src="docs/screenshots/admin-composition.png" alt="The admin Composition tab showing layout choices, a 2x2 preview, source ordering, and output settings including resolution, bitrate and encoder" width="820">
+
+**Admin → Server** shows what the box is actually doing: CPU, encoder frame rate
+and speed, measured output bitrate, restarts, and the last thing ffmpeg said.
+
+<img src="docs/screenshots/admin-server.png" alt="The admin Server tab with CPU, memory, encoder frame rate, output bitrate and uptime tiles above an output-bitrate chart and server settings" width="820">
+
+More screens — sign-in, users and logs — are in
+[docs/screenshots/](docs/screenshots/).
 
 ## How it fits together
 
@@ -128,6 +159,7 @@ node scripts/selftest.js --count 6   # render a synthetic grid to a PNG
 | [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | CPU sizing, measurements, tuning, hardware encoders |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the pieces fit, security model, design decisions |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something is not working |
+| [docs/screenshots/](docs/screenshots/) | Every screen, and the script that recaptures them |
 
 ## Development
 
@@ -145,6 +177,10 @@ cd server && npm install && npm test
 `node scripts/selftest.js --count 9 --layout spotlight --encode` renders the real
 filtergraph against synthetic sources — the fastest way to check a change to the
 compositor without a camera in sight.
+
+`./scripts/screenshots.sh` boots a throwaway instance, publishes synthetic
+sources into it and recaptures every image in `docs/screenshots/`, so the
+documentation can be brought back in line with the UI in one command.
 
 ## Licence
 
