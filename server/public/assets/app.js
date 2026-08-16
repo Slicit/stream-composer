@@ -19,6 +19,7 @@ const app = {
   hls: null,
   stats: null,
   showStats: false,
+  viewMode: 'normal',
   levelRaf: null,
 };
 
@@ -725,6 +726,75 @@ function renderUserArea() {
   area.replaceChildren(...children);
 }
 
+// ---------------------------------------------------------------- view mode
+//
+// Cinema mode: the picture takes nearly the whole window and everything that
+// is not the picture either shrinks or goes away. The audio picker stays —
+// the programme is silent by design, so removing it would leave a viewer with
+// no way to hear anything.
+//
+// Remembered per user, because two people sharing a machine rarely want the
+// same thing, and applied before the first paint so it does not flash.
+
+const VIEW_KEY = 'streamComposer.viewMode';
+// Cinema is what most people want most of the time: they came to watch. The
+// detail panels are one click away, and the choice is remembered per user.
+const DEFAULT_VIEW_MODE = 'cinema';
+
+function viewModeKey(user) {
+  return `${VIEW_KEY}.${(user && user.username) || 'guest'}`;
+}
+
+function readStored(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (_) {
+    return null; // private mode, or storage disabled — not worth failing over
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (_) {
+    /* the preference simply will not persist */
+  }
+}
+
+function applyViewMode(mode) {
+  app.viewMode = mode === 'cinema' ? 'cinema' : 'normal';
+  document.body.classList.toggle('is-cinema', app.viewMode === 'cinema');
+  const btn = $('#btn-cinema');
+  if (btn) {
+    btn.classList.toggle('primary', app.viewMode === 'cinema');
+    btn.setAttribute('aria-pressed', String(app.viewMode === 'cinema'));
+  }
+}
+
+/**
+ * Before we know who is watching, use whatever was chosen last on this
+ * browser. It is only a guess to avoid a flash of the wrong layout — the real
+ * preference is applied as soon as the first poll says who this is.
+ */
+function applyRememberedViewMode() {
+  applyViewMode(readStored(`${VIEW_KEY}.last`) || DEFAULT_VIEW_MODE);
+}
+
+/**
+ * Once the user is known, their own choice wins — and someone who has never
+ * chosen gets the default rather than inheriting the previous person's.
+ */
+function adoptUserViewMode(user) {
+  applyViewMode(readStored(viewModeKey(user)) || DEFAULT_VIEW_MODE);
+}
+
+function toggleViewMode() {
+  const next = app.viewMode === 'cinema' ? 'normal' : 'cinema';
+  applyViewMode(next);
+  writeStored(viewModeKey(app.state && app.state.user), next);
+  writeStored(`${VIEW_KEY}.last`, next);
+}
+
 // --------------------------------------------------------------------- poll
 
 let lastSignature = '';
@@ -739,6 +809,7 @@ async function refresh() {
   }
   const first = !app.state;
   app.state = next;
+  if (first) adoptUserViewMode(next.user);
 
   document.title = `${next.settings.siteName} — live`;
   $('#site-name').textContent = next.settings.siteName;
@@ -797,6 +868,8 @@ function wireControls() {
     $('#player-stats').classList.toggle('show', app.showStats);
   });
 
+  $('#btn-cinema').addEventListener('click', toggleViewMode);
+
   $('#btn-fullscreen').addEventListener('click', () => {
     const shell = $('#player-shell');
     if (document.fullscreenElement) document.exitFullscreen();
@@ -841,6 +914,7 @@ function wireControls() {
   });
 }
 
+applyRememberedViewMode();
 wireControls();
 refresh().then(() => {
   setInterval(refresh, 3000);

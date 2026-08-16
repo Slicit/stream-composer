@@ -758,3 +758,90 @@ code, .mono { font-family: var(--mono); font-size: 0.8rem; }
   white-space: nowrap;
   cursor: help;
 }
+
+/* ============================================================ cinema mode ===
+ *
+ * The picture takes nearly the whole window; everything else shrinks or goes.
+ * The audio picker is the one panel that stays, because the programme is
+ * silent by design — without it a viewer has no way to hear anything.
+ *
+ * Layout only: no markup is added or removed, so both modes render the same
+ * DOM and switching is instant.
+ */
+
+body.is-cinema .wrap {
+  /* ~90% of the window, with the player-shell's 16:9 kept inside it. */
+  width: min(96vw, 100%);
+  max-width: none;
+  padding: 0.6rem clamp(0.5rem, 2vw, 1.25rem) 1rem;
+}
+
+body.is-cinema #stage {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0.6rem !important;
+}
+
+/* Cap by height too, or a wide window pushes the picture off the bottom. */
+body.is-cinema .player-shell {
+  max-height: calc(100vh - 11rem);
+  margin: 0 auto;
+  width: min(100%, calc((100vh - 11rem) * 16 / 9));
+}
+
+/* Everything that is not the picture or the audio picker. */
+body.is-cinema #tiles,
+body.is-cinema #sources-card,
+body.is-cinema #layout-card,
+body.is-cinema #program-info,
+body.is-cinema #playback-picker,
+body.is-cinema #playback-web-note,
+body.is-cinema .audio-blurb,
+body.is-cinema #side .card:not(#audio-card) { display: none !important; }
+
+/* The audio picker becomes one slim row under the picture. */
+body.is-cinema #side {
+  order: 2;
+  flex-direction: row !important;
+  align-items: center;
+}
+
+body.is-cinema #audio-card {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.7rem;
+}
+
+body.is-cinema #audio-card .card-head { margin: 0; }
+body.is-cinema #audio-card .card-head h2 { font-size: 0.78rem; white-space: nowrap; }
+
+body.is-cinema .audio-list {
+  flex: 1 1 auto;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+body.is-cinema .audio-list > * {
+  flex: 0 1 auto;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+/* The level meter and the "default" hint are noise at this size. */
+body.is-cinema .audio-list .level,
+body.is-cinema .audio-list .hint { display: none; }
+
+body.is-cinema .volume-row { margin: 0 !important; width: 9rem; }
+body.is-cinema .volume-row .field > span { display: none; }
+
+body.is-cinema .topbar { padding-block: 0.5rem; }
+
+/* On a phone the row would be wider than the screen; stack it again. */
+@media (max-width: 720px) {
+  body.is-cinema #side { flex-direction: column !important; align-items: stretch; }
+  body.is-cinema .volume-row { width: auto; }
+  body.is-cinema .player-shell { max-height: none; width: 100%; }
+}
