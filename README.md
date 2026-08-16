@@ -49,6 +49,9 @@ the whole setup.
 - **Audio stays with its source.** The programme is deliberately silent — viewers
   pick one stream to listen to in the player, and everything starts muted.
   Mixing several live rooms together produces something nobody wants to hear.
+- **Cinema mode.** The default view gives the picture nearly the whole window
+  and reduces everything else to one slim row. One click brings the detail back,
+  and the choice is remembered per user.
 - **Two places to compose.** Let the server encode one programme, or let each
   viewer's browser arrange the sources with nothing re-encoded at all. Same
   layout either way — one switch in the admin console.
