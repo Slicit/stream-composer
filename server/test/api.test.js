@@ -163,6 +163,83 @@ test('rotating a key changes it', async () => {
   streamKey = stream.key;
 });
 
+// ---------------------------------------------------------------- nicknames
+
+// Captions need drawtext, which is only detected by probing ffmpeg at boot.
+// These tests do not run ffmpeg, so declare the capability directly.
+test('enable caption rendering for the tests that follow', () => {
+  require('../src/encoder').caps.drawtext = true;
+  assert.strictEqual(require('../src/encoder').caps.drawtext, true);
+});
+
+test('a stream can carry a nickname, and it is what gets burnt in', async () => {
+  const res = await call(`/api/admin/streams/${streamId}`, { method: 'PATCH', body: { nickname: 'Main Stage' } });
+  assert.strictEqual(res.status, 200);
+  assert.strictEqual((await res.json()).stream.nickname, 'Main Stage');
+
+  const compositor = require('../src/compositor');
+  const comp = require('../src/store').get().composition;
+  // Go through the real selection path: it is what maps nickname -> caption.
+  const sources = compositor.selectSources([{ key: streamKey, ready: true, tracks: {} }]);
+  assert.strictEqual(sources[0].label, 'Main Stage', 'the nickname becomes the caption');
+
+  const args = compositor.buildArgs(sources, comp, 'x264').args;
+  const graph = args[args.indexOf('-filter_complex') + 1];
+  assert.match(graph, /drawtext/, 'the caption filter is present');
+  assert.match(graph, /Main Stage/, 'the nickname is the caption');
+  assert.match(graph, /bordercolor=black/, 'high contrast: white text with a black outline');
+  assert.match(graph, /x=\(w-text_w\)\/2/, 'centred horizontally');
+  assert.match(graph, /y=h-th-/, 'sitting at the bottom of the cell');
+  assert.ok(!/box=1/.test(graph), 'the old filled box is gone');
+});
+
+test('clearing the nickname falls back to the stream name', async () => {
+  await call(`/api/admin/streams/${streamId}`, { method: 'PATCH', body: { nickname: '' } });
+  const compositor = require('../src/compositor');
+  const sources = compositor.selectSources([{ key: streamKey, ready: true, tracks: {} }]);
+  assert.strictEqual(sources[0].label, sources[0].name, 'the name is used when no nickname is set');
+  assert.ok(sources[0].label.length > 0);
+});
+
+test('an over-long nickname is refused rather than silently truncated', async () => {
+  const res = await call(`/api/admin/streams/${streamId}`, { method: 'PATCH', body: { nickname: 'x'.repeat(33) } });
+  assert.strictEqual(res.status, 400);
+});
+
+test('a nickname is trimmed and stripped of newlines', () => {
+  const streams = require('../src/streams');
+  assert.strictEqual(streams.cleanNickname('  Studio C  '), 'Studio C');
+  assert.strictEqual(streams.cleanNickname('two\nlines'), 'two lines');
+  assert.strictEqual(streams.cleanNickname(null), '');
+});
+
+test('changing a nickname changes the encoder command, so the grid rebuilds', () => {
+  const compositor = require('../src/compositor');
+  const store2 = require('../src/store');
+  const comp = store2.get().composition;
+  const base = [{ key: 'k1', name: 'Camera 1', label: 'Camera 1', path: 'live/k1', hasAudio: false }];
+  const renamed = [{ ...base[0], label: 'Main Stage' }];
+  const a = compositor.buildArgs(base, comp, 'x264').args.join(' ');
+  const b = compositor.buildArgs(renamed, comp, 'x264').args.join(' ');
+  assert.notStrictEqual(a, b, 'the caption is part of the command');
+  assert.match(b, /Main Stage/);
+});
+
+test('SECURITY: a nickname cannot break out of the drawtext filter', () => {
+  const compositor = require('../src/compositor');
+  const store2 = require('../src/store');
+  const comp = store2.get().composition;
+  for (const evil of ["a':b", 'a:b', 'a\\b', "x'[0:v]y", 'pct%50', 'a,b']) {
+    const args = compositor.buildArgs(
+      [{ key: 'k', name: 'n', label: evil, path: 'live/k', hasAudio: false }], comp, 'x264',
+    ).args;
+    const graph = args[args.indexOf('-filter_complex') + 1];
+    // Exactly one drawtext, and the graph still ends where it should.
+    assert.strictEqual((graph.match(/drawtext/g) || []).length, 1, `one drawtext for ${JSON.stringify(evil)}`);
+    assert.match(graph, /\[outv\]$/, `graph intact for ${JSON.stringify(evil)}`);
+  }
+});
+
 // ---------------------------------------------------------- MediaMTX hook
 
 test('the auth hook admits a publisher holding a valid key', () => {
