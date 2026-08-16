@@ -11,12 +11,8 @@
 #   curl -fsSL .../install.sh | bash -s -- --yes \
 #       --domain stream.example.com --email me@example.com --admin-password 'sekrit'
 
-set -euo pipefail
+set -Eeuo pipefail
 
-# `set -e` aborts without a word if any command fails somewhere unguarded. For
-# an installer that is the worst possible failure mode — the user sees the
-# banner, then their prompt back. Turn it into something reportable.
-trap 'status=$?; [ "$status" -eq 0 ] && exit 0; printf "\n\033[31m✗ The installer stopped unexpectedly (exit %s at line %s).\033[0m\n  This is a bug. Please report it with the output above:\n  https://github.com/%s/issues\n" "$status" "${BASH_LINENO[0]:-?}" "${SC_REPO:-Slicit/stream-composer}" >&2' ERR
 
 REPO="${SC_REPO:-Slicit/stream-composer}"
 INSTALL_DIR="${SC_INSTALL_DIR:-/opt/stream-composer}"
@@ -47,6 +43,27 @@ info() { printf '%s→%s %s\n' "$BLUE" "$RESET" "$*"; }
 ok()   { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
 die()  { printf '%s✗ %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
+
+# `set -e` aborts without a word if a command fails somewhere unguarded, and for
+# an installer that is the worst failure mode there is: the user sees the banner
+# and then their prompt back. `-E` propagates this trap into functions too, so
+# wherever it happens we say where.
+on_error() {
+  local status=$?
+  # An ERR inside a command substitution or a pipeline fires in a subshell,
+  # where `exit` ends only that subshell. Announcing that the installer stopped
+  # from there is simply untrue — it carries on — and the false alarm buries
+  # whatever really went wrong. Let the main shell do the reporting.
+  if [ "${BASH_SUBSHELL:-0}" -gt 0 ]; then
+    return "$status"
+  fi
+  printf '\n%s✗ The installer stopped unexpectedly (exit %s at line %s).%s\n' \
+    "$RED" "$status" "${BASH_LINENO[0]:-?}" "$RESET" >&2
+  printf '  This is a bug. Please report it with the output above:\n  https://github.com/%s/issues\n' \
+    "${SC_REPO:-Slicit/stream-composer}" >&2
+  exit "$status"
+}
+trap on_error ERR
 
 banner() {
   printf '\n%s' "$BOLD"
@@ -453,7 +470,7 @@ write_env() {
 
 COMPOSE_FILE=$compose_files
 # Set explicitly so Compose v1 and v2 name containers and volumes identically:
-# v2 can take the project name from the file's `name:` key, v1 has no such key.
+# v2 can take the project name from the file's "name:" key, v1 has no such key.
 COMPOSE_PROJECT_NAME=stream-composer
 
 COMPOSER_IMAGE=ghcr.io/${REPO,,}
@@ -508,6 +525,36 @@ launch() {
   fi
 }
 
+
+# Containers that are not up right now, one name per line.
+unhealthy_containers() {
+  $COMPOSE ps --format '{{.Name}} {{.State}}' 2>/dev/null |
+    awk '$2 != "running" { print $1 }'
+}
+
+# A wall of dots that never ends tells the operator nothing. When the service
+# does not come up, name the containers that are down and show the last words
+# of each — which is where the actual cause is, every time.
+diagnose_failure() {
+  local down; down="$(unhealthy_containers)"
+  if [ -z "$down" ]; then
+    warn "Every container is running but the service is not answering yet."
+    say "  ${DIM}It may still be starting. Watch it with:"
+    say "    cd $INSTALL_DIR && $COMPOSE logs -f${RESET}"
+    return
+  fi
+  warn "These containers are not running: $(echo "$down" | tr '\n' ' ')"
+  local name
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    say ""
+    say "  ${BOLD}${name}${RESET} ${DIM}— last 15 lines${RESET}"
+    $COMPOSE logs --tail 15 "${name#sc-}" 2>&1 | sed 's/^/    /' || true
+  done <<< "$down"
+  say ""
+  say "  ${DIM}Full logs: cd $INSTALL_DIR && $COMPOSE logs -f${RESET}"
+}
+
 wait_for_health() {
   local url attempts=0
   if [ "$MODE" = "tls" ]; then url="https://$DOMAIN/healthz"; else url="http://127.0.0.1:$HTTP_PORT/healthz"; fi
@@ -522,7 +569,7 @@ wait_for_health() {
     attempts=$((attempts + 1))
   done
   printf '\n'
-  warn "It has not answered yet. Check the logs with:  cd $INSTALL_DIR && $COMPOSE logs -f"
+  diagnose_failure
   return 1
 }
 
@@ -569,6 +616,12 @@ summary() {
 }
 
 # --------------------------------------------------------------------- main
+
+# Sourcing with SC_LIB_ONLY=1 defines the functions without installing
+# anything, so the test suite can exercise them directly.
+if [ "${SC_LIB_ONLY:-}" = "1" ]; then
+  return 0 2>/dev/null || exit 0
+fi
 
 banner
 resolve_privileges
