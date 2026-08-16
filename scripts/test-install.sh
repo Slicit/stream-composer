@@ -191,6 +191,38 @@ else
   bad "compose_major never returns non-zero, even for a missing binary" "$out"
 fi
 
+# --------------------------------------------------------- pinned versions
+#
+# The Traefik version is written in three places: the compose default, the
+# installer's .env body and .env.example. They drifting apart is how someone
+# ends up installing a version the code has never been tested against — and
+# anything before 3.6.1 cannot talk to Docker Engine 29 at all, because it asks
+# for API 1.24 and ignores DOCKER_API_VERSION.
+
+echo "pinned versions"
+
+compose_default="$(sed -n 's/.*image: traefik:${TRAEFIK_VERSION:-\(v[0-9.]*\)}.*/\1/p' "$ROOT/docker-compose.tls.yml")"
+installer_pin="$(sed -n 's/^TRAEFIK_VERSION=\(v[0-9.]*\)$/\1/p' "$ROOT/install.sh")"
+example_pin="$(sed -n 's/^TRAEFIK_VERSION=\(v[0-9.]*\)$/\1/p' "$ROOT/.env.example")"
+
+if [ -n "$compose_default" ] && [ "$compose_default" = "$installer_pin" ] && [ "$compose_default" = "$example_pin" ]; then
+  ok "the Traefik version agrees across the overlay, the installer and .env.example ($compose_default)"
+else
+  bad "the Traefik version agrees everywhere" \
+      "overlay=$compose_default installer=$installer_pin example=$example_pin"
+fi
+
+# Compare against 3.6.1 numerically, so a later bump cannot silently go backwards.
+version_at_least() { # version_at_least <have> <want>, both without the leading v
+  [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -1)" = "$2" ]
+}
+if version_at_least "${compose_default#v}" "3.6.1"; then
+  ok "the pinned Traefik is 3.6.1 or newer (Docker Engine 29 needs it)"
+else
+  bad "the pinned Traefik is 3.6.1 or newer (Docker Engine 29 needs it)" \
+      "pinned $compose_default — older builds ask for Docker API 1.24 and never connect"
+fi
+
 # --------------------------------------------------------------------------
 
 printf '\n%s passed, %s failed\n' "$PASS" "$FAIL"
