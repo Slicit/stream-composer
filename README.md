@@ -49,6 +49,9 @@ the whole setup.
 - **Audio stays with its source.** The programme is deliberately silent — viewers
   pick one stream to listen to in the player, and everything starts muted.
   Mixing several live rooms together produces something nobody wants to hear.
+- **Two places to compose.** Let the server encode one programme, or let each
+  viewer's browser arrange the sources with nothing re-encoded at all. Same
+  layout either way — one switch in the admin console.
 - **CPU-first.** Sized and measured for machines with no GPU; hardware encoders
   are used automatically when they are there.
 - **Named on air.** Give each stream a nickname and it is burnt into the bottom
