@@ -28,6 +28,7 @@ const caps = {
   cores: os.cpus().length,
   cpuModel: (os.cpus()[0] || {}).model || 'unknown',
   cpuSpeedMhz: (os.cpus()[0] || {}).speed || 0,
+  functional: {}, // id -> { ok, error }, filled by a real test encode at boot
 };
 
 function run(bin, args, timeoutMs = 10000) {
@@ -93,6 +94,19 @@ async function probe() {
     caps.nvidia = false;
   }
 
+  // Only test what could plausibly work; each test costs a fraction of a second.
+  for (const [kind, present] of [
+    ['vaapi', caps.encoders.has('h264_vaapi') && caps.vaapiDevice],
+    ['nvenc', caps.encoders.has('h264_nvenc') && caps.nvidia],
+    ['qsv', caps.encoders.has('h264_qsv') && caps.vaapiDevice],
+  ]) {
+    if (!present) continue;
+    // eslint-disable-next-line no-await-in-loop
+    caps.functional[kind] = await testEncoder(kind);
+    if (caps.functional[kind].ok) log.info(`${kind} hardware encoding verified`);
+    else log.warn(`${kind} is present but a test encode failed`, caps.functional[kind].error);
+  }
+
   caps.probed = true;
   log.info('capabilities detected', {
     ffmpeg: caps.ffmpegVersion,
@@ -107,28 +121,51 @@ async function probe() {
   return caps;
 }
 
+/**
+ * Actually encode two frames with a hardware encoder.
+ *
+ * "ffmpeg lists the encoder and /dev/dri exists" is not the same as "this
+ * works": the VA-API *driver* is a separate package from ffmpeg, and older
+ * Intel graphics (Ivy Bridge and earlier) need the legacy i965 driver rather
+ * than the modern iHD one. Without a functional test the admin console offers
+ * hardware encoding, the operator selects it, and the encoder then fails to
+ * start on every attempt with nothing obvious to point at.
+ */
+async function testEncoder(kind) {
+  const source = ['-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=5', '-frames:v', '2'];
+  let args;
+  if (kind === 'vaapi') {
+    args = ['-hide_banner', '-loglevel', 'error', '-vaapi_device', config.vaapiDevice, ...source,
+      '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi', '-f', 'null', '-'];
+  } else if (kind === 'qsv') {
+    args = ['-hide_banner', '-loglevel', 'error', ...source,
+      '-vf', 'format=nv12', '-c:v', 'h264_qsv', '-f', 'null', '-'];
+  } else if (kind === 'nvenc') {
+    args = ['-hide_banner', '-loglevel', 'error', ...source, '-c:v', 'h264_nvenc', '-f', 'null', '-'];
+  } else {
+    return { ok: true, error: '' };
+  }
+  const r = await run(config.ffmpegPath, args, 20000);
+  const stderr = (r.stderr || '').trim().split('\n').filter(Boolean).pop() || '';
+  return { ok: !r.err, error: stderr.slice(0, 160) };
+}
+
 /** Which encoders can actually be used on this machine right now. */
 function available() {
-  const list = [{ id: 'x264', label: 'libx264 (CPU)', usable: caps.encoders.has('libx264'), reason: caps.encoders.has('libx264') ? '' : 'not built into ffmpeg' }];
-  list.push({
-    id: 'vaapi',
-    label: 'VA-API (Intel/AMD GPU)',
-    usable: caps.encoders.has('h264_vaapi') && caps.vaapiDevice,
-    reason: !caps.encoders.has('h264_vaapi') ? 'not built into ffmpeg' : !caps.vaapiDevice ? `${config.vaapiDevice} not present in the container` : '',
-  });
-  list.push({
-    id: 'nvenc',
-    label: 'NVENC (NVIDIA GPU)',
-    usable: caps.encoders.has('h264_nvenc') && caps.nvidia,
-    reason: !caps.encoders.has('h264_nvenc') ? 'not built into ffmpeg' : !caps.nvidia ? 'no NVIDIA device in the container' : '',
-  });
-  list.push({
-    id: 'qsv',
-    label: 'Quick Sync (Intel)',
-    usable: caps.encoders.has('h264_qsv') && caps.vaapiDevice,
-    reason: !caps.encoders.has('h264_qsv') ? 'not built into ffmpeg' : !caps.vaapiDevice ? `${config.vaapiDevice} not present in the container` : '',
-  });
-  return list;
+  const entry = (id, label, builtIn, deviceOk, deviceReason) => {
+    if (!builtIn) return { id, label, usable: false, reason: 'not built into this ffmpeg' };
+    if (!deviceOk) return { id, label, usable: false, reason: deviceReason };
+    const probe = caps.functional[id];
+    if (!probe) return { id, label, usable: false, reason: 'not tested yet' };
+    return { id, label, usable: probe.ok, reason: probe.ok ? '' : `the device is present but a test encode failed — ${probe.error || 'no detail'}` };
+  };
+
+  return [
+    { id: 'x264', label: 'libx264 (CPU)', usable: caps.encoders.has('libx264'), reason: caps.encoders.has('libx264') ? '' : 'not built into this ffmpeg' },
+    entry('vaapi', 'VA-API (Intel/AMD GPU)', caps.encoders.has('h264_vaapi'), caps.vaapiDevice, `${config.vaapiDevice} is not present in the container`),
+    entry('nvenc', 'NVENC (NVIDIA GPU)', caps.encoders.has('h264_nvenc'), caps.nvidia, 'no NVIDIA device in the container'),
+    entry('qsv', 'Quick Sync (Intel)', caps.encoders.has('h264_qsv'), caps.vaapiDevice, `${config.vaapiDevice} is not present in the container`),
+  ];
 }
 
 /** Resolve the configured preference to something usable, CPU as the floor. */
