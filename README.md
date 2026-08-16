@@ -47,6 +47,8 @@ the whole setup.
   Mixing several live rooms together produces something nobody wants to hear.
 - **CPU-first.** Sized and measured for machines with no GPU; hardware encoders
   are used automatically when they are there.
+- **Named on air.** Give each stream a nickname and it is burnt into the bottom
+  of its cell — white with a black outline, legible over anything.
 - **Managed from the browser.** Stream keys, users, layout, bitrate, logs and
   server load all live in one admin console.
 - **Simple for OBS.** Server URL plus stream key. Optionally a Lua script that
