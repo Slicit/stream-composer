@@ -145,7 +145,99 @@ done
 
 need() { command -v "$1" >/dev/null 2>&1; }
 
-compose() { docker compose "$@"; }
+SUDO=""
+COMPOSE=""
+
+# Everything that touches the install directory or Docker runs through the same
+# privilege as the eventual `compose up`, so a tool that exists for one user but
+# not the other is caught here rather than half-way through the install.
+resolve_privileges() {
+  local parent
+  parent="$(dirname "$INSTALL_DIR")"
+  if [ "$(id -u)" -eq 0 ]; then return; fi
+  if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then return; fi
+  if [ -w "$parent" ]; then return; fi
+  need sudo || die "$INSTALL_DIR is not writable and sudo is unavailable. Re-run as root, or pass --dir <somewhere writable>."
+  SUDO="sudo"
+  info "Using sudo for $INSTALL_DIR and for Docker"
+}
+
+# Resolve Compose *as the user that will actually run it*.
+#
+# Two traps this avoids:
+#
+#  1. The v2 plugin is often installed per-user under ~/.docker/cli-plugins/, so
+#     `docker compose` can work for you and not for root. Checking it
+#     unprivileged and then running it with sudo is how you end up with docker
+#     printing its own help and "unknown shorthand flag: 'd' in -d".
+#  2. Compose v1 (the standalone Python `docker-compose`, EOL since July 2023)
+#     cannot read these files at all. They follow the Compose Specification —
+#     no `version:` key, and a top-level `name:`. v1 treats a file without
+#     `version:` as the ancient v1 schema, where every top-level key is a
+#     service name, so it misreads `services:` and `name:` as containers and
+#     fails in a thoroughly confusing way. Better to say so up front.
+
+compose_major() { # compose_major <command...>  -> prints the major version, or nothing
+  "$@" version 2>/dev/null | grep -oiE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -1 | tr -d 'vV' | cut -d. -f1
+}
+
+resolve_compose() {
+  local found_v1="" found_unprivileged=""
+
+  for candidate in "$SUDO docker compose" "$SUDO docker-compose"; do
+    # shellcheck disable=SC2086
+    local major; major="$(compose_major $candidate)"
+    [ -n "$major" ] || continue
+    if [ "$major" -ge 2 ] 2>/dev/null; then
+      COMPOSE="$candidate"
+      return
+    fi
+    found_v1="$candidate"
+  done
+
+  # Nothing usable with the privileges we will actually run under. Work out why
+  # so the message names the real problem.
+  if [ -n "$SUDO" ]; then
+    for candidate in "docker compose" "docker-compose"; do
+      # shellcheck disable=SC2086
+      local major; major="$(compose_major $candidate)"
+      if [ -n "$major" ] && [ "$major" -ge 2 ] 2>/dev/null; then
+        found_unprivileged="$candidate"
+        break
+      fi
+    done
+  fi
+
+  if [ -n "$found_unprivileged" ]; then
+    die "Docker Compose works for $(id -un) but not for root, so it is almost certainly installed under ~/.docker/cli-plugins — and this installer needs it as root.
+
+Make it system-wide, then re-run:
+    sudo apt-get install -y docker-compose-plugin      # Debian / Ubuntu
+    sudo dnf install -y docker-compose-plugin          # Fedora / RHEL
+
+Or copy the plugin where root can see it:
+    sudo mkdir -p /usr/local/lib/docker/cli-plugins
+    sudo cp ~/.docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/"
+  fi
+
+  if [ -n "$found_v1" ]; then
+    die "Found Compose v1 ($found_v1), which cannot read these files.
+
+They follow the Compose Specification — no \`version:\` key — and v1 misreads such
+a file as the 2015 schema, treating every top-level key as a service name.
+Compose v1 reached end of life in July 2023.
+
+Install v2 alongside or instead of it:
+    sudo apt-get install -y docker-compose-plugin      # Debian / Ubuntu
+    sudo dnf install -y docker-compose-plugin          # Fedora / RHEL
+Then check with:  docker compose version"
+  fi
+
+  die "Docker Compose is not installed. Add it with:
+    sudo apt-get install -y docker-compose-plugin      # Debian / Ubuntu
+    sudo dnf install -y docker-compose-plugin          # Fedora / RHEL
+Or see https://docs.docker.com/compose/install/"
+}
 
 check_prereqs() {
   need curl || need wget || die "Neither curl nor wget is available. Install one and try again."
@@ -154,26 +246,11 @@ check_prereqs() {
   if ! need docker; then
     die "Docker is not installed. Install it first:  curl -fsSL https://get.docker.com | sh"
   fi
-  if ! docker info >/dev/null 2>&1; then
+  if ! $SUDO docker info >/dev/null 2>&1; then
     die "Docker is installed but not reachable. Start it (systemctl start docker), or add your user to the docker group and log back in."
   fi
-  if ! docker compose version >/dev/null 2>&1; then
-    die "The Docker Compose plugin is missing. Install docker-compose-plugin from your package manager."
-  fi
-  ok "Docker $(docker version --format '{{.Server.Version}}' 2>/dev/null || echo present) is ready"
-}
-
-SUDO=""
-ensure_writable() {
-  local parent
-  parent="$(dirname "$INSTALL_DIR")"
-  if [ -d "$INSTALL_DIR" ] && [ -w "$INSTALL_DIR" ]; then return; fi
-  if [ -w "$parent" ]; then return; fi
-  if [ "$(id -u)" -ne 0 ]; then
-    need sudo || die "$INSTALL_DIR is not writable and sudo is unavailable. Re-run as root or pass --dir <somewhere writable>."
-    SUDO="sudo"
-    info "Using sudo to write to $INSTALL_DIR"
-  fi
+  resolve_compose
+  ok "Docker $($SUDO docker version --format '{{.Server.Version}}' 2>/dev/null || echo present) with $(echo "$COMPOSE" | sed 's/^sudo //') is ready"
 }
 
 fetch() { # fetch <url> <destination>
@@ -398,12 +475,15 @@ EOF
 
 launch() {
   cd "$INSTALL_DIR"
-  # docker compose reads .env itself, including COMPOSE_FILE, so the right
-  # overlay is selected without repeating it here.
+  # Compose reads .env itself, including COMPOSE_FILE, so the right overlay is
+  # selected without repeating it here.
   info "Pulling images"
-  $SUDO docker compose pull 2>&1 | tail -3 || warn "Some images could not be pulled."
+  $COMPOSE pull 2>&1 | tail -3 || warn "Some images could not be pulled."
   info "Starting the stack"
-  $SUDO docker compose up -d --remove-orphans
+  if ! $COMPOSE up -d --remove-orphans; then
+    die "The stack did not start. Inspect it with:
+    cd $INSTALL_DIR && $COMPOSE logs"
+  fi
 }
 
 wait_for_health() {
@@ -420,7 +500,7 @@ wait_for_health() {
     attempts=$((attempts + 1))
   done
   printf '\n'
-  warn "It has not answered yet. Check the logs with:  cd $INSTALL_DIR && docker compose logs -f"
+  warn "It has not answered yet. Check the logs with:  cd $INSTALL_DIR && $COMPOSE logs -f"
   return 1
 }
 
@@ -452,11 +532,12 @@ summary() {
   say "  ${DIM}Next: open the admin console, create a stream, and paste the key into"
   say "  OBS under Settings → Stream with the server URL above.${RESET}"
   say ""
+  local c; c="$(echo "$COMPOSE" | sed 's/^sudo /sudo /')"
   say "  ${DIM}Manage it with:${RESET}"
   say "    cd $INSTALL_DIR"
-  say "    docker compose ps          ${DIM}# what is running${RESET}"
-  say "    docker compose logs -f     ${DIM}# follow the logs${RESET}"
-  say "    docker compose down        ${DIM}# stop everything${RESET}"
+  say "    $c ps          ${DIM}# what is running${RESET}"
+  say "    $c logs -f     ${DIM}# follow the logs${RESET}"
+  say "    $c down        ${DIM}# stop everything${RESET}"
   say ""
   if [ "$MODE" = "tls" ]; then
     say "  ${DIM}Certificates are issued automatically on first request; the very first"
@@ -468,8 +549,8 @@ summary() {
 # --------------------------------------------------------------------- main
 
 banner
+resolve_privileges
 check_prereqs
-ensure_writable
 resolve_version
 download_bundle
 configure
