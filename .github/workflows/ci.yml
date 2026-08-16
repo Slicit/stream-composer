@@ -47,6 +47,9 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
           shellcheck --severity=warning install.sh scripts/*.sh server/docker-entrypoint.sh
 
+      - name: Installer unit tests
+        run: ./scripts/test-install.sh
+
   compose:
     name: Compose files
     runs-on: ubuntu-latest
