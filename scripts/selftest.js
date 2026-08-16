@@ -31,6 +31,7 @@ function parseArgs(argv) {
     else if (arg === '--layout') out.layout = argv[++i];
     else if (arg === '--out') out.out = argv[++i];
     else if (arg === '--seconds') out.seconds = parseInt(argv[++i], 10);
+    else if (arg === '--labels') out.labels = argv[++i];
     else if (arg === '--encode') out.encode = true;
     else if (arg === '--help' || arg === '-h') {
       process.stdout.write(require('fs').readFileSync(__filename, 'utf8').split('*/')[0].replace(/^[\s\S]*?\/\*\*/, ''));
@@ -109,9 +110,13 @@ async function main() {
   await encoder.probe();
 
   const comp = store.get().composition;
+  // `label` is what gets burnt into the cell — the stream's nickname when it
+  // has one, otherwise its name. Override with --labels "Alice,Bob,Studio C".
+  const custom = opts.labels ? opts.labels.split(',') : [];
   const sources = Array.from({ length: opts.count }, (_, i) => ({
     key: `cam_${i + 1}`,
     name: `Camera ${i + 1}`,
+    label: (custom[i] || '').trim() || `Camera ${i + 1}`,
     path: `live/cam_${i + 1}`,
     hasAudio: false,
   }));
