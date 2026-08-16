@@ -19,6 +19,23 @@ RUN apk add --no-cache \
       curl \
     && rm -rf /var/cache/apk/*
 
+# VA-API drivers, so passing `--device /dev/dri` actually yields hardware
+# encoding rather than an encoder that lists itself and then fails to start.
+# ffmpeg does not bundle these; they are separate packages.
+#   libva-intel-driver  i965 — Intel up to Ivy Bridge (Gen7)
+#   intel-media-driver  iHD  — Intel Broadwell (Gen8) and newer
+#   mesa-va-gallium     AMD
+# x86 only: none of these exist for arm64, and the image is built for both.
+# Failures are tolerated so a missing package never breaks the build — the
+# encoder probe runs a real test encode at boot and reports the truth either way.
+ARG TARGETARCH
+RUN if [ "${TARGETARCH:-amd64}" = "amd64" ]; then \
+      apk add --no-cache libva libva-utils libva-intel-driver intel-media-driver mesa-va-gallium \
+        || apk add --no-cache libva libva-utils libva-intel-driver \
+        || echo "VA-API drivers unavailable; hardware encoding will report itself as unusable"; \
+    fi \
+    && rm -rf /var/cache/apk/*
+
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
