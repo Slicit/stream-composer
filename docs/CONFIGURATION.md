@@ -172,6 +172,20 @@ its cell** under Composition, and their size set with **Label size**.
 **Show ffmpeg command** prints the exact command line for the current
 configuration — useful for a bug report, or for reproducing the pipeline by hand.
 
+### The viewer's own settings
+
+Two things are chosen by each viewer in their own browser rather than by an
+administrator, and remembered per user in `localStorage`:
+
+- **Cinema mode** — the default. The picture takes nearly the whole window and
+  everything but the audio picker is hidden. The **Cinema** button in the header
+  turns it off, and that choice sticks for that account on that browser. Two
+  people sharing a machine keep separate preferences; clearing site data resets
+  to cinema.
+- **Which source to listen to** — everything starts muted, by design.
+
+![Cinema mode: the composed grid filling the window, with a single row of audio controls beneath it](screenshots/viewer-cinema.png)
+
 ### Users
 
 ![The Users tab: three accounts with role selectors, last sign-in, and password and delete actions](screenshots/admin-users.png)
