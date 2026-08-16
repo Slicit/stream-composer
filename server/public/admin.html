@@ -92,6 +92,22 @@
           </label>
         </div>
         <p class="hint" id="mode-note" style="margin:.75rem 0 0;"></p>
+
+        <div id="fallback-row" style="display:none; margin-top:1rem;">
+          <div class="section-title">When a source cannot be played over WebRTC</div>
+          <label class="field" style="max-width:34rem;">
+            <select id="fallback-select">
+              <option value="hls">Play that source over HLS instead (recommended)</option>
+              <option value="warn">Leave the cell empty and say what to change</option>
+            </select>
+            <span class="hint">
+              Browsers refuse H.264 containing B-frames over WebRTC, which is what
+              OBS sends unless Tune is set to zerolatency. HLS carries it happily —
+              that cell simply runs a couple of seconds behind the others, and is
+              badged as such. Nothing is re-encoded either way.
+            </span>
+          </label>
+        </div>
       </div>
 
       <div class="grid-2">
