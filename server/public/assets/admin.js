@@ -315,6 +315,21 @@ function renderOrderList() {
   );
 }
 
+/**
+ * Reflect the composition mode: check the right option, grey out the settings
+ * the encoder owns, and say what the choice means right now.
+ */
+function applyModeUi() {
+  const mode = admin.composition.mode === 'web' ? 'web' : 'server';
+  for (const radio of document.querySelectorAll('#mode-choice input[name="mode"]')) {
+    radio.checked = radio.value === mode;
+  }
+  $('#panel-composition').classList.toggle('is-not-encoding', mode === 'web');
+  $('#mode-note').textContent = mode === 'web'
+    ? 'No encoder runs. Resolution, bitrate and encoder settings below are kept but unused; the layout, gutter, background and captions still apply, drawn by the player. Viewers must be able to reach each source, so "Show individual sources to viewers" cannot hide them in this mode.'
+    : 'ffmpeg is composing and publishing one programme stream.';
+}
+
 function fillCompForm() {
   const form = $('#comp-form');
   const c = admin.composition;
@@ -333,6 +348,25 @@ function fillCompForm() {
     ),
   );
   select.value = c.encoder;
+  applyModeUi();
+}
+
+// Switching mode is a big enough change that it applies on the spot rather
+// than waiting for Save — and it takes effect within a poll either way.
+for (const radio of document.querySelectorAll('#mode-choice input[name="mode"]')) {
+  radio.addEventListener('change', async (event) => {
+    const mode = event.currentTarget.value;
+    try {
+      const data = await api('/api/admin/composition', { method: 'PUT', body: { mode } });
+      admin.composition = data.composition;
+      applyModeUi();
+      toast(mode === 'web'
+        ? 'Composing in the browser. The encoder has stopped.'
+        : 'Composing on the server. The encoder is starting.', 'good');
+    } catch (_) {
+      applyModeUi(); // put the radio back where it was
+    }
+  });
 }
 
 $('#comp-form').addEventListener('submit', async (event) => {
@@ -499,6 +533,7 @@ function renderServer() {
   const st = admin.status;
   if (!st) return;
   const c = st.compositor;
+  const web = c.mode === 'web';
   const host = st.host;
   const cpu = host.cpuPercent;
   const mem = host.memory;
@@ -520,15 +555,17 @@ function renderServer() {
     },
     {
       label: 'Encoder',
-      value: c.running ? String(c.progress.fps) : 'idle',
-      unit: c.running ? 'fps' : '',
-      sub: c.running ? `${c.encoder} · speed ${c.progress.speed}×` : c.enabled ? 'waiting for sources' : 'composition off',
+      value: web ? 'none' : c.running ? String(c.progress.fps) : 'idle',
+      unit: !web && c.running ? 'fps' : '',
+      sub: web
+        ? 'composed in the browser'
+        : c.running ? `${c.encoder} · speed ${c.progress.speed}×` : c.enabled ? 'waiting for sources' : 'composition off',
     },
     {
-      label: 'Output',
-      value: c.running ? formatBitrate(c.progress.bitrateKbps) : '—',
-      unit: c.running ? bitrateUnit(c.progress.bitrateKbps) : '',
-      sub: `${c.sources.length} on air · ${c.restarts} restarts`,
+      label: web ? 'Sources' : 'Output',
+      value: web ? String(c.sources.length) : c.running ? formatBitrate(c.progress.bitrateKbps) : '—',
+      unit: !web && c.running ? bitrateUnit(c.progress.bitrateKbps) : '',
+      sub: web ? 'sent to each viewer directly' : `${c.sources.length} on air · ${c.restarts} restarts`,
     },
     {
       label: 'Uptime',
@@ -549,12 +586,18 @@ function renderServer() {
   );
 
   const chip = $('#header-status');
-  const live = c.running;
+  const live = web ? c.sources.length > 0 : c.running;
   chip.className = `status ${live ? 'is-live' : c.enabled ? 'is-warn' : 'is-idle'}`;
-  chip.replaceChildren(h('span', { class: 'dot' }), document.createTextNode(live ? 'Encoding' : c.enabled ? 'Standby' : 'Composition off'));
+  chip.replaceChildren(
+    h('span', { class: 'dot' }),
+    document.createTextNode(
+      !c.enabled ? 'Composition off' : web ? (live ? 'On air (web)' : 'Standby') : live ? 'Encoding' : 'Standby',
+    ),
+  );
 
   const rows = [
-    ['Programme path', st.compositor.output.path],
+    ['Composition', web ? 'in the browser — nothing re-encoded' : 'on the server'],
+    ['Programme path', web ? '—' : st.compositor.output.path],
     ['MediaMTX', st.mediamtx.reachable ? 'reachable' : `unreachable — ${st.mediamtx.lastError || 'no detail'}`],
     ['Programme viewers', String(st.program.readers ?? 0)],
     ['Last encoder exit', c.lastExit ? `code ${c.lastExit.code ?? '—'} ${c.lastExit.signal || ''} at ${new Date(c.lastExit.at).toLocaleTimeString()}` : 'never'],

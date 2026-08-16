@@ -316,6 +316,55 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
   background: #000;
 }
 
+/* --------------------------------- composition in the browser (web mode) ---
+ *
+ * The server sends the cells it would have encoded; each source is placed into
+ * its cell as a percentage of the composed canvas, so the arrangement is
+ * identical to the encoded one at any player size.
+ */
+
+.web-grid {
+  position: absolute;
+  inset: 0;
+  container-type: size;
+  background: #000;
+}
+
+.web-cell {
+  position: absolute;
+  overflow: hidden;
+  background: #000;
+}
+
+.web-cell video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The caption drawtext would have burnt in: white, black outline, bottom
+ * centre. Sized in cqh so it tracks the canvas rather than the viewport. */
+.web-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 2%;
+  transform: translateX(-50%);
+  max-width: 92%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: none;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.12em #000;
+  text-shadow: 0 0 0.25em rgba(0, 0, 0, 0.9);
+}
+
+/* The programme <video> is unused while the browser composes. */
+.player-shell.is-web-composed > #program-video { display: none; }
+
 .player-overlay {
   position: absolute;
   inset: auto 0 0 0;
@@ -614,4 +663,47 @@ code, .mono { font-family: var(--mono); font-size: 0.8rem; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ------------------------------------------ composition mode chooser (admin) */
+
+.mode-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.mode-option {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.mode-option:hover { border-color: var(--accent); }
+
+.mode-option:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+.mode-option input[type='radio'] {
+  width: auto;
+  flex: none;
+  margin-top: 0.2rem;
+}
+
+.mode-body { display: flex; flex-direction: column; gap: 0.3rem; }
+.mode-name { font-weight: 600; }
+.mode-detail { font-size: 0.8rem; color: var(--ink-muted); line-height: 1.45; }
+
+/* Settings the encoder owns are meaningless when the browser composes. */
+.is-not-encoding .encoder-only {
+  opacity: 0.45;
+  pointer-events: none;
 }

@@ -13,6 +13,8 @@ const app = {
   audio: null, // WhepClient for the selected source's audio
   audioKey: null, // null = everything muted (the default)
   previews: new Map(), // streamKey -> WhepClient
+  tiles: new Map(), // web composition: playbackId -> { client, video, wrap }
+  tileSignature: '', // the grid we last built, so polling does not rebuild it
   mode: 'webrtc',
   hls: null,
   stats: null,
@@ -43,8 +45,14 @@ function setPlayerMessage(title, detail, spinner = false) {
   );
 }
 
+/** Is the grid assembled here in the browser rather than by the server? */
+function composingHere() {
+  return !!(app.state && app.state.program && app.state.program.mode === 'web');
+}
+
 function startProgram() {
   stopProgram();
+  if (composingHere()) return startWebGrid();
   if (app.mode === 'hls') return startHls();
 
   const client = new WhepClient(`${WEBRTC}/${app.state.program.path}/whep`, { video: true, audio: false });
@@ -81,6 +89,7 @@ function stopProgram() {
     app.program.stop();
     app.program = null;
   }
+  stopWebGrid();
   if (app.hls) {
     app.hls.destroy();
     app.hls = null;
@@ -89,6 +98,156 @@ function stopProgram() {
   video.srcObject = null;
   video.removeAttribute('src');
   app.stats = null;
+}
+
+// ------------------------------------------------- composition in the browser
+//
+// Web composition: there is no programme stream. The player subscribes to each
+// source and positions it into the cell the *server* computed, so the picture
+// matches what the encoder would have produced — same layout rules, same order,
+// same captions — without anything being re-encoded.
+
+function gridHost() {
+  let host = $('#web-grid');
+  if (!host) {
+    host = h('div', { id: 'web-grid', class: 'web-grid' });
+    // Behind the message and overlay, which are later siblings.
+    $('#player-shell').insertBefore(host, $('#player-stats'));
+  }
+  return host;
+}
+
+/** The on-air set and the geometry, so polling only rebuilds on a real change. */
+function gridSignature() {
+  const layout = app.state.layout;
+  const onAir = app.state.onAir || [];
+  if (!layout || !layout.cells) return 'idle';
+  return JSON.stringify([
+    onAir.map((s) => [s.key, s.name]),
+    layout.cells.map((c) => [c.x, c.y, c.w, c.h]),
+    [layout.width, layout.height],
+    app.state.program.labels,
+    app.state.program.labelSize,
+  ]);
+}
+
+function stopWebGrid() {
+  $('#player-shell').classList.remove('is-web-composed');
+  for (const tile of app.tiles.values()) {
+    tile.client.stop();
+    tile.video.srcObject = null;
+  }
+  app.tiles.clear();
+  app.tileSignature = '';
+  const host = $('#web-grid');
+  if (host) host.replaceChildren();
+}
+
+function startWebGrid() {
+  const layout = app.state.layout;
+  const onAir = (app.state.onAir || []).filter((s) => s.key);
+  const host = gridHost();
+  const program = app.state.program;
+
+  host.style.background = program.background || '#000';
+  $('#player-shell').classList.add('is-web-composed');
+
+  if (!layout || !layout.cells || onAir.length === 0) {
+    stopWebGrid();
+    setPlayerMessage('Nothing on air', 'Start streaming from OBS and the grid appears here automatically.');
+    renderProgramStatus();
+    return;
+  }
+
+  // Keep the clients that are still on air in their existing cell; a source
+  // that merely moved must not be torn down and reconnected.
+  const wanted = new Set(onAir.map((s) => s.key));
+  for (const [key, tile] of [...app.tiles]) {
+    if (!wanted.has(key)) {
+      tile.client.stop();
+      app.tiles.delete(key);
+    }
+  }
+
+  const gap = Number(program.gapPx) || 0;
+  const children = onAir.map((source, i) => {
+    const cell = layout.cells[i];
+    if (!cell) return null;
+
+    let tile = app.tiles.get(source.key);
+    if (!tile) {
+      const video = h('video', { playsinline: true, autoplay: true, muted: true });
+      const client = new WhepClient(`${WEBRTC}/s/${source.key}/whep`, { video: true, audio: false });
+      client.addEventListener('track', () => {
+        video.srcObject = client.stream;
+        video.play().catch(() => {
+          /* autoplay policy — the overlay play button covers this */
+        });
+      });
+      client.addEventListener('state', () => renderProgramStatus());
+      client.addEventListener('stats', () => renderPlayerStats());
+      client.start();
+      tile = { client, video, wrap: h('div', { class: 'web-cell' }, [video]) };
+      app.tiles.set(source.key, tile);
+    }
+
+    // Percentages of the composed canvas, so the grid scales with the player
+    // and stays identical to the encoded arrangement at any size.
+    const pct = (v, total) => `${(v / total) * 100}%`;
+    tile.wrap.style.left = pct(cell.x, layout.width);
+    tile.wrap.style.top = pct(cell.y, layout.height);
+    tile.wrap.style.width = pct(cell.w, layout.width);
+    tile.wrap.style.height = pct(cell.h, layout.height);
+
+    // The caption the encoder would have burnt in, drawn as text instead.
+    const existingCaption = tile.wrap.querySelector('.web-caption');
+    if (existingCaption) existingCaption.remove();
+    if (program.labels && source.name) {
+      tile.wrap.appendChild(
+        h('span', {
+          class: 'web-caption',
+          text: source.name,
+          // Scale the caption the way drawtext does: relative to the canvas,
+          // so it looks the same whatever size the player is on screen.
+          style: `font-size:${((program.labelSize || 22) / layout.height) * 100}cqh`,
+        }),
+      );
+    }
+    return tile.wrap;
+  }).filter(Boolean);
+
+  host.style.gap = `${gap}px`;
+  host.replaceChildren(...children);
+  setPlayerMessage(null);
+  renderProgramStatus();
+  renderPlayerStats();
+}
+
+/** Called on every poll; rebuilds only when the grid actually changed. */
+function syncWebGrid() {
+  const signature = gridSignature();
+  if (signature === app.tileSignature) return;
+  app.tileSignature = signature;
+  startWebGrid();
+}
+
+/** Aggregate of every tile, so the stats read like one picture. */
+function webGridStats() {
+  const tiles = [...app.tiles.values()].map((t) => t.client.lastStats).filter(Boolean);
+  if (tiles.length === 0) return null;
+  const sum = (f) => tiles.reduce((a, s) => a + (Number(s[f]) || 0), 0);
+  const rtts = tiles.map((s) => s.rttMs).filter((v) => v != null);
+  return {
+    width: app.state.layout ? app.state.layout.width : 0,
+    height: app.state.layout ? app.state.layout.height : 0,
+    fps: Math.round(sum('fps') / tiles.length),
+    kbps: Math.round(sum('kbps')),
+    codec: tiles[0].codec,
+    rttMs: rtts.length ? Math.max(...rtts) : null,
+    jitterMs: Math.round(sum('jitterMs') / tiles.length),
+    packetsLost: sum('packetsLost'),
+    sources: tiles.length,
+  };
 }
 
 /** hls.js ships as a UMD bundle, so it goes in through a script tag, not import(). */
@@ -325,6 +484,19 @@ function renderProgramStatus() {
   } else if (!p.enabled) {
     kind = 'warn';
     label = 'Composition off';
+  } else if (composingHere()) {
+    const tiles = [...app.tiles.values()];
+    const playing = tiles.filter((t) => t.client.state === 'playing').length;
+    if (tiles.length === 0) {
+      kind = 'idle';
+      label = 'Nothing on air';
+    } else if (playing === tiles.length) {
+      kind = 'live';
+      label = 'Live';
+    } else {
+      kind = 'warn';
+      label = `${playing} of ${tiles.length} connected`;
+    }
   } else if (app.program && app.program.state === 'playing') {
     kind = 'live';
     label = 'Live';
@@ -347,22 +519,27 @@ function renderProgramStatus() {
 
 function renderTiles() {
   const s = app.state;
-  const stats = app.stats || {};
+  const web = composingHere();
+  const stats = (web ? webGridStats() : app.stats) || {};
   const onAir = (s.onAir || []).length;
-  const kbps = stats.kbps || s.program.liveBitrateKbps || 0;
+  const kbps = stats.kbps || (web ? 0 : s.program.liveBitrateKbps) || 0;
 
   const tiles = [
     { label: 'Sources on air', value: String(onAir), sub: `${(s.streams || []).length} configured` },
     {
-      label: 'Output',
-      value: `${s.program.width}×${s.program.height}`,
-      sub: `${s.program.fps} fps · ${s.program.encoder || '—'}`,
+      label: web ? 'Composed' : 'Output',
+      value: web ? 'in your browser' : `${s.program.width}×${s.program.height}`,
+      sub: web ? 'nothing re-encoded' : `${s.program.fps} fps · ${s.program.encoder || '—'}`,
     },
     {
       label: 'Received',
       value: formatBitrate(kbps),
       unit: bitrateUnit(kbps),
-      sub: stats.codec ? stats.codec.toUpperCase() : 'target ' + formatBitrate(s.program.bitrateKbps) + ' ' + bitrateUnit(s.program.bitrateKbps),
+      sub: stats.codec
+        ? `${stats.codec.toUpperCase()}${web ? ` · ${onAir} streams` : ''}`
+        : web
+          ? 'across every source'
+          : 'target ' + formatBitrate(s.program.bitrateKbps) + ' ' + bitrateUnit(s.program.bitrateKbps),
     },
     {
       label: 'Round trip',
@@ -385,7 +562,7 @@ function renderTiles() {
 
 function renderPlayerStats() {
   const box = $('#player-stats');
-  const s = app.stats;
+  const s = composingHere() ? webGridStats() : app.stats;
   if (!s) {
     box.textContent = '';
     $('#overlay-readout').textContent = '';
@@ -399,19 +576,31 @@ function renderPlayerStats() {
     h('div', { html: `round trip <b>${s.rttMs != null ? `${s.rttMs} ms` : '—'}</b>` }),
     h('div', { html: `jitter <b>${s.jitterMs} ms</b> · lost <b>${s.packetsLost}</b>` }),
   );
-  $('#overlay-readout').textContent = `${s.width}×${s.height} · ${s.fps} fps · ${s.kbps} kb/s`;
+  $('#overlay-readout').textContent = s.sources
+    ? `${s.sources} sources · ${s.fps} fps · ${s.kbps} kb/s`
+    : `${s.width}×${s.height} · ${s.fps} fps · ${s.kbps} kb/s`;
 }
 
 function renderProgramInfo() {
   const s = app.state;
   const dl = $('#program-info');
-  const rows = [
-    ['Resolution', `${s.program.width}×${s.program.height}`],
-    ['Frame rate', `${s.program.fps} fps`],
-    ['Target bitrate', `${formatBitrate(s.program.bitrateKbps)} ${bitrateUnit(s.program.bitrateKbps)}`],
-    ['Encoder', s.program.encoder || 'idle'],
-    ['Viewers', String(s.program.readers ?? 0)],
-  ];
+  // HLS packages the programme; in web mode there is no programme to package.
+  $('#playback-picker').style.display = composingHere() ? 'none' : '';
+  $('#playback-web-note').style.display = composingHere() ? '' : 'none';
+  const rows = composingHere()
+    ? [
+      ['Composed', 'in your browser'],
+      ['Arrangement', `${s.program.width}×${s.program.height}`],
+      ['Server encoding', 'none'],
+      ['Streams to you', String((s.onAir || []).length)],
+    ]
+    : [
+      ['Resolution', `${s.program.width}×${s.program.height}`],
+      ['Frame rate', `${s.program.fps} fps`],
+      ['Target bitrate', `${formatBitrate(s.program.bitrateKbps)} ${bitrateUnit(s.program.bitrateKbps)}`],
+      ['Encoder', s.program.encoder || 'idle'],
+      ['Viewers', String(s.program.readers ?? 0)],
+    ];
   dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })]));
 }
 
@@ -464,6 +653,7 @@ function renderUserArea() {
 // --------------------------------------------------------------------- poll
 
 let lastSignature = '';
+let wasComposingHere = false;
 
 async function refresh() {
   let next;
@@ -493,7 +683,15 @@ async function refresh() {
     if (app.audioKey && !next.streams.some((s) => s.key === app.audioKey && s.live)) selectAudio(null);
   }
 
-  if (first) startProgram();
+  if (first) {
+    startProgram();
+  } else if (composingHere()) {
+    syncWebGrid();
+  } else if (wasComposingHere !== composingHere()) {
+    // The operator switched modes while we were watching.
+    startProgram();
+  }
+  wasComposingHere = composingHere();
 }
 
 // --------------------------------------------------------------------- boot
@@ -505,14 +703,15 @@ function wireControls() {
   $('#btn-fullscreen').appendChild(icon('expand'));
 
   $('#btn-play').addEventListener('click', () => {
-    const video = programVideo();
-    if (video.paused) {
-      video.play().catch(() => {});
-      $('#btn-play').replaceChildren(icon('pause'));
-    } else {
-      video.pause();
-      $('#btn-play').replaceChildren(icon('play'));
+    // In web mode there are several videos, and they pause and resume together.
+    const videos = composingHere() ? [...app.tiles.values()].map((t) => t.video) : [programVideo()];
+    if (videos.length === 0) return;
+    const paused = videos.every((v) => v.paused);
+    for (const v of videos) {
+      if (paused) v.play().catch(() => {});
+      else v.pause();
     }
+    $('#btn-play').replaceChildren(icon(paused ? 'pause' : 'play'));
   });
 
   programVideo().addEventListener('play', () => $('#btn-play').replaceChildren(icon('pause')));
