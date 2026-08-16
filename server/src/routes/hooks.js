@@ -30,16 +30,52 @@ const log = logger.scope('auth-hook');
 
 const router = express.Router();
 
+function isLocalAddress(ip) {
+  const a = String(ip || '').replace(/^::ffff:/, '');
+  return (
+    a === '127.0.0.1' ||
+    a === '::1' ||
+    a.startsWith('10.') ||
+    a.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(a)
+  );
+}
+
+/**
+ * RTSP authenticates by challenge: the client always asks once with no
+ * credentials, gets a 401, and immediately asks again with them. That first
+ * leg reaches this hook as a credential-less denial, so the compositor reading
+ * its own sources — entirely normal, several times a minute — used to write a
+ * WARN line every time. Real problems were then buried in false alarms.
+ *
+ * A challenge leg is only assumed when all three hold: RTSP, no credentials
+ * offered at all, and a caller inside the stack. Anything else, including an
+ * anonymous read arriving on a published ingest port, still warns.
+ */
+function isAuthChallenge(body) {
+  return (
+    String(body.protocol || '').toLowerCase() === 'rtsp' &&
+    !body.user &&
+    !body.password &&
+    isLocalAddress(body.ip)
+  );
+}
+
 // Rate-limit noisy denials so a scanner cannot fill the disk with log lines.
 const denyLog = new Map();
 function logDenial(reason, body) {
+  const detail = { reason, action: body.action, path: body.path, ip: body.ip, protocol: body.protocol };
+  if (isAuthChallenge(body)) {
+    log.debug('denied, awaiting credentials', detail);
+    return;
+  }
   const key = `${body.action}:${body.path}:${reason}`;
   const now = Date.now();
   const last = denyLog.get(key) || 0;
   if (now - last < 10000) return;
   denyLog.set(key, now);
   if (denyLog.size > 500) denyLog.clear();
-  log.warn('denied', { reason, action: body.action, path: body.path, ip: body.ip, protocol: body.protocol });
+  log.warn('denied', detail);
 }
 
 function safeEqual(a, b) {
@@ -140,5 +176,5 @@ function handle(req, res) {
 
 router.post('/:token/mediamtx/auth', verifyHookToken, express.json({ limit: '16kb' }), handle);
 
-module.exports = { router, decide };
+module.exports = { router, decide, logDenial };
 module.exports.store = store;
