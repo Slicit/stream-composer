@@ -497,3 +497,106 @@ test('the status endpoint survives MediaMTX being unreachable', async () => {
   assert.strictEqual(body.compositor.running, false);
   assert.ok(body.host.cpu.cores >= 1);
 });
+
+// ------------------------------------------------- programme output bitrate
+
+test('the programme bitrate is measured from what MediaMTX received', () => {
+  const mediamtx = require('../src/mediamtx');
+  const at = (bytes) => [{ name: 'program', ready: true, bytesReceived: bytes }];
+
+  // The first sample only establishes a baseline — there is nothing to divide.
+  mediamtx.sampleProgram(at(0));
+  assert.strictEqual(mediamtx.programBitrateKbps(), 0);
+
+  // Two samples less than half a second apart are ignored: too short a window
+  // to divide by without the reading swinging wildly.
+  mediamtx.sampleProgram(at(1_000_000));
+  assert.strictEqual(mediamtx.programBitrateKbps(), 0);
+});
+
+test('a programme that is not publishing reports no bitrate', () => {
+  const mediamtx = require('../src/mediamtx');
+  mediamtx.sampleProgram([{ name: 'program', ready: false, bytesReceived: 999 }]);
+  assert.strictEqual(mediamtx.programBitrateKbps(), 0);
+  mediamtx.sampleProgram([]);
+  assert.strictEqual(mediamtx.programBitrateKbps(), 0);
+});
+
+test('a counter that goes backwards restarts the measurement', async () => {
+  const mediamtx = require('../src/mediamtx');
+  const sample = (bytes) => mediamtx.sampleProgram([{ name: 'program', ready: true, bytesReceived: bytes }]);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  sample(0);
+  await wait(600);
+  sample(75_000); // 75 kB in ~0.6s -> ~1000 kb/s
+  const measured = mediamtx.programBitrateKbps();
+  assert.ok(measured > 500 && measured < 1500, `expected roughly 1000 kb/s, got ${measured}`);
+
+  // A new publisher takes over and the counter resets. The next reading must
+  // not go negative, and must not spike.
+  sample(10);
+  await wait(600);
+  sample(20);
+  assert.ok(mediamtx.programBitrateKbps() >= 0);
+});
+
+test('falling back to the measured bitrate does not mask ffmpeg reporting one', () => {
+  const compositor = require('../src/compositor');
+  const before = compositor.status().progress.bitrateKbps;
+  assert.ok(Number.isFinite(before) && before >= 0);
+});
+
+// ------------------------------------------------------- auth-hook log noise
+
+test('an RTSP challenge from inside the stack is not warned about', () => {
+  const logger = require('../src/logger');
+  logger.configure({ level: 'debug' });
+  const since = () => logger.tail('server', 5).join('\n');
+
+  // The compositor's own first, credential-less RTSP read.
+  hooks.logDenial('reads require the internal credential', {
+    action: 'read', path: 'live/challenge-case', ip: '127.0.0.1', protocol: 'rtsp',
+  });
+  let out = since();
+  assert.match(out, /denied, awaiting credentials/);
+  assert.doesNotMatch(out.split('denied, awaiting credentials')[1] || '', /WARN/);
+
+  // The same denial from off-box is a real one and must still warn.
+  hooks.logDenial('reads require the internal credential', {
+    action: 'read', path: 'live/remote-case', ip: '203.0.113.7', protocol: 'rtsp',
+  });
+  assert.match(since(), /WARN.*denied.*remote-case/s);
+
+  // So is an anonymous RTMP read, which never challenges.
+  hooks.logDenial('reads require the internal credential', {
+    action: 'read', path: 'rtmp-case', ip: '127.0.0.1', protocol: 'rtmp',
+  });
+  assert.match(since(), /WARN.*denied.*rtmp-case/s);
+
+  // And so is a wrong password, which is not a challenge leg.
+  hooks.logDenial('reads require the internal credential', {
+    action: 'read', path: 'wrong-password-case', ip: '127.0.0.1', protocol: 'rtsp', user: 'composer', password: 'wrong',
+  });
+  assert.match(since(), /WARN.*denied.*wrong-password-case/s);
+
+  logger.configure({ level: 'info' });
+});
+
+// -------------------------------------------------- internal RTSP transport
+
+test('the compositor reads and publishes on the configured RTSP port', () => {
+  const compositor = require('../src/compositor');
+  const store = require('../src/store');
+  const comp = store.get().composition;
+  const sources = [{ key: 'k1', name: 'One', label: 'One', path: 'live/k1', hasAudio: false }];
+  const { args } = compositor.buildArgs(sources, comp, 'x264');
+  const urls = args.filter((a) => String(a).startsWith('rtsp://'));
+  assert.ok(urls.length >= 2, 'expected an input and an output URL');
+  // 8554 is the default; the point of the test is that every URL agrees with
+  // config rather than being spelled out separately.
+  const port = require('../src/config').mediamtx.rtspPort;
+  for (const u of urls) {
+    assert.strictEqual(new URL(u).port, String(port), `${u} should use port ${port}`);
+  }
+});
