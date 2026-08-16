@@ -154,6 +154,7 @@ its cell** under Composition, and their size set with **Label size**.
 
 | Setting | Notes |
 |---|---|
+| **Where the grid is made** | *On the server* — ffmpeg composes one programme; every viewer gets one stream and HLS works. *In the browser* — no encoder runs at all; each viewer receives the sources and their browser arranges them into the same layout. See [ARCHITECTURE.md](ARCHITECTURE.md#where-the-grid-is-made) for the trade-off. |
 | **Compose and publish** | Off stops the encoder entirely. Sources keep arriving and individual previews keep working. |
 | **Layout** | `Auto` adapts to the source count. Fixed grids keep their shape and drop anything that does not fit. `Spotlight` gives the first source a large cell. |
 | **Width / height / FPS** | Odd values are rounded down to even — H.264 requires it. |
@@ -189,7 +190,7 @@ The last administrator cannot be demoted or deleted.
 |---|---|
 | **Site name** | Shown in the header and the page title. |
 | **Let anyone watch without signing in** | Public viewing. Administration stays locked. |
-| **Show individual sources to viewers** | Off leaves only the composed programme; per-source previews are refused at the proxy, not just hidden. |
+| **Show individual sources to viewers** | Off leaves only the composed programme; per-source previews are refused at the proxy, not just hidden. Has no effect when the grid is made in the browser — there the sources *are* the programme. |
 | **Settle delay** | How long to wait after a source appears or disappears before rebuilding. Raise it on flaky networks. |
 | **Restart delay / max restart delay** | Backoff bounds after an unexpected encoder exit. |
 | **Log level, rotate at, keep files** | Applied immediately. The hint shows the worst-case disk use. |

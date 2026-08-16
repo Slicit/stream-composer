@@ -9,6 +9,13 @@ reproduce it on your own hardware in a couple of minutes with
 
 ---
 
+> **The cheapest encode is the one you never run.** If your audience is small
+> and trusted, *Admin → Composition → Where the grid is made → In the browser*
+> removes the encoder from the picture entirely — the numbers below then apply
+> to nothing at all. It costs one stream per source per viewer instead. See
+> [ARCHITECTURE.md](ARCHITECTURE.md#where-the-grid-is-made).
+
+
 ## Where the time goes
 
 Composing a grid is three jobs per second of output:

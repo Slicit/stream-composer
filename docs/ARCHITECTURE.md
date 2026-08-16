@@ -65,6 +65,46 @@ first means a frame that is about to be dropped is never scaled. On a CPU-only
 box scaling is the second largest cost after the encoder, so the ordering is
 worth the thought.
 
+## Where the grid is made
+
+Composition happens in one of two places, chosen in **Admin → Composition**.
+
+**On the server** (`mode: server`, the default) is what the diagram above shows:
+ffmpeg reads every source, draws the grid and publishes one programme. Viewers
+get a single stream whatever the source count, the sources themselves never
+leave the internal network, and HLS is available as a fallback. The cost is a
+continuous encode — the same whether one person is watching or a thousand, or
+nobody at all.
+
+**In the browser** (`mode: web`) starts no encoder. The server still decides
+what is on air and works out the layout, and hands the player the cells it would
+have encoded; the player subscribes to each source over WHEP and positions them
+into those cells. The arrangement is computed by the same `planLayout()` both
+modes use, so the two look alike — the captions the encoder would have burnt in
+are drawn as text with the same white-on-black-outline treatment.
+
+![The viewer with the grid composed in the browser: four sources in a 2x2, captions drawn as text, and the tiles reading "Composed: in your browser", "Server encoding: none"](screenshots/viewer-web.png)
+
+|                          | On the server | In the browser |
+|---|---|---|
+| Server CPU               | one continuous encode | none |
+| Streams per viewer       | 1 | one per source |
+| Bandwidth to each viewer | the programme bitrate | the sum of the sources |
+| Latency                  | ingest → encode → play | ingest → play |
+| HLS fallback             | yes | no |
+| Recording or restreaming the programme | yes | there is no programme |
+| Sources reachable by viewers | optional | necessarily |
+
+That last row is the one to think about before switching. "Show individual
+sources to viewers" hides the sources behind the programme; in web mode the
+sources *are* what the player composes, so the setting cannot apply — the proxy
+serves them (still only via opaque playback ids, still authenticated, still
+never the ingest key).
+
+Web mode suits a small, trusted audience on a good network, or a server with no
+CPU headroom to spare. Server mode suits everything else, and is the only one
+that produces something you can record or push somewhere else.
+
 ## Audio
 
 **The composed programme carries no audio at all.** This is deliberate.
