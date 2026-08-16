@@ -124,18 +124,52 @@ function gridSignature() {
   if (!layout || !layout.cells) return 'idle';
   return JSON.stringify([
     onAir.map((s) => [s.key, s.name]),
+    (app.state.streams || []).map((s) => [s.key, s.problem ? s.problem.code : null]),
     layout.cells.map((c) => [c.x, c.y, c.w, c.h]),
     [layout.width, layout.height],
     app.state.program.labels,
     app.state.program.labelSize,
+    app.state.program.fallback,
   ]);
+}
+
+/**
+ * Play one source into one tile over HLS.
+ *
+ * Used for sources MediaMTX will not serve over WebRTC — H.264 with B-frames,
+ * which is what OBS produces unless told otherwise. HLS carries them happily,
+ * so the cell works with no change at the publisher and no encoding here; it
+ * simply runs a couple of seconds behind the rest of the grid, which the badge
+ * says out loud.
+ */
+async function startTileHls(video, playbackId) {
+  const url = `${HLS}/s/${playbackId}/index.m3u8`;
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = url;
+    video.play().catch(() => {});
+    return null;
+  }
+  try {
+    await loadScript('/vendor/hls.js');
+  } catch (_) {
+    return null;
+  }
+  const Hls = window.Hls;
+  if (!Hls || !Hls.isSupported()) return null;
+  const hls = new Hls({ lowLatencyMode: true, backBufferLength: 10, liveSyncDurationCount: 1 });
+  hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+  hls.loadSource(url);
+  hls.attachMedia(video);
+  return hls;
 }
 
 function stopWebGrid() {
   $('#player-shell').classList.remove('is-web-composed');
   for (const tile of app.tiles.values()) {
-    tile.client.stop();
+    if (tile.client) tile.client.stop();
+    if (tile.hls) tile.hls.destroy();
     tile.video.srcObject = null;
+    tile.video.removeAttribute('src');
   }
   app.tiles.clear();
   app.tileSignature = '';
@@ -164,7 +198,8 @@ function startWebGrid() {
   const wanted = new Set(onAir.map((s) => s.key));
   for (const [key, tile] of [...app.tiles]) {
     if (!wanted.has(key)) {
-      tile.client.stop();
+      if (tile.client) tile.client.stop();
+      if (tile.hls) tile.hls.destroy();
       app.tiles.delete(key);
     }
   }
@@ -174,20 +209,34 @@ function startWebGrid() {
     const cell = layout.cells[i];
     if (!cell) return null;
 
+    const meta = (app.state.streams || []).find((x) => x.key === source.key);
+    // A source the browser cannot take over WebRTC still plays over HLS, so
+    // prefer that to an empty cell unless the operator asked to be told instead.
+    const useHls = !!(meta && meta.problem) && program.fallback !== 'warn';
+
     let tile = app.tiles.get(source.key);
     if (!tile) {
       const video = h('video', { playsinline: true, autoplay: true, muted: true });
-      const client = new WhepClient(`${WEBRTC}/s/${source.key}/whep`, { video: true, audio: false });
-      client.addEventListener('track', () => {
-        video.srcObject = client.stream;
-        video.play().catch(() => {
-          /* autoplay policy — the overlay play button covers this */
+      tile = { client: null, hls: null, video, viaHls: useHls, wrap: h('div', { class: 'web-cell' }, [video]) };
+      if (useHls) {
+        startTileHls(video, source.key).then((hls) => {
+          const current = app.tiles.get(source.key);
+          if (current === tile) tile.hls = hls;
+          else if (hls) hls.destroy();
         });
-      });
-      client.addEventListener('state', () => renderProgramStatus());
-      client.addEventListener('stats', () => renderPlayerStats());
-      client.start();
-      tile = { client, video, wrap: h('div', { class: 'web-cell' }, [video]) };
+      } else {
+        const client = new WhepClient(`${WEBRTC}/s/${source.key}/whep`, { video: true, audio: false });
+        client.addEventListener('track', () => {
+          video.srcObject = client.stream;
+          video.play().catch(() => {
+            /* autoplay policy — the overlay play button covers this */
+          });
+        });
+        client.addEventListener('state', () => renderProgramStatus());
+        client.addEventListener('stats', () => renderPlayerStats());
+        client.start();
+        tile.client = client;
+      }
       app.tiles.set(source.key, tile);
     }
 
@@ -198,6 +247,30 @@ function startWebGrid() {
     tile.wrap.style.top = pct(cell.y, layout.height);
     tile.wrap.style.width = pct(cell.w, layout.width);
     tile.wrap.style.height = pct(cell.h, layout.height);
+
+    // A source the browser cannot decode would otherwise be a black rectangle
+    // with nothing to explain it. Say what is wrong and how to fix it.
+    const existingNote = tile.wrap.querySelector('.web-problem');
+    if (existingNote) existingNote.remove();
+    if (meta && meta.problem && !useHls) {
+      tile.wrap.appendChild(
+        h('div', { class: 'web-problem' }, [
+          h('strong', { text: source.name }),
+          h('span', { text: meta.problem.summary }),
+          meta.problem.fix ? h('span', { class: 'fix', text: meta.problem.fix }) : null,
+        ].filter(Boolean)),
+      );
+    }
+
+    const existingBadge = tile.wrap.querySelector('.web-transport');
+    if (existingBadge) existingBadge.remove();
+    if (tile.viaHls) {
+      tile.wrap.appendChild(h('span', {
+        class: 'web-transport',
+        title: 'This source cannot be carried over WebRTC, so it is playing over HLS and runs a few seconds behind the others.',
+        text: 'HLS · delayed',
+      }));
+    }
 
     // The caption the encoder would have burnt in, drawn as text instead.
     const existingCaption = tile.wrap.querySelector('.web-caption');
@@ -233,7 +306,7 @@ function syncWebGrid() {
 
 /** Aggregate of every tile, so the stats read like one picture. */
 function webGridStats() {
-  const tiles = [...app.tiles.values()].map((t) => t.client.lastStats).filter(Boolean);
+  const tiles = [...app.tiles.values()].map((t) => t.client && t.client.lastStats).filter(Boolean);
   if (tiles.length === 0) return null;
   const sum = (f) => tiles.reduce((a, s) => a + (Number(s[f]) || 0), 0);
   const rtts = tiles.map((s) => s.rttMs).filter((v) => v != null);
@@ -462,7 +535,9 @@ function renderSources() {
       ]),
       h('div', { class: 'body' }, [
         h('span', { class: 'name', title: s.name, text: s.name }),
-        statusChip(s.live ? 'live' : 'idle', s.live ? 'Live' : 'Off'),
+        s.problem
+          ? h('span', { class: 'warn-chip', title: `${s.problem.summary} ${s.problem.fix || ''}`.trim(), text: 'not playable' })
+          : statusChip(s.live ? 'live' : 'idle', s.live ? 'Live' : 'Off'),
         previewBtn,
       ]),
     ]);
@@ -486,7 +561,7 @@ function renderProgramStatus() {
     label = 'Composition off';
   } else if (composingHere()) {
     const tiles = [...app.tiles.values()];
-    const playing = tiles.filter((t) => t.client.state === 'playing').length;
+    const playing = tiles.filter((t) => (t.client ? t.client.state === 'playing' : t.video.readyState >= 2)).length;
     if (tiles.length === 0) {
       kind = 'idle';
       label = 'Nothing on air';

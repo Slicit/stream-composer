@@ -131,7 +131,18 @@ function renderStreams() {
         ]),
         h('button', { class: 'icon ghost', title: 'Copy the key', onclick: () => copyToClipboard(s.key) }, [icon('copy')]),
       ]),
-      h('td', {}, [statusChip(s.live ? 'live' : s.enabled === false ? 'bad' : 'idle', s.live ? 'Live' : s.enabled === false ? 'Disabled' : 'Offline')]),
+      h('td', {}, [
+        statusChip(s.live ? 'live' : s.enabled === false ? 'bad' : 'idle', s.live ? 'Live' : s.enabled === false ? 'Disabled' : 'Offline'),
+        // Publishing happily, but no browser can play it directly — which
+        // breaks previews, and the whole grid when the browser composes.
+        s.playback && s.playback.problem
+          ? h('span', {
+            class: 'warn-chip',
+            title: `${s.playback.problem.summary} ${s.playback.problem.fix || ''}`.trim(),
+            text: 'not playable',
+          })
+          : null,
+      ].filter(Boolean)),
       h('td', { class: 'num', text: s.live ? sinceLabel(s.since) : '—' }),
       h('td', { class: 'num', text: s.hasAudio ? 'yes' : 'no' }),
       h('td', { class: 'num', text: formatBytes(s.bytesReceived || 0) }),
@@ -325,6 +336,9 @@ function applyModeUi() {
     radio.checked = radio.value === mode;
   }
   $('#panel-composition').classList.toggle('is-not-encoding', mode === 'web');
+  // Only web composition ever plays a source straight to a browser.
+  $('#fallback-row').style.display = mode === 'web' ? '' : 'none';
+  $('#fallback-select').value = admin.composition.fallback === 'warn' ? 'warn' : 'hls';
   $('#mode-note').textContent = mode === 'web'
     ? 'No encoder runs. Resolution, bitrate and encoder settings below are kept but unused; the layout, gutter, background and captions still apply, drawn by the player. Viewers must be able to reach each source, so "Show individual sources to viewers" cannot hide them in this mode.'
     : 'ffmpeg is composing and publishing one programme stream.';
@@ -350,6 +364,16 @@ function fillCompForm() {
   select.value = c.encoder;
   applyModeUi();
 }
+
+$('#fallback-select').addEventListener('change', async (event) => {
+  try {
+    const data = await api('/api/admin/composition', { method: 'PUT', body: { fallback: event.currentTarget.value } });
+    admin.composition = data.composition;
+    toast('Saved.', 'good');
+  } catch (_) {
+    applyModeUi();
+  }
+});
 
 // Switching mode is a big enough change that it applies on the spot rather
 // than waiting for Save — and it takes effect within a poll either way.
