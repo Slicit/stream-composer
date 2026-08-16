@@ -48,6 +48,46 @@ async function api(pathname, { method = 'GET', body, timeoutMs = 4000 } = {}) {
   }
 }
 
+/**
+ * How fast the programme is actually being published, in kb/s.
+ *
+ * ffmpeg's own `-progress` output is no use here: with an RTSP output the muxer
+ * never counts the bytes it writes, so it reports `bitrate=N/A` and
+ * `total_size=0` for the entire run. MediaMTX, on the receiving end, does count
+ * them, so the honest measurement is the growth of the programme path's
+ * received-byte counter between polls.
+ */
+let programSample = null; // { bytes, at }
+let programKbps = 0;
+
+function sampleProgram(items) {
+  const p = items.find((x) => x.name === config.programPath);
+  if (!p || !p.ready) {
+    programSample = null;
+    programKbps = 0;
+    return;
+  }
+  const bytes = Number(p.bytesReceived != null ? p.bytesReceived : p.inboundBytes) || 0;
+  const at = Date.now();
+  // A counter that went backwards means a new publisher took the path over;
+  // start again rather than reporting a nonsense spike or a negative rate.
+  if (!programSample || bytes < programSample.bytes) {
+    programSample = { bytes, at };
+    return;
+  }
+  const seconds = (at - programSample.at) / 1000;
+  if (seconds < 0.5) return; // too short a window to divide by
+  const kbps = ((bytes - programSample.bytes) * 8) / 1000 / seconds;
+  // Light smoothing, so the reading does not jitter from poll to poll.
+  programKbps = Math.round(programKbps ? programKbps * 0.4 + kbps * 0.6 : kbps);
+  programSample = { bytes, at };
+}
+
+/** Measured publish rate of the programme in kb/s, or 0 when it is not live. */
+function programBitrateKbps() {
+  return programKbps;
+}
+
 /** All paths known to MediaMTX, whether or not they are publishing. */
 async function listPaths() {
   const out = [];
@@ -60,6 +100,7 @@ async function listPaths() {
     if (page >= pages - 1) break;
     page += 1;
   }
+  sampleProgram(out);
   return out;
 }
 
@@ -147,4 +188,14 @@ function health() {
   return { reachable, lastError, api: config.mediamtx.api };
 }
 
-module.exports = { api, listPaths, listIngest, programState, kickPublisher, waitUntilReachable, health };
+module.exports = {
+  api,
+  listPaths,
+  listIngest,
+  programState,
+  programBitrateKbps,
+  sampleProgram,
+  kickPublisher,
+  waitUntilReachable,
+  health,
+};

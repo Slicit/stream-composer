@@ -49,6 +49,11 @@ const config = {
     rtmp: stripTrailingSlash(process.env.MEDIAMTX_RTMP || 'rtmp://mediamtx:1935'),
     webrtc: stripTrailingSlash(process.env.MEDIAMTX_WEBRTC || 'http://mediamtx:8889'),
     hls: stripTrailingSlash(process.env.MEDIAMTX_HLS || 'http://mediamtx:8888'),
+    // RTSP is the stack's internal transport: the compositor reads its sources
+    // and publishes the programme over it. It shares a host with the RTMP
+    // endpoint above, so only the port is configurable — and only needs
+    // changing when MediaMTX is not on its default port.
+    rtspPort: int(process.env.MEDIAMTX_RTSP_PORT, 8554),
     // Internal credentials the compositor uses to read/publish inside the stack.
     internalUser: process.env.MEDIAMTX_INTERNAL_USER || 'composer',
     internalPassword: process.env.MEDIAMTX_INTERNAL_PASSWORD || '',

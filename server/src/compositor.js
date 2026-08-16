@@ -69,11 +69,10 @@ function composition() {
 
 function rtspBase() {
   const url = new URL(config.mediamtx.rtmp.replace(/^rtmp:/, 'rtsp:'));
-  url.port = '8554';
   const user = encodeURIComponent(config.mediamtx.internalUser);
   const pass = encodeURIComponent(config.mediamtx.internalPassword || '');
   const creds = config.mediamtx.internalPassword ? `${user}:${pass}@` : '';
-  return `rtsp://${creds}${url.hostname}:8554`;
+  return `rtsp://${creds}${url.hostname}:${config.mediamtx.rtspPort}`;
 }
 
 /**
@@ -528,7 +527,9 @@ function status() {
     lastError: state.lastError,
     sources: state.sources,
     layout: state.layout,
-    progress: state.progress,
+    // ffmpeg cannot tell us the output bitrate over RTSP, so fall back to what
+    // MediaMTX measured on the receiving end.
+    progress: { ...state.progress, bitrateKbps: state.progress.bitrateKbps || mediamtx.programBitrateKbps() },
     output: {
       path: config.programPath,
       width: comp.width,
