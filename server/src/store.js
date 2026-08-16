@@ -18,6 +18,18 @@ const log = logger.scope('store');
 
 const DEFAULT_COMPOSITION = {
   enabled: true,
+  // Where the grid is assembled.
+  //
+  //   server — ffmpeg composes one programme stream and publishes it. Every
+  //            viewer gets a single stream of a fixed size, the server pays a
+  //            constant CPU cost whatever the audience, and HLS is available.
+  //   web    — nothing is re-encoded. Each viewer subscribes to the sources
+  //            directly and the browser arranges them, using the same layout
+  //            the server would have used. No encoder at all, at the cost of
+  //            one stream per source per viewer.
+  //
+  // See docs/ARCHITECTURE.md, "Where the grid is made".
+  mode: 'server', // server | web
   layout: 'auto', // auto | solo | 1x2 | 2x1 | 2x2 | 3x3 | 4x4 | spotlight
   width: 1920,
   height: 1080,

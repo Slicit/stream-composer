@@ -151,6 +151,7 @@ function signatureOf(sources, comp) {
       mr: comp.maxrateKbps, bs: comp.bufsizeKbps, p: comp.preset, e: comp.encoder,
       g: comp.gopSeconds, t: comp.threads, sf: comp.scaleFlags, bg: comp.background,
       gap: comp.gapPx, lb: comp.labels, ls: comp.labelSize, en: comp.enabled,
+      md: comp.mode,
     },
   });
 }
@@ -158,18 +159,28 @@ function signatureOf(sources, comp) {
 // --------------------------------------------------------------- filtergraph
 
 /**
- * Build the complete ffmpeg argument list.
- * Exported (via buildCommand) so the admin UI can show exactly what will run.
+ * Work out the grid and which sources make it into it.
+ *
+ * Both modes go through here, which is the point: the browser is handed the
+ * cells this function produced, so a web-composed grid is arranged exactly like
+ * the encoded one — same layout rules, same order, same overflow behaviour.
  */
-function buildArgs(sources, comp, encoderKind) {
+function planLayout(sources, comp) {
   const layout = computeLayout(sources.length, {
     width: comp.width,
     height: comp.height,
     gap: comp.gapPx,
     layout: comp.layout,
   });
+  return { layout, placed: sources.slice(0, layout.cells.length) };
+}
 
-  const placed = sources.slice(0, layout.cells.length);
+/**
+ * Build the complete ffmpeg argument list.
+ * Exported (via buildCommand) so the admin UI can show exactly what will run.
+ */
+function buildArgs(sources, comp, encoderKind) {
+  const { layout, placed } = planLayout(sources, comp);
   const args = ['-hide_banner', '-loglevel', 'warning', '-nostdin'];
 
   // VA-API needs its device up front so the filtergraph can hwupload into it.
@@ -471,6 +482,25 @@ async function apply(sources, comp, signature) {
       currentSignature = signature;
       return;
     }
+
+    // In web mode the browser assembles the grid from the sources directly, so
+    // there is nothing to encode. The layout and the source order are still
+    // worked out here, by the same code, and handed to the player — that is
+    // what keeps the two modes looking identical.
+    if (comp.mode === 'web') {
+      const { layout, placed } = planLayout(sources, comp);
+      state.sources = placed.map((s) => ({ key: s.key, name: s.name, label: s.label, path: s.path, hasAudio: s.hasAudio }));
+      state.layout = layout;
+      state.encoder = null;
+      state.command = null;
+      currentSignature = signature;
+      log.info('composing in the browser — no encoder is started', {
+        streams: placed.map((s) => s.key),
+        layout: `${layout.layout} (${layout.cols}x${layout.rows})`,
+      });
+      return;
+    }
+
     if (sources.length === 0) {
       log.info('no live streams — the encoder stays idle');
       currentSignature = signature;
@@ -520,6 +550,7 @@ function status() {
   return {
     running: state.running,
     enabled: comp.enabled,
+    mode: comp.mode === 'web' ? 'web' : 'server',
     startedAt: state.startedAt,
     encoder: state.encoder,
     restarts: state.restarts,
@@ -554,4 +585,4 @@ function preview(sourcesOverride) {
   };
 }
 
-module.exports = { startLoop, stop, nudge, status, preview, buildArgs, selectSources, events, escapeDrawtext };
+module.exports = { startLoop, stop, nudge, status, preview, buildArgs, planLayout, selectSources, events, escapeDrawtext };

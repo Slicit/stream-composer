@@ -73,7 +73,10 @@ function resolvePlayback(publicPath) {
   if (parts.length !== 2 || parts[0] !== 's' || !PLAYBACK_ID.test(parts[1])) return null;
 
   const d = store.get();
-  if (!d.settings.showIndividualStreams) return null;
+  // "Show individual sources to viewers" hides the sources *behind* the
+  // programme. In web mode there is no programme — the sources are what the
+  // player composes — so the setting cannot apply without hiding everything.
+  if (!d.settings.showIndividualStreams && d.composition.mode !== 'web') return null;
   const stream = d.streams.find((s) => s.playbackId === parts[1]);
   if (!stream || stream.enabled === false) return null;
   return `${config.ingestPrefix}/${stream.key}`;
