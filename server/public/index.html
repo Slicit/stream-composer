@@ -72,13 +72,19 @@
           <div class="card-head"><h2>Programme</h2></div>
           <dl class="dl" id="program-info"></dl>
           <hr class="divider">
-          <div class="section-title">Playback</div>
-          <div class="row">
-            <button id="btn-mode-webrtc" class="primary">WebRTC</button>
-            <button id="btn-mode-hls">HLS</button>
+          <div id="playback-picker">
+            <div class="section-title">Playback</div>
+            <div class="row">
+              <button id="btn-mode-webrtc" class="primary">WebRTC</button>
+              <button id="btn-mode-hls">HLS</button>
+            </div>
+            <p style="font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
+              WebRTC is sub-second. HLS adds a few seconds of delay but traverses awkward networks.
+            </p>
           </div>
-          <p style="font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
-            WebRTC is sub-second. HLS adds a few seconds of delay but traverses awkward networks.
+          <p id="playback-web-note" style="display:none; font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
+            Each source arrives separately over WebRTC and is arranged here, in
+            your browser. Nothing is re-encoded on the server.
           </p>
         </section>
 

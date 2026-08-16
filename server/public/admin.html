@@ -64,6 +64,36 @@
     </section>
 
     <section class="panel" id="panel-composition">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Where the grid is made</h2></div>
+        <div class="mode-choice" id="mode-choice">
+          <label class="mode-option">
+            <input type="radio" name="mode" value="server">
+            <span class="mode-body">
+              <span class="mode-name">On the server</span>
+              <span class="mode-detail">
+                ffmpeg composes one programme and publishes it. Every viewer gets
+                a single stream, HLS is available, and the sources stay private.
+                The server encodes continuously, whether anyone is watching or not.
+              </span>
+            </span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="mode" value="web">
+            <span class="mode-body">
+              <span class="mode-name">In the browser</span>
+              <span class="mode-detail">
+                Nothing is re-encoded. Each viewer receives the sources and their
+                browser arranges them, using this same layout. No encoder — but
+                every viewer pulls one stream per source, and there is no
+                programme to record, restream or serve over HLS.
+              </span>
+            </span>
+          </label>
+        </div>
+        <p class="hint" id="mode-note" style="margin:.75rem 0 0;"></p>
+      </div>
+
       <div class="grid-2">
         <div class="card">
           <div class="card-head"><h2>Layout</h2></div>
@@ -93,12 +123,12 @@
               <label class="field" style="flex:1 1 120px;">
                 <span>Height</span><input type="number" name="height" min="180" max="2160" step="2">
               </label>
-              <label class="field" style="flex:1 1 100px;">
+              <label class="field encoder-only" style="flex:1 1 100px;">
                 <span>FPS</span><input type="number" name="fps" min="1" max="60">
               </label>
             </div>
 
-            <div class="row" style="gap:.75rem;">
+            <div class="row encoder-only" style="gap:.75rem;">
               <label class="field" style="flex:1 1 140px;">
                 <span>Bitrate (kb/s)</span><input type="number" name="bitrateKbps" min="200" max="50000" step="100">
               </label>
@@ -110,7 +140,7 @@
               </label>
             </div>
 
-            <div class="row" style="gap:.75rem;">
+            <div class="row encoder-only" style="gap:.75rem;">
               <label class="field" style="flex:1 1 160px;">
                 <span>Encoder</span>
                 <select name="encoder" id="encoder-select"></select>
@@ -126,7 +156,7 @@
               </label>
             </div>
 
-            <div class="row" style="gap:.75rem;">
+            <div class="row encoder-only" style="gap:.75rem;">
               <label class="field" style="flex:1 1 150px;">
                 <span>Scaler</span>
                 <select name="scaleFlags">
@@ -169,8 +199,8 @@
 
             <div class="row">
               <button class="primary" type="submit">Save and apply</button>
-              <button type="button" id="comp-restart">Restart encoder</button>
-              <button type="button" id="comp-command" class="ghost">Show ffmpeg command</button>
+              <button type="button" id="comp-restart" class="encoder-only">Restart encoder</button>
+              <button type="button" id="comp-command" class="ghost encoder-only">Show ffmpeg command</button>
             </div>
           </form>
           <pre id="command-box" class="log-view" style="display:none; margin-top:.85rem;"></pre>
