@@ -149,6 +149,12 @@ router.put('/composition', (req, res) => {
       }
       next.mode = body.mode;
     }
+    if (body.fallback !== undefined) {
+      if (!['hls', 'warn'].includes(body.fallback)) {
+        throw Object.assign(new Error('Fallback must be "hls" or "warn".'), { status: 400 });
+      }
+      next.fallback = body.fallback;
+    }
     if (body.layout !== undefined) {
       if (!isValidLayout(body.layout)) throw Object.assign(new Error('That layout is not recognised.'), { status: 400 });
       next.layout = String(body.layout);

@@ -41,6 +41,7 @@ router.get('/state', async (req, res) => {
       encoding: status.running,
       // Cosmetic, but the player draws its own captions in web mode and should
       // draw them only when the operator asked for captions at all.
+      fallback: d.composition.fallback === 'warn' ? 'warn' : 'hls',
       labels: !!d.composition.labels,
       labelSize: d.composition.labelSize,
       background: d.composition.background,
@@ -70,6 +71,9 @@ router.get('/state', async (req, res) => {
         name: (s.nickname || '').trim() || s.name,
         live: s.live,
         hasAudio: s.hasAudio,
+        // Set when the browser cannot play this source directly — a black
+        // rectangle with no explanation is the worst possible outcome.
+        problem: s.playback && s.playback.problem ? s.playback.problem : null,
         // Media path the player subscribes to, via the authenticated proxy.
         path: `s/${s.playbackId}`,
       })),
