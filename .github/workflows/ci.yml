@@ -48,7 +48,10 @@ jobs:
           shellcheck --severity=warning install.sh scripts/*.sh server/docker-entrypoint.sh
 
       - name: Installer unit tests
-        run: ./scripts/test-install.sh
+        # Invoked through bash rather than as ./script: the executable bit does
+        # not survive every way a file reaches this repository, and a test
+        # suite that fails with "Permission denied" tells nobody anything.
+        run: bash scripts/test-install.sh
 
   compose:
     name: Compose files
