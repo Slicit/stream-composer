@@ -143,6 +143,12 @@ router.put('/composition', (req, res) => {
     const next = { ...comp };
 
     if (body.enabled !== undefined) next.enabled = !!body.enabled;
+    if (body.mode !== undefined) {
+      if (!['server', 'web'].includes(body.mode)) {
+        throw Object.assign(new Error('Composition mode must be "server" or "web".'), { status: 400 });
+      }
+      next.mode = body.mode;
+    }
     if (body.layout !== undefined) {
       if (!isValidLayout(body.layout)) throw Object.assign(new Error('That layout is not recognised.'), { status: 400 });
       next.layout = String(body.layout);

@@ -25,9 +25,13 @@ router.get('/state', async (req, res) => {
       publicViewing: d.settings.publicViewing,
     },
     program: {
-      // Public alias; the real MediaMTX path stays server-side.
-      path: 'program',
-      ready: program.ready,
+      // Where the grid is assembled: 'server' (one encoded programme) or
+      // 'web' (the player subscribes to each source and arranges them).
+      mode: status.mode,
+      // Public alias; the real MediaMTX path stays server-side. There is no
+      // programme stream at all in web mode, so nothing to point at.
+      path: status.mode === 'web' ? null : 'program',
+      ready: status.mode === 'web' ? status.sources.length > 0 : program.ready,
       readers: program.readers,
       width: d.composition.width,
       height: d.composition.height,
@@ -35,6 +39,12 @@ router.get('/state', async (req, res) => {
       bitrateKbps: d.composition.bitrateKbps,
       enabled: d.composition.enabled,
       encoding: status.running,
+      // Cosmetic, but the player draws its own captions in web mode and should
+      // draw them only when the operator asked for captions at all.
+      labels: !!d.composition.labels,
+      labelSize: d.composition.labelSize,
+      background: d.composition.background,
+      gapPx: d.composition.gapPx,
       encoder: status.encoder,
       liveFps: status.progress.fps,
       liveBitrateKbps: status.progress.bitrateKbps,
