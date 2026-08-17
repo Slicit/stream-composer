@@ -25,6 +25,7 @@
   <main class="wrap">
     <nav class="tabs" id="tabs">
       <button class="tab is-active" data-panel="streams">Streams</button>
+      <button class="tab" data-panel="restream">Restream</button>
       <button class="tab" data-panel="composition">Composition</button>
       <button class="tab" data-panel="users">Users</button>
       <button class="tab" data-panel="server">Server</button>
@@ -60,6 +61,74 @@
           <button id="streams-refresh" class="ghost">Refresh</button>
         </div>
         <div id="streams-table"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-restream">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Forward a source somewhere else</h2></div>
+        <p class="hint" style="margin:0 0 1rem;">
+          Sends one incoming stream on to another platform exactly as it arrived —
+          no re-encoding, no grid. A source can go to as many destinations as you
+          like, and each one is switched on and off on its own. This is separate
+          from composition: the grid is for people watching here.
+        </p>
+
+        <form id="relay-form">
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:1 1 220px;">
+              <span>Source</span>
+              <select name="streamId" id="relay-source" required></select>
+              <span class="hint">Which incoming stream to forward.</span>
+            </label>
+            <label class="field" style="flex:1 1 220px;">
+              <span>Where to</span>
+              <select name="provider" id="relay-provider"></select>
+              <span class="hint" id="relay-provider-hint"></span>
+            </label>
+          </div>
+
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:2 1 320px;">
+              <span id="relay-url-label">Server URL</span>
+              <input name="url" id="relay-url" class="mono" placeholder="rtmp://" autocomplete="off" spellcheck="false">
+              <span class="hint" id="relay-url-hint"></span>
+            </label>
+            <label class="field" style="flex:2 1 280px;">
+              <span id="relay-key-label">Stream key</span>
+              <input name="key" id="relay-key" type="password" autocomplete="off" spellcheck="false">
+              <span class="hint" id="relay-key-hint"></span>
+            </label>
+          </div>
+
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:1 1 220px;">
+              <span>Name <span style="color:var(--ink-muted); font-weight:400;">(optional)</span></span>
+              <input name="name" maxlength="48" placeholder="e.g. Main channel">
+            </label>
+            <label class="field" style="flex:1 1 220px;">
+              <span>Audio</span>
+              <select name="audio">
+                <option value="copy">Pass through untouched</option>
+                <option value="aac">Re-encode to AAC</option>
+              </select>
+              <span class="hint">RTMP can only carry AAC. Re-encode only if the destination rejects the audio.</span>
+            </label>
+          </div>
+
+          <button class="primary" type="submit">Add destination</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Destinations</h2>
+          <span class="spacer"></span>
+          <span id="relay-summary" style="font-size:.78rem; color:var(--ink-muted);"></span>
+          <button id="relays-refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="relays-table"></div>
+        <pre id="relay-command-box" class="log-view" style="display:none; margin-top:.85rem;"></pre>
       </div>
     </section>
 

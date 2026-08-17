@@ -5,6 +5,9 @@ import { $, $$, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, for
 
 const admin = {
   streams: [],
+  relays: [],
+  relayProviders: [],
+  relaySources: [],
   users: [],
   composition: null,
   layouts: [],
@@ -23,6 +26,7 @@ function showPanel(name) {
   $$('.panel').forEach((p) => p.classList.toggle('is-active', p.id === `panel-${name}`));
   window.location.hash = name;
   if (name === 'logs') loadLogs();
+  if (name === 'restream') loadRelays();
 }
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', () => showPanel(tab.dataset.panel)));
@@ -109,6 +113,20 @@ function nicknameField(stream) {
   return input;
 }
 
+/** "→ 2 destinations", when this source is being forwarded anywhere. */
+function relayChip(stream) {
+  if (!stream.id) return null;
+  const mine = admin.relays.filter((r) => r.streamId === stream.id && r.enabled);
+  if (mine.length === 0) return null;
+  const carrying = mine.filter((r) => r.status === 'live').length;
+  return h('span', {
+    class: 'status is-idle',
+    style: 'cursor:pointer',
+    title: `${mine.map((r) => r.name).join(', ')} — open the Restream tab`,
+    onclick: () => showPanel('restream'),
+  }, [h('span', { class: 'dot' }), `→ ${carrying}/${mine.length}`]);
+}
+
 function renderStreams() {
   const box = $('#streams-table');
   if (admin.streams.length === 0) {
@@ -142,6 +160,9 @@ function renderStreams() {
             text: 'not playable',
           })
           : null,
+        // Cross-reference to the Restream tab: knowing a source is going out to
+        // a platform matters most when you are about to rotate its key here.
+        relayChip(s),
       ].filter(Boolean)),
       h('td', { class: 'num', text: s.live ? sinceLabel(s.since) : '—' }),
       h('td', { class: 'num', text: s.hasAudio ? 'yes' : 'no' }),
@@ -233,6 +254,239 @@ $('#stream-form').addEventListener('submit', async (event) => {
 });
 
 $('#streams-refresh').addEventListener('click', loadStreams);
+
+// --------------------------------------------------------------- restream
+
+/**
+ * Picking a platform fills in its ingest URL and re-labels the two fields.
+ * The URL stays editable for every provider, because ingest hostnames are
+ * regional and the well-known ones do get retired.
+ */
+function applyRelayProvider({ keepValues = false } = {}) {
+  const id = $('#relay-provider').value;
+  const provider = admin.relayProviders.find((p) => p.id === id) || admin.relayProviders[0];
+  if (!provider) return;
+  $('#relay-url-label').textContent = provider.urlLabel || 'Server URL';
+  $('#relay-key-label').textContent = provider.keyLabel || 'Stream key';
+  $('#relay-url-hint').textContent = provider.urlHint || '';
+  $('#relay-key-hint').textContent = provider.keyHint || '';
+  $('#relay-provider-hint').textContent = provider.id === 'custom'
+    ? 'Anything that accepts an RTMP publish.'
+    : `Forwarded to ${provider.label} untouched.`;
+  if (!keepValues) $('#relay-url').value = provider.url || '';
+  $('#relay-url').placeholder = provider.url || 'rtmp://';
+}
+
+function relayStatusChip(relay) {
+  if (!relay.enabled) return statusChip('idle', 'Off');
+  switch (relay.status) {
+    case 'live':
+      return statusChip('live', 'Forwarding');
+    case 'connecting':
+      return statusChip('warn', 'Connecting');
+    case 'retrying':
+      return statusChip('bad', relay.retryInMs > 0 ? `Retrying in ${Math.ceil(relay.retryInMs / 1000)}s` : 'Retrying');
+    case 'waiting':
+      return statusChip('idle', 'Waiting for the source');
+    default:
+      return statusChip('idle', 'Idle');
+  }
+}
+
+async function patchRelay(id, patch, note) {
+  await api(`/api/admin/relays/${id}`, { method: 'PATCH', body: patch });
+  if (note) toast(note, 'good');
+  loadRelays();
+}
+
+async function replaceRelayKey(relay) {
+  const key = window.prompt(`New stream key for “${relay.name}”.\n\nLeave it empty to cancel.`);
+  if (!key) return;
+  await patchRelay(relay.id, { key: key.trim() }, 'Stream key replaced.');
+}
+
+async function revealRelayKey(relay, span) {
+  if (!span.textContent.includes('•')) {
+    span.textContent = relay.keyMasked;
+    return;
+  }
+  const data = await api(`/api/admin/relays/${relay.id}/key`);
+  span.textContent = data.key || '(none)';
+}
+
+/** Same idea as "Show ffmpeg command" on the Composition tab, per destination. */
+async function showRelayCommand(relay) {
+  const box = $('#relay-command-box');
+  if (box.style.display !== 'none' && box.dataset.relay === relay.id) {
+    box.style.display = 'none';
+    return;
+  }
+  const data = await api(`/api/admin/relays/${relay.id}/command`);
+  box.textContent = data.command;
+  box.dataset.relay = relay.id;
+  box.style.display = '';
+}
+
+async function deleteRelay(relay) {
+  if (!window.confirm(`Stop forwarding “${relay.sourceName || 'this source'}” to ${relay.name}?\n\nThe destination and its stream key are deleted.`)) return;
+  await api(`/api/admin/relays/${relay.id}`, { method: 'DELETE' });
+  toast('Destination removed.', 'good');
+  loadRelays();
+}
+
+function renderRelays() {
+  const box = $('#relays-table');
+
+  const summary = admin.relays.length
+    ? `${admin.relays.filter((r) => r.status === 'live').length} of ${admin.relays.length} carrying`
+    : '';
+  $('#relay-summary').textContent = summary;
+
+  if (admin.relays.length === 0) {
+    box.replaceChildren(
+      h('div', { class: 'empty', text: 'Nothing is being forwarded. Add a destination above to send a source on to Twitch, YouTube or any other RTMP service.' }),
+    );
+    return;
+  }
+
+  // Grouped by source, with the name printed once per group: one camera going
+  // to three platforms is the case this page exists for, and repeating its
+  // name three times makes that harder to read, not easier.
+  const sorted = [...admin.relays].sort((a, b) =>
+    String(a.sourceName || '').localeCompare(String(b.sourceName || ''), undefined, { numeric: true, sensitivity: 'base' })
+    || String(a.name).localeCompare(String(b.name)));
+
+  let lastSource = Symbol('none');
+  const rows = sorted.map((r) => {
+    const newGroup = r.streamId !== lastSource;
+    lastSource = r.streamId;
+
+    return h('tr', {}, [
+      h('td', {}, [
+        newGroup
+          ? h('div', { style: 'font-weight:600', text: r.sourceName || 'deleted source' })
+          : h('span', { style: 'color:var(--ink-muted)', text: '↳' }),
+        newGroup && r.sourceMissing
+          ? h('div', { style: 'font-size:.72rem; color:var(--warning)', text: 'the source no longer exists' })
+          : null,
+      ]),
+      h('td', {}, [
+        h('div', { style: 'font-weight:600', text: r.name }),
+        h('div', { class: 'mono', style: 'font-size:.72rem; color:var(--ink-muted); word-break:break-all;', text: r.url }),
+      ]),
+      h('td', { style: 'white-space:nowrap' }, [
+        r.hasKey
+          ? h('span', { class: 'key-chip' }, [
+            h('span', {
+              text: r.keyMasked,
+              title: 'Click to reveal',
+              style: 'cursor:pointer',
+              onclick: (e) => revealRelayKey(r, e.target),
+            }),
+          ])
+          : h('span', { style: 'color:var(--ink-muted)', text: 'in the URL' }),
+      ]),
+      h('td', {}, [
+        h('div', { class: 'row', style: 'gap:.35rem' }, [
+          relayStatusChip(r),
+          r.audio === 'aac' ? h('span', { class: 'warn-chip', title: 'Audio is re-encoded to AAC for this destination.', text: 'AAC' }) : null,
+        ].filter(Boolean)),
+        r.enabled && r.lastError && r.status !== 'live'
+          ? h('div', { style: 'font-size:.7rem; color:var(--ink-muted); margin-top:.2rem; word-break:break-word;', text: r.lastError })
+          : null,
+      ]),
+      h('td', { class: 'num', text: r.status === 'live' ? formatDuration(r.progress.uptimeSec) : '—' }),
+      h('td', { class: 'num', text: r.status === 'live' ? `${formatBitrate(r.progress.bitrateKbps)} ${bitrateUnit(r.progress.bitrateKbps)}` : '—' }),
+      h('td', { class: 'num', text: formatBytes(r.progress.bytesSent || 0) }),
+      h('td', {}, [
+        h('div', { class: 'row', style: 'flex-wrap:nowrap; justify-content:flex-end;' }, [
+          h('button', {
+            class: r.enabled ? 'ghost' : 'primary',
+            text: r.enabled ? 'Turn off' : 'Turn on',
+            title: r.enabled ? 'Stop forwarding immediately' : 'Start forwarding as soon as the source is publishing',
+            onclick: () => patchRelay(r.id, { enabled: !r.enabled }, r.enabled ? 'Forwarding stopped.' : 'Forwarding will start with the source.'),
+          }),
+          h('button', { class: 'ghost', text: 'New key', onclick: () => replaceRelayKey(r) }),
+          h('button', { class: 'ghost', text: 'Command', title: 'The exact ffmpeg carrying this destination, with the key removed', onclick: () => showRelayCommand(r) }),
+          h('button', { class: 'danger ghost', text: 'Delete', onclick: () => deleteRelay(r) }),
+        ]),
+      ]),
+    ]);
+  });
+
+  box.replaceChildren(
+    h('table', {}, [
+      h('thead', {}, [
+        h('tr', {}, [
+          h('th', { text: 'Source' }),
+          h('th', { text: 'Destination' }),
+          h('th', { text: 'Stream key' }),
+          h('th', { text: 'Status' }),
+          h('th', { class: 'num', text: 'For' }),
+          h('th', { class: 'num', text: 'Rate' }),
+          h('th', { class: 'num', text: 'Sent' }),
+          h('th', {}),
+        ]),
+      ]),
+      h('tbody', {}, rows),
+    ]),
+  );
+}
+
+function renderRelaySources() {
+  const select = $('#relay-source');
+  const chosen = select.value;
+  select.replaceChildren(
+    ...admin.relaySources.map((s) => h('option', { value: s.id, text: s.enabled === false ? `${s.name} (disabled)` : s.name })),
+  );
+  if (admin.relaySources.some((s) => s.id === chosen)) select.value = chosen;
+  if (admin.relaySources.length === 0) {
+    select.replaceChildren(h('option', { value: '', text: 'Create a stream first' }));
+  }
+}
+
+async function loadRelays() {
+  const data = await api('/api/admin/relays', { quiet: true }).catch(() => null);
+  if (!data) return;
+  const first = admin.relayProviders.length === 0;
+  admin.relays = data.relays;
+  admin.relayProviders = data.providers;
+  admin.relaySources = data.sources;
+
+  if (first) {
+    $('#relay-provider').replaceChildren(
+      ...admin.relayProviders.map((p) => h('option', { value: p.id, text: p.label })),
+    );
+    applyRelayProvider();
+  }
+  // Refilling the source list under someone's cursor would fight their typing.
+  if (!(document.activeElement && document.activeElement.closest('#relay-form'))) renderRelaySources();
+  renderRelays();
+}
+
+$('#relay-provider').addEventListener('change', () => applyRelayProvider());
+$('#relays-refresh').addEventListener('click', loadRelays);
+
+$('#relay-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const body = Object.fromEntries(new FormData(form).entries());
+  if (!body.streamId) {
+    toast('Create a stream first — there is nothing to forward yet.', 'error');
+    return;
+  }
+  if (!body.name) delete body.name;
+  try {
+    await api('/api/admin/relays', { method: 'POST', body });
+    form.reset();
+    applyRelayProvider();
+    renderRelaySources();
+    toast('Destination added. It goes live as soon as the source is publishing.', 'good');
+    loadRelays();
+  } catch (_) {
+    /* the toast already explained */
+  }
+});
 
 // ------------------------------------------------------------ composition
 
@@ -623,6 +877,12 @@ function renderServer() {
     ['Composition', web ? 'in the browser — nothing re-encoded' : 'on the server'],
     ['Programme path', web ? '—' : st.compositor.output.path],
     ['MediaMTX', st.mediamtx.reachable ? 'reachable' : `unreachable — ${st.mediamtx.lastError || 'no detail'}`],
+    [
+      'Restreaming',
+      !st.relays || st.relays.total === 0
+        ? 'no destinations'
+        : `${st.relays.live} of ${st.relays.enabled} switched on are carrying (${st.relays.total} configured)`,
+    ],
     ['Programme viewers', String(st.program.readers ?? 0)],
     ['Last encoder exit', c.lastExit ? `code ${c.lastExit.code ?? '—'} ${c.lastExit.signal || ''} at ${new Date(c.lastExit.at).toLocaleTimeString()}` : 'never'],
     ['Last ffmpeg message', c.lastError || 'none'],
@@ -729,6 +989,11 @@ api('/api/auth/me', { quiet: true }).then((data) => {
 const initial = (window.location.hash || '#streams').slice(1);
 if ($(`#panel-${initial}`)) showPanel(initial);
 
-Promise.all([loadStreams(), loadComposition(), loadUsers(), loadSettings(), loadStatus()]);
+Promise.all([loadStreams(), loadRelays(), loadComposition(), loadUsers(), loadSettings(), loadStatus()]);
 setInterval(loadStatus, 2000);
 setInterval(loadStreams, 5000);
+// Only while it is on screen: the numbers are per-second, and nobody needs
+// them refreshed behind a tab they are not looking at.
+setInterval(() => {
+  if ($('#panel-restream').classList.contains('is-active')) loadRelays();
+}, 3000);
