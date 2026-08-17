@@ -14,6 +14,7 @@ const config = require('./config');
 const logger = require('./logger');
 const mediamtx = require('./mediamtx');
 const playability = require('./playability');
+const relays = require('./relays');
 
 const log = logger.scope('streams');
 
@@ -121,6 +122,9 @@ function update(id, patch) {
   // Rotating a key or disabling a stream must drop whoever is publishing now.
   if ((changes.key && changes.key !== oldKey) || changes.enabled === false) {
     mediamtx.kickPublisher(`${config.ingestPrefix}/${oldKey}`).catch(() => {});
+    // Any destination forwarding this source is reading the old path; point it
+    // at the new one now rather than waiting for ffmpeg to notice.
+    relays.nudge();
   }
   log.info('stream updated', { id, changes: Object.keys(changes) });
   return { ...stream };
@@ -136,7 +140,11 @@ function remove(id) {
   store.update((d) => {
     d.streams = d.streams.filter((s) => s.id !== id);
     d.composition.order = (d.composition.order || []).filter((k) => k !== stream.key);
+    // Restream destinations belong to their source. Leaving them behind would
+    // keep forwarding a key that has just been handed to somebody else.
+    d.relays = (d.relays || []).filter((r) => r.streamId !== id);
   });
+  relays.nudge(); // stop anything still forwarding it
   mediamtx.kickPublisher(`${config.ingestPrefix}/${stream.key}`).catch(() => {});
   log.info('stream deleted', { name: stream.name });
 }

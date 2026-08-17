@@ -9,6 +9,7 @@ const store = require('../store');
 const auth = require('../auth');
 const streams = require('../streams');
 const compositor = require('../compositor');
+const relays = require('../relays');
 const encoder = require('../encoder');
 const logger = require('../logger');
 const stats = require('../stats');
@@ -75,6 +76,79 @@ router.delete('/streams/:id', (req, res) => {
     streams.remove(req.params.id);
     compositor.nudge();
     res.json({ ok: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+// ------------------------------------------------------------------- relays
+//
+// Restreaming an ingest source on to Twitch, YouTube or any other RTMP
+// endpoint. Separate from composition on purpose: these forward the individual
+// sources untouched, whoever is watching and wherever the grid is assembled.
+
+router.get('/relays', (_req, res) => {
+  try {
+    res.json({
+      relays: relays.withState(),
+      providers: relays.PROVIDERS,
+      // The picker needs somewhere to forward from, and the names have to match
+      // what the Streams tab shows.
+      sources: streams.list().map((s) => ({ id: s.id, name: s.name, enabled: s.enabled })),
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post('/relays', (req, res) => {
+  try {
+    const relay = relays.create(req.body || {});
+    res.status(201).json({ relay: relays.withState().find((r) => r.id === relay.id) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.patch('/relays/:id', (req, res) => {
+  try {
+    const relay = relays.update(req.params.id, req.body || {});
+    res.json({ relay: relays.withState().find((r) => r.id === relay.id) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.delete('/relays/:id', (req, res) => {
+  try {
+    relays.remove(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/**
+ * The stream key in the clear. Its own endpoint rather than a field on the
+ * list, so a credential for somebody else's channel is only sent when an
+ * administrator actually asks to see it.
+ */
+router.get('/relays/:id/key', (req, res) => {
+  try {
+    res.json({ key: relays.revealKey(req.params.id) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+/** The exact ffmpeg that carries this destination, with the key removed. */
+router.get('/relays/:id/command', (req, res) => {
+  try {
+    const relay = relays.find(req.params.id);
+    if (!relay) throw Object.assign(new Error('No such destination.'), { status: 404 });
+    const stream = streams.find(relay.streamId);
+    const sourcePath = `${config.ingestPrefix}/${stream ? stream.key : 'SOURCE-KEY'}`;
+    res.json({ command: relays.previewCommand(relay, sourcePath) });
   } catch (err) {
     fail(res, err);
   }
@@ -289,6 +363,7 @@ router.get('/status', async (_req, res) => {
   res.json({
     compositor: status,
     program,
+    relays: relays.summary(),
     mediamtx: mediamtx.health(),
     host: stats.snapshot(),
     node: { version: process.version, memoryMb: Math.round(process.memoryUsage().rss / 1048576), uptimeSec: Math.round(process.uptime()) },

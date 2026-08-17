@@ -81,6 +81,9 @@ function defaults() {
     createdAt: new Date().toISOString(),
     users: [],
     streams: [],
+    // Restream destinations. One source may have any number; each is
+    // independently switchable. See src/relays.js.
+    relays: [],
     composition: { ...DEFAULT_COMPOSITION },
     settings: { ...DEFAULT_SETTINGS },
     secrets: { sessionSecret: crypto.randomBytes(32).toString('hex') },
@@ -101,6 +104,10 @@ function mergeDefaults(loaded) {
   };
   out.users = Array.isArray(loaded.users) ? loaded.users : [];
   out.streams = Array.isArray(loaded.streams) ? loaded.streams : [];
+  // Absent in configurations written before restreaming existed. Restoring an
+  // old backup must not throw away the key it does not know about, nor crash
+  // the relay supervisor by handing it undefined.
+  out.relays = Array.isArray(loaded.relays) ? loaded.relays : [];
   // Streams created before playback ids existed get one on load.
   for (const s of out.streams) {
     if (!s.playbackId) s.playbackId = crypto.randomBytes(12).toString('hex');

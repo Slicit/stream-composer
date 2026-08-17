@@ -770,3 +770,175 @@ test('the fallback for unplayable sources is validated and defaults to HLS', asy
   const state = await (await call('/api/state')).json();
   assert.strictEqual(state.program.fallback, 'hls');
 });
+
+// -------------------------------------------------------------- restreaming
+
+test('a destination URL puts the key last, and keeps any query after it', () => {
+  const relays = require('../src/relays');
+
+  assert.strictEqual(
+    relays.destinationUrl({ url: 'rtmp://live.twitch.tv/app', key: 'live_123_abc' }),
+    'rtmp://live.twitch.tv/app/live_123_abc',
+  );
+  // A trailing slash must not produce a doubled separator.
+  assert.strictEqual(
+    relays.destinationUrl({ url: 'rtmp://a.rtmp.youtube.com/live2/', key: 'aaaa-bbbb' }),
+    'rtmp://a.rtmp.youtube.com/live2/aaaa-bbbb',
+  );
+  // YouTube's backup ingest carries ?backup=1. Appending the key to the end of
+  // that would send YouTube the literal key "1".
+  assert.strictEqual(
+    relays.destinationUrl({ url: 'rtmp://b.rtmp.youtube.com/live2?backup=1', key: 'aaaa-bbbb' }),
+    'rtmp://b.rtmp.youtube.com/live2/aaaa-bbbb?backup=1',
+  );
+  // Some services put everything in the URL.
+  assert.strictEqual(relays.destinationUrl({ url: 'rtmp://example.test/all-in-one', key: '' }), 'rtmp://example.test/all-in-one');
+});
+
+test('only rtmp and rtmps destinations are accepted', () => {
+  const relays = require('../src/relays');
+
+  assert.strictEqual(relays.cleanUrl('rtmp://live.twitch.tv/app'), 'rtmp://live.twitch.tv/app');
+  assert.strictEqual(relays.cleanUrl('rtmps://a.rtmps.youtube.com/live2'), 'rtmps://a.rtmps.youtube.com/live2');
+  // A hyphen is perfectly ordinary in a hostname and must survive validation.
+  assert.strictEqual(relays.cleanUrl('rtmp://ingest-eu-west.example.test/live'), 'rtmp://ingest-eu-west.example.test/live');
+
+  for (const bad of ['', 'not a url', 'http://example.test/live', 'file:///etc/passwd', 'rtmp://exa mple.test/live']) {
+    assert.throws(() => relays.cleanUrl(bad), /server URL|does not look like|must be an rtmp/i, `should reject ${JSON.stringify(bad)}`);
+  }
+});
+
+test('a stream key may not smuggle whitespace into the argument list', () => {
+  const relays = require('../src/relays');
+  assert.strictEqual(relays.cleanKey('live_123456_AbCdEf'), 'live_123456_AbCdEf');
+  assert.strictEqual(relays.cleanKey('aaaa-bbbb-cccc-dddd'), 'aaaa-bbbb-cccc-dddd');
+  assert.strictEqual(relays.cleanKey(''), '');
+  assert.throws(() => relays.cleanKey('has a space'), /spaces or unusual/);
+  assert.throws(() => relays.cleanKey('two\nlines'), /spaces or unusual/);
+});
+
+test('the forwarding command copies video and never re-encodes it', () => {
+  const relays = require('../src/relays');
+
+  const copy = relays.buildArgs({ url: 'rtmp://example.test/live', key: 'k', audio: 'copy' }, 'live/abc');
+  assert.ok(copy.includes('-c:v'), 'video codec is set explicitly');
+  assert.strictEqual(copy[copy.indexOf('-c:v') + 1], 'copy');
+  assert.strictEqual(copy[copy.indexOf('-c:a') + 1], 'copy');
+  assert.strictEqual(copy[copy.length - 1], 'rtmp://example.test/live/k');
+  assert.ok(copy.some((a) => a.endsWith('/live/abc')), 'reads the source path over RTSP');
+  assert.strictEqual(copy[copy.indexOf('-f') + 1], 'flv');
+  // Audio is optional so a silent camera still reaches the platform.
+  assert.ok(copy.includes('0:a:0?'));
+
+  const aac = relays.buildArgs({ url: 'rtmp://example.test/live', key: 'k', audio: 'aac' }, 'live/abc');
+  assert.strictEqual(aac[aac.indexOf('-c:a') + 1], 'aac');
+  assert.strictEqual(aac[aac.indexOf('-c:v') + 1], 'copy', 'video is copied even when audio is re-encoded');
+});
+
+test('the shown command never contains the stream key', () => {
+  const relays = require('../src/relays');
+  const shown = relays.previewCommand({ url: 'rtmp://example.test/live', key: 'super-secret-key', audio: 'copy' }, 'live/abc');
+  assert.ok(!shown.includes('super-secret-key'));
+  assert.match(shown, /STREAM-KEY/);
+});
+
+test('destinations are created, listed with a masked key, toggled and deleted', async () => {
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'tester', password: 'super-secret-1' }),
+  });
+  cookie = (login.headers.get('set-cookie') || '').split(';')[0];
+
+  const source = await (await call('/api/admin/streams', { method: 'POST', body: { name: 'Relay source' } })).json();
+  const streamId = source.stream.id;
+
+  // A destination has to belong to a source.
+  const orphan = await call('/api/admin/relays', { method: 'POST', body: { provider: 'twitch', key: 'live_1' } });
+  assert.strictEqual(orphan.status, 400);
+
+  const created = await call('/api/admin/relays', {
+    method: 'POST',
+    body: { streamId, provider: 'twitch', key: 'live_123456_secret' },
+  });
+  assert.strictEqual(created.status, 201);
+  const relay = (await created.json()).relay;
+  assert.strictEqual(relay.provider, 'twitch');
+  assert.strictEqual(relay.url, 'rtmp://live.twitch.tv/app');
+  assert.strictEqual(relay.enabled, true);
+  // Nothing is publishing, so it waits rather than reporting a failure.
+  assert.ok(['waiting', 'off'].includes(relay.status));
+
+  const listed = await (await call('/api/admin/relays')).json();
+  const mine = listed.relays.find((r) => r.id === relay.id);
+  assert.strictEqual(mine.sourceName, 'Relay source');
+  // The key is a credential for somebody else's channel: it is not in the list.
+  assert.ok(!JSON.stringify(listed).includes('live_123456_secret'));
+  assert.match(mine.keyMasked, /•/);
+  assert.ok(listed.providers.some((p) => p.id === 'youtube'));
+  assert.ok(listed.sources.some((s) => s.id === streamId));
+
+  // …but an administrator can ask for it explicitly.
+  const revealed = await (await call(`/api/admin/relays/${relay.id}/key`)).json();
+  assert.strictEqual(revealed.key, 'live_123456_secret');
+
+  const off = await call(`/api/admin/relays/${relay.id}`, { method: 'PATCH', body: { enabled: false } });
+  assert.strictEqual(off.status, 200);
+  assert.strictEqual((await off.json()).relay.status, 'off');
+
+  const badUrl = await call(`/api/admin/relays/${relay.id}`, { method: 'PATCH', body: { url: 'http://example.test/live' } });
+  assert.strictEqual(badUrl.status, 400);
+
+  assert.strictEqual((await call(`/api/admin/relays/${relay.id}`, { method: 'DELETE' })).status, 200);
+  assert.strictEqual((await call(`/api/admin/relays/${relay.id}`, { method: 'DELETE' })).status, 404);
+
+  await call(`/api/admin/streams/${streamId}`, { method: 'DELETE' });
+});
+
+test('one source can be forwarded to several places at once', async () => {
+  const source = await (await call('/api/admin/streams', { method: 'POST', body: { name: 'Multi source' } })).json();
+  const streamId = source.stream.id;
+
+  for (const provider of ['twitch', 'youtube', 'youtube-backup']) {
+    const res = await call('/api/admin/relays', { method: 'POST', body: { streamId, provider, key: `key-${provider}` } });
+    assert.strictEqual(res.status, 201);
+  }
+  const custom = await call('/api/admin/relays', {
+    method: 'POST',
+    body: { streamId, provider: 'custom', url: 'rtmp://ingest.example.test/live', key: 'abc123', name: 'Our mirror', audio: 'aac' },
+  });
+  assert.strictEqual(custom.status, 201);
+  assert.strictEqual((await custom.json()).relay.name, 'Our mirror');
+
+  const listed = await (await call('/api/admin/relays')).json();
+  const mine = listed.relays.filter((r) => r.streamId === streamId);
+  assert.strictEqual(mine.length, 4, 'all four destinations stand on their own');
+  assert.strictEqual(new Set(mine.map((r) => r.id)).size, 4);
+  assert.ok(mine.some((r) => r.audio === 'aac'));
+
+  // Deleting the source takes its destinations with it — otherwise the key
+  // would keep being forwarded after the slot is handed to someone else.
+  await call(`/api/admin/streams/${streamId}`, { method: 'DELETE' });
+  const after = await (await call('/api/admin/relays')).json();
+  assert.strictEqual(after.relays.filter((r) => r.streamId === streamId).length, 0);
+});
+
+test('destinations are persisted, and old configurations gain an empty list', () => {
+  const store = require('../src/store');
+
+  assert.deepStrictEqual(store.defaults().relays, [], 'a fresh install starts with none');
+
+  // They live in the same file as users and stream keys — the file the volume
+  // keeps across `docker compose up -d` and that `make backup` copies.
+  const fromDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'config.json'), 'utf8'));
+  assert.ok(Object.prototype.hasOwnProperty.call(fromDisk, 'relays'), 'relays are persisted, not in-memory');
+  assert.ok(Array.isArray(fromDisk.relays));
+});
+
+test('the server status reports how much is being forwarded', async () => {
+  const status = await (await call('/api/admin/status')).json();
+  assert.ok(status.relays);
+  for (const key of ['total', 'enabled', 'live']) {
+    assert.strictEqual(typeof status.relays[key], 'number');
+  }
+});
