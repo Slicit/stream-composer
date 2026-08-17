@@ -55,6 +55,10 @@ the whole setup.
 - **Two places to compose.** Let the server encode one programme, or let each
   viewer's browser arrange the sources with nothing re-encoded at all. Same
   layout either way — one switch in the admin console.
+- **Restream anywhere.** Forward any incoming source on to Twitch, YouTube or
+  any other RTMP service — as many destinations per source as you like, each
+  switched on and off on its own. Nothing is re-encoded, so it costs a socket
+  rather than a core.
 - **CPU-first.** Sized and measured for machines with no GPU; hardware encoders
   are used automatically when they are there.
 - **Named on air.** Give each stream a nickname and it is burnt into the bottom
@@ -77,6 +81,12 @@ place — that is the text burnt into the stream's cell — and the key stays ma
 until you copy it.
 
 <img src="docs/screenshots/admin-streams.png" alt="The admin Streams tab listing four streams with editable nickname fields, masked stream keys, live status, uptime and per-stream actions" width="820">
+
+**Admin → Restream** forwards the individual sources on to other platforms. Pick
+a source, pick Twitch or YouTube (or paste any RTMP URL), add the key. A source
+can feed several platforms at once, and each destination has its own switch.
+
+<img src="docs/screenshots/admin-restream.png" alt="The admin Restream tab with one destination forwarding at 2.6 Mb/s and four more configured but switched off, grouped by their source stream" width="820">
 
 **Admin → Composition** picks the layout, the output size and bitrate, the
 encoder, and whether nicknames are burnt in. The preview redraws as you change it.

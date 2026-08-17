@@ -111,7 +111,49 @@ never the ingest key).
 
 Web mode suits a small, trusted audience on a good network, or a server with no
 CPU headroom to spare. Server mode suits everything else, and is the only one
-that produces something you can record or push somewhere else.
+that produces a single programme stream you can record or hand to one URL.
+
+Neither choice affects restreaming: that forwards the *sources*, and works the
+same in both modes.
+
+## Restreaming
+
+Forwarding an incoming source on to Twitch, YouTube or anything else that
+accepts an RTMP publish. Configured per destination in **Admin → Restream**, and
+independent of everything above: one source can go to any number of platforms,
+each switched on and off on its own.
+
+```
+   OBS ──▶ MediaMTX  ──RTSP──▶ ffmpeg (remux, -c copy) ──RTMP──▶ Twitch
+   live/abc              │                                 └───▶ YouTube
+                         └──RTSP──▶ compositor / browser  ──────▶ viewers here
+```
+
+The forwarder is a supervised ffmpeg per destination doing a straight remux:
+RTSP in, FLV out, no filtergraph and no video encode. The cost is a socket and a
+memcpy — nowhere near the cost of the compositor — so adding platforms scales
+with bandwidth rather than with cores.
+
+Four things are worth knowing:
+
+- **A relay follows its source.** Nothing runs while the source is not
+  publishing; when OBS reconnects, forwarding resumes on the next poll. That is
+  not treated as a failure and earns no backoff.
+- **Failures back off per destination**, doubling from the restart delay to the
+  maximum. A rejected stream key fails instantly and permanently, and without
+  this it would mean an ffmpeg spawned every two seconds indefinitely.
+- **Audio is copied by default.** RTMP can only carry AAC, which is what OBS
+  publishes, so nothing is re-encoded. A source arriving as something else gets
+  a per-destination *re-encode to AAC* option — the only transcode this path
+  will ever do, at roughly one percent of a core.
+- **Third-party stream keys are treated as credentials.** They are stored in the
+  config file with everything else, never returned by the destination list (only
+  a masked form), scrubbed out of ffmpeg's stderr before it reaches the log, and
+  sent in the clear only when an administrator asks for one explicitly.
+
+Deleting a stream deletes its destinations with it. Leaving them behind would
+keep publishing to a platform on behalf of an ingest slot that has since been
+handed to somebody else.
 
 ## Audio
 
@@ -200,9 +242,14 @@ come from a private address.
 
 ## Storage
 
-One JSON file, `/data/config.json`, holding users, stream keys, composition
-settings and the session secret. Written atomically (temp file, rename), mode
-0600.
+One JSON file, `/data/config.json`, holding users, stream keys, restream
+destinations, composition settings and the session secret. Written atomically
+(temp file, rename), mode 0600.
+
+Keys the file has never seen are filled in from the defaults on load, so a
+backup taken before a feature existed restores cleanly — that is how an older
+configuration acquires an empty destination list rather than crashing the relay
+supervisor.
 
 A stream server holds a handful of users and keys. A database would mean a native
 dependency, migrations and a bigger image, in exchange for nothing at this scale.

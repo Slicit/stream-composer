@@ -23,6 +23,7 @@ FILES = [
     ('05-admin-users.png', 'admin-users.png'),
     ('06-admin-server.png', 'admin-server.png'),
     ('07-admin-logs.png', 'admin-logs.png'),
+    ('09-admin-restream.png', 'admin-restream.png'),
 ]
 
 

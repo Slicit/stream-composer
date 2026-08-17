@@ -77,6 +77,7 @@ async function adminPass(browser) {
   await shootContent(page, '03-admin-streams');
 
   for (const [tab, name] of [
+    ['restream', '09-admin-restream'],
     ['composition', '04-admin-composition'],
     ['users', '05-admin-users'],
     ['server', '06-admin-server'],

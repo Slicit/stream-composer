@@ -148,6 +148,51 @@ its cell** under Composition, and their size set with **Label size**.
   publisher is disconnected immediately.
 - **New key** rotates the key and disconnects whoever was using the old one.
 
+### Restream
+
+![The Restream tab: one destination forwarding with a live rate and byte count, and four more configured but switched off, grouped by source](screenshots/admin-restream.png)
+
+Forwards an incoming source on to another platform, exactly as it arrived. This
+is separate from composition: the grid is for people watching *here*, and a
+destination carries one source, untouched, to somebody else's service.
+
+One source can have as many destinations as you like, and each is switched on
+and off on its own without disturbing the others.
+
+| Field | Notes |
+|---|---|
+| **Source** | Which incoming stream to forward. |
+| **Where to** | `Twitch`, `YouTube Live`, `YouTube Live (backup ingest)` or `Custom RTMP`. Picking one fills in its ingest URL; the URL stays editable, because ingest hostnames are regional. |
+| **Server URL** | Must be `rtmp://` or `rtmps://`. Use `rtmps://a.rtmps.youtube.com/live2` if outbound 1935 is blocked — it runs on 443. |
+| **Stream key** | Appended as the final path segment. Twitch: Creator Dashboard → Settings → Stream. YouTube: Studio → Go live → Stream settings. Leave it empty if the whole address is already in the URL. |
+| **Name** | What the table calls it. Defaults to the platform name. |
+| **Audio** | *Pass through* copies the audio, which is what you want: RTMP carries AAC and so does OBS. *Re-encode to AAC* is for a source arriving as something else, and is the only transcode on this path. |
+
+Nothing is re-encoded, so a destination costs a socket rather than a core —
+adding platforms is a bandwidth question, not a CPU one.
+
+**Status** tells you where a destination is:
+
+| | |
+|---|---|
+| **Waiting for the source** | Configured and switched on, but the source is not publishing. It starts on its own when OBS connects. |
+| **Connecting** | ffmpeg is up; no bytes have reached the platform yet. |
+| **Forwarding** | Carrying. The *For*, *Rate* and *Sent* columns are measured on the outgoing socket. |
+| **Retrying in Ns** | The last attempt failed; the message underneath is the last thing ffmpeg said. The wait doubles on each failure, so a wrong stream key does not spawn a process every two seconds. |
+| **Off** | Switched off by hand. |
+
+**New key** replaces the key; **Command** shows the exact ffmpeg carrying that
+destination with the key removed, for a bug report. Deleting a stream deletes its
+destinations too — otherwise it would keep publishing on behalf of an ingest slot
+that now belongs to someone else.
+
+Destinations are stored in `/data/config.json` alongside users and stream keys,
+so they survive `docker compose pull && docker compose up -d`, a reboot and a
+restore from `make backup`.
+
+Restreaming works whether the grid is made on the server or in the browser: it
+forwards the sources, not the programme.
+
 ### Composition
 
 ![The Composition tab: layout choices with a live preview, source ordering, and the output settings](screenshots/admin-composition.png)

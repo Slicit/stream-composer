@@ -28,6 +28,9 @@ RTSP_PORT=18554
 HLS_PORT=18888
 WEBRTC_PORT=18889
 WEBRTC_UDP=18189
+# Stands in for a streaming platform, so one row on the Restream tab is
+# genuinely carrying rather than merely configured.
+SINK_PORT=11940
 SECRET=screenshot-internal-secret
 PASSWORD='demo-Passw0rd!'
 
@@ -89,6 +92,21 @@ for (const d of [
   { name: 'Slides', nickname: 'Presenter Slides' },
 ]) streams.create(d);
 store.update((d) => { d.composition.labels = true; d.composition.labelSize = 28; });
+
+// Restream destinations for the Restream tab. The platform ones are seeded
+// switched off on purpose — they carry plausible-looking keys, and a capture
+// run must never open a connection to somebody's real Twitch or YouTube
+// ingest. The local one points at the sink started below, so the tab shows a
+// destination that is actually carrying, with real byte and rate figures.
+const relays = require('$ROOT/server/src/relays');
+const byName = (n) => store.get().streams.find((s) => s.name === n).id;
+for (const d of [
+  { streamId: byName('Studio A'), provider: 'custom', url: 'rtmp://127.0.0.1:$SINK_PORT/live', key: 'demo', name: 'Local RTMP destination', enabled: true },
+  { streamId: byName('Studio A'), provider: 'twitch', name: 'Twitch — main channel', key: 'live_284461337_9fQx2LmZaKpRb7Yn', enabled: false },
+  { streamId: byName('Studio A'), provider: 'youtube', name: 'YouTube — main channel', key: 'a4kd-8xz1-mn0p-7yqw-3hbt', enabled: false },
+  { streamId: byName('Studio A'), provider: 'youtube-backup', name: 'YouTube — backup ingest', key: 'a4kd-8xz1-mn0p-7yqw-3hbt', enabled: false },
+  { streamId: byName('Slides'), provider: 'custom', url: 'rtmp://archive.example.com/record', name: 'Archive recorder', key: 'slides-2024', enabled: false },
+]) relays.create(d);
 EOF
 node "$WORK/seed.js" > /dev/null
 
@@ -235,6 +253,12 @@ programme_live() {
 # real H.264 encoder: the load, bitrate and restart figures are the honest ones.
 
 echo "==> admin screens (real H.264 encoder)"
+# The stand-in platform for the seeded restream destination. `-listen 1` serves
+# exactly one connection, which is all this needs: the relay connects once the
+# source starts publishing and stays for the whole admin pass.
+ffmpeg -y -nostdin -hide_banner -loglevel error -listen 1 \
+  -f flv -i "rtmp://127.0.0.1:$SINK_PORT/live/demo" -c copy -f null - > "$WORK/sink.log" 2>&1 &
+PIDS+=($!)
 start_server "$(command -v ffmpeg)"
 wait_for "the server" "curl -fsS http://127.0.0.1:$PORT/healthz"
 publish h264

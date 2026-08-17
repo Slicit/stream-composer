@@ -170,6 +170,26 @@ A climbing restart count means sources are appearing and disappearing.
 - A publisher on a poor connection is the usual cause; SRT ingest handles loss far
   better than RTMP.
 
+## A restream destination will not stay up
+
+**Admin → Restream** shows the state of each one, and the line under a failing
+destination is the last thing ffmpeg said about it.
+
+| What it says | What it usually is |
+|---|---|
+| Stuck on **Waiting for the source** | The source is not publishing. Check the Streams tab: the destination starts on its own the moment OBS connects. |
+| **Retrying**, and the message mentions a rejected or invalid key | The stream key. Press **New key** on that row and paste it again from the platform — they expire, and Twitch and YouTube issue different ones. |
+| **Retrying**, and the message mentions a connection timeout | Outbound 1935 is blocked. YouTube also accepts `rtmps://a.rtmps.youtube.com/live2`, which runs on 443. |
+| **Retrying**, and the message mentions the audio codec | The source is not publishing AAC. Set that destination's **Audio** to *Re-encode to AAC*. |
+| **Forwarding**, but the platform shows nothing | The platform is receiving but the broadcast is not started. On YouTube the stream has to be attached to a scheduled or instant broadcast in Studio. |
+
+The wait between attempts doubles on each failure, up to **Max restart delay**,
+so a destination that has been failing for a while retries slowly. Turning it off
+and on again resets that immediately.
+
+**Command** on the row prints the exact ffmpeg, with the key removed — that is
+the thing to paste into a bug report.
+
 ## Certificates are not issued
 
 With the TLS overlay:

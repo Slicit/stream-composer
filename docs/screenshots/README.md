@@ -11,6 +11,7 @@ retouching. They are 1440-wide pages captured at 2× and downscaled to 1600 px.
 | [viewer-web.png](viewer-web.png) | Viewer page with the grid composed in the browser, no encoder running |
 | [login.png](login.png) | Sign-in |
 | [admin-streams.png](admin-streams.png) | Admin → Streams: keys, nicknames, live status |
+| [admin-restream.png](admin-restream.png) | Admin → Restream: forwarding sources on to other platforms |
 | [admin-composition.png](admin-composition.png) | Admin → Composition: layout, output, encoder |
 | [admin-users.png](admin-users.png) | Admin → Users: accounts and roles |
 | [admin-server.png](admin-server.png) | Admin → Server: load, encoder health, settings |
@@ -32,6 +33,12 @@ knowing when reading the images:
   capture; the layout, the labels, the ingest path, WHEP and the UI are all
   the shipped ones. This is why the viewer's *Received* tile reads `VP8` while
   *Encoder* reads `x264`. The admin captures use the real H.264 encoder.
+- **The Restream destinations are seeded, and only the local one is switched
+  on.** It forwards to an ffmpeg listening on `127.0.0.1` that stands in for a
+  platform, which is why its address looks like that — the *Forwarding* status,
+  the rate and the byte count are all measured on a real outgoing socket. The
+  Twitch and YouTube rows carry plausible-looking keys and are deliberately off:
+  a capture run must never open a connection to somebody's real ingest.
 
 The CPU figure on the Server tab includes the four synthetic publishers, which in
 a real deployment would be running on other machines entirely. See
