@@ -398,6 +398,43 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
 .web-problem strong { color: #fff; font-size: 1.15em; }
 .web-problem .fix { color: var(--ink-muted, #94a3b8); }
 
+/* A private stream this viewer cannot access. Same treatment as .web-problem
+ * on purpose — both are "here is why this cell has no picture". */
+.web-restricted {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 6%;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.86);
+  color: var(--ink-2, #cbd5e1);
+  font-size: clamp(0.62rem, 3.2cqh, 0.95rem);
+  line-height: 1.4;
+}
+.web-restricted strong { color: #fff; font-size: 1.15em; }
+
+/* Per-tile reading in browser-composed mode — see app.js renderTileStats().
+ * Same look as .player-stats, the single-video equivalent it replaces there. */
+.tile-stats {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.3rem 0.45rem;
+  font-family: var(--mono);
+  font-size: clamp(0.55rem, 2.2cqh, 0.68rem);
+  line-height: 1.5;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+.tile-stats b { color: var(--ink); font-weight: 600; }
+
 /* The programme <video> is unused while the browser composes. */
 .player-shell.is-web-composed > #program-video { display: none; }
 
@@ -467,6 +504,30 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
   top: 0.7rem;
   right: 0.7rem;
 }
+
+/* A channel's custom background, behind the grid — visible through the gaps
+ * program.gapPx leaves between cells. */
+.web-grid.has-channel-background {
+  background-size: cover;
+  background-position: center;
+}
+
+/* How many on-air tiles this viewer cannot see into, and whether they are
+ * currently shown as placeholders or excluded from the grid. See app.js
+ * renderHiddenPill(). */
+.hidden-pill {
+  position: absolute;
+  left: 0.7rem;
+  bottom: 3.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.hidden-pill:hover { border-color: var(--line-strong, var(--line)); color: var(--ink); }
 
 /* ------------------------------------------------------------ source list */
 

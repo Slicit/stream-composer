@@ -31,6 +31,7 @@ const { URL } = require('url');
 const config = require('./config');
 const store = require('./store');
 const logger = require('./logger');
+const access = require('./access');
 
 const log = logger.scope('proxy');
 
@@ -64,10 +65,17 @@ const SAFE_QUERY = /^[A-Za-z0-9_.\-=&%~+/]*$/;
 
 /**
  * A playback id resolves to a stream only when it is both known and, per the
- * same visibility rule as the video path, allowed to be addressed at all.
+ * same visibility rule as the video path, allowed to be addressed at all —
+ * by the "show individual sources" setting, and now by the stream's own
+ * visibility/sharedWith against whoever is asking. `user` is whatever
+ * requireViewAccessApi already attached to the request (null when
+ * anonymous); this is the one place that decides whether a private
+ * stream's media is actually reachable, so it is checked here regardless
+ * of what a higher-level API (e.g. the channel-state endpoint) already
+ * filtered — a playback id, once it exists anywhere, must not be a bypass.
  * Shared by the video and the audio-monitor forms of resolvePlayback below.
  */
-function resolveStream(playbackId) {
+function resolveStream(playbackId, user) {
   const d = store.get();
   // "Show individual sources to viewers" hides the sources *behind* the
   // programme. In web mode there is no programme — the sources are what the
@@ -75,6 +83,7 @@ function resolveStream(playbackId) {
   if (!d.settings.showIndividualStreams && d.composition.mode !== 'web') return null;
   const stream = d.streams.find((s) => s.playbackId === playbackId);
   if (!stream || stream.enabled === false) return null;
+  if (!access.canAccess(stream, user)) return null;
   return stream;
 }
 
@@ -82,7 +91,7 @@ function resolveStream(playbackId) {
  * Map a public playback reference onto the real MediaMTX path.
  * Returns null when the reference is unknown or not currently playable.
  */
-function resolvePlayback(publicPath) {
+function resolvePlayback(publicPath, user) {
   if (publicPath === PUBLIC_PROGRAM) return config.programPath;
 
   const parts = publicPath.split('/');
@@ -90,12 +99,12 @@ function resolvePlayback(publicPath) {
   // The Opus audio monitor: `s/<playbackId>/audio`, distinct from the raw
   // (AAC) ingest path a browser cannot decode over WebRTC. See audioRelay.js.
   if (parts.length === 3 && parts[0] === 's' && parts[2] === 'audio' && PLAYBACK_ID.test(parts[1])) {
-    const stream = resolveStream(parts[1]);
+    const stream = resolveStream(parts[1], user);
     return stream ? `${config.audioPrefix}/${stream.key}` : null;
   }
 
   if (parts.length !== 2 || parts[0] !== 's' || !PLAYBACK_ID.test(parts[1])) return null;
-  const stream = resolveStream(parts[1]);
+  const stream = resolveStream(parts[1], user);
   return stream ? `${config.ingestPrefix}/${stream.key}` : null;
 }
 
@@ -103,7 +112,7 @@ function resolvePlayback(publicPath) {
  * Strictly parse a proxied request into validated components.
  * Anything unexpected returns null — there is no lenient path here.
  */
-function parseRequest(rawUrl, kind) {
+function parseRequest(rawUrl, kind, user) {
   const queryAt = rawUrl.indexOf('?');
   const pathPart = queryAt >= 0 ? rawUrl.slice(0, queryAt) : rawUrl;
   const query = queryAt >= 0 ? rawUrl.slice(queryAt + 1) : '';
@@ -127,7 +136,7 @@ function parseRequest(rawUrl, kind) {
     if (sessionId !== undefined && !SESSION_ID.test(sessionId)) return null;
 
     const publicPath = segments.slice(0, idx).join('/');
-    const mediaPath = resolvePlayback(publicPath);
+    const mediaPath = resolvePlayback(publicPath, user);
     if (!mediaPath) return null;
 
     return {
@@ -143,7 +152,7 @@ function parseRequest(rawUrl, kind) {
   const file = segments[segments.length - 1];
   if (!HLS_FILE.test(file)) return null;
   const publicPath = segments.slice(0, -1).join('/');
-  const mediaPath = resolvePlayback(publicPath);
+  const mediaPath = resolvePlayback(publicPath, user);
   if (!mediaPath) return null;
 
   return { publicPath, mediaPath, upstreamPath: `/${mediaPath}/${file}`, query };
@@ -264,7 +273,7 @@ function mount(app, guard) {
     if (!['POST', 'PATCH', 'DELETE', 'OPTIONS'].includes(req.method)) {
       return res.status(405).json({ error: 'Method not allowed.' });
     }
-    const parsed = parseRequest(req.url, 'webrtc');
+    const parsed = parseRequest(req.url, 'webrtc', req.user);
     if (!parsed) return res.status(404).json({ error: 'Unknown stream.' });
     return forward({ base: config.mediamtx.webrtc, mount: WEBRTC_MOUNT, req, res, parsed });
   });
@@ -274,7 +283,7 @@ function mount(app, guard) {
     if (!['GET', 'HEAD'].includes(req.method)) {
       return res.status(405).json({ error: 'Method not allowed.' });
     }
-    const parsed = parseRequest(req.url, 'hls');
+    const parsed = parseRequest(req.url, 'hls', req.user);
     if (!parsed) return res.status(404).json({ error: 'Unknown stream.' });
     return forward({ base: config.mediamtx.hls, mount: HLS_MOUNT, req, res, parsed });
   });

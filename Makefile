@@ -25,7 +25,11 @@ pull: ## Pull the latest images
 	$(COMPOSE) pull
 
 .PHONY: upgrade
-upgrade: pull up ## Pull and restart
+upgrade: pull up ## Pull and restart (image only)
+
+.PHONY: update
+update: ## Update in place: redownloads compose/config/docs too, then pulls and restarts
+	./update.sh
 
 .PHONY: logs
 logs: ## Follow all container logs

@@ -187,6 +187,54 @@ it per viewer.
 
 ![The viewer's audio monitor with one source selected and its level meter moving, the others muted](screenshots/viewer-audio.png)
 
+## Channels
+
+A channel (`server/src/channels.js`) is a named, sluggable, curated list of
+streams — `s/<slug>` becomes a page anyone with access can watch, composed
+from just those streams rather than every enabled one. Any logged-in user
+may own channels, not only administrators.
+
+**Channels are always browser-composed, never a server encode.** A channel
+reuses the exact "web mode" rendering path every browser-composed grid
+already uses (`planLayout()`, one WHEP subscription per source, nothing
+re-encoded) — see "Where the grid is made" above. Giving every channel its
+own ffmpeg encoder would mean real, continuous CPU cost per simultaneously
+watched channel, which is exactly what a single shared programme exists to
+avoid. Because a channel costs nothing extra to host, there is no reason to
+restrict who may create one.
+
+**Streams and channels share one visibility rule.** Both have a
+`visibility` (`private` by default) and a `sharedWith` list of user ids;
+`server/src/access.js` is the one function (`canAccess(resource, user)`)
+that decides whether a given user may reach a given resource — public
+always yes, private needs to be the owner (channels only; streams have
+none), an admin, or explicitly shared. One function, so a stream and a
+channel are never accidentally judged by different rules.
+
+**A private stream inside a channel the viewer *can* see still has to pass
+its own check.** A channel's membership list is not itself a grant — a
+public channel may contain a private stream that most of its viewers
+cannot watch. The channel-state endpoint marks such an entry `restricted`
+and — critically — omits its playback path entirely, so there is nothing
+for the client to even attempt a WHEP session with. Viewers may toggle
+whether restricted entries still occupy a grid cell as a placeholder or are
+excluded outright, recomputed server-side (`?hideRestricted=1`) so the
+layout genuinely reflows rather than just hiding an element client-side.
+
+**The media proxy enforces this too, independent of the channel API.**
+`resolvePlayback`/`resolveStream` (`proxy.js`) now take the requesting
+user and call `access.canAccess()` before resolving any `s/<playbackId>`
+reference — the same enforcement point the rest of this section's security
+model already relies on for everything else. A playback id is not a
+secret once it has been delivered to *anyone*, so the channel API filtering
+it out of one response is not sufficient on its own; the proxy has to refuse
+it too, for whoever presents it, however they came to have it.
+
+**The homepage is a redirect, not a second rendering path.** `settings.
+homepageChannelId`, when set, makes `GET /` 302 to `GET /c/<slug>` — same
+auth gate, same everything, as visiting that channel directly. No homepage
+configured leaves `/` exactly as it has always behaved.
+
 ## Security model
 
 **Nothing reaches MediaMTX from the internet except media.** Published ports:
@@ -266,6 +314,15 @@ Keys the file has never seen are filled in from the defaults on load, so a
 backup taken before a feature existed restores cleanly — that is how an older
 configuration acquires an empty destination list rather than crashing the relay
 supervisor.
+
+One backfill is deliberately not neutral: a stream saved before per-stream
+visibility existed gets `visibility: 'private'`, not `'public'`. An upgrade
+that silently exposed a stream because a field used to be absent would be
+the wrong failure mode — but the reverse is a real, visible change of
+behaviour on upgrade. A deployment that relied on every enabled stream
+being reachable through the classic browser-composed grid needs its
+streams marked public again after upgrading (Admin → Streams → Make
+public), or granted to specific users.
 
 A stream server holds a handful of users and keys. A database would mean a native
 dependency, migrations and a bigger image, in exchange for nothing at this scale.

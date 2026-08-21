@@ -8,6 +8,7 @@ const config = require('../config');
 const store = require('../store');
 const auth = require('../auth');
 const streams = require('../streams');
+const channels = require('../channels');
 const compositor = require('../compositor');
 const relays = require('../relays');
 const encoder = require('../encoder');
@@ -191,6 +192,55 @@ router.delete('/users/:id', (req, res) => {
   } catch (err) {
     fail(res, err);
   }
+});
+
+// ----------------------------------------------------------------- channels
+//
+// Admins moderate every channel regardless of owner. Owners manage their own
+// through routes/channels.js's "/api/channels/mine" instead — same
+// channels.js functions underneath, just a different authorization check.
+
+router.get('/channels', (_req, res) => {
+  res.json({ channels: channels.list(), homepageChannelId: store.get().settings.homepageChannelId });
+});
+
+router.post('/channels', (req, res) => {
+  try {
+    const body = req.body || {};
+    res.status(201).json({ channel: channels.create({ ...body, ownerId: body.ownerId || req.user.id }) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.patch('/channels/:id', (req, res) => {
+  try {
+    res.json({ channel: channels.update(req.params.id, req.body || {}) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.delete('/channels/:id', (req, res) => {
+  try {
+    channels.remove(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.put('/channels/:id/homepage', (req, res) => {
+  try {
+    res.json({ channel: channels.setHomepage(req.params.id) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.delete('/channels/:id/homepage', (req, res) => {
+  channels.clearHomepage();
+  res.json({ ok: true });
 });
 
 // -------------------------------------------------------------- composition

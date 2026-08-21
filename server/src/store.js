@@ -73,6 +73,9 @@ const DEFAULT_SETTINGS = {
   stabilizeMs: 1500, // wait for the stream set to settle before rebuilding
   restartDelayMs: 2000, // backoff before restarting a dead ffmpeg
   maxRestartDelayMs: 15000,
+  // The channel shown at "/". Null means no homepage is configured — "/"
+  // behaves exactly as it always has. See src/channels.js.
+  homepageChannelId: null,
 };
 
 function defaults() {
@@ -84,6 +87,9 @@ function defaults() {
     // Restream destinations. One source may have any number; each is
     // independently switchable. See src/relays.js.
     relays: [],
+    // Curated, sluggable stream lists any logged-in user may own. See
+    // src/channels.js.
+    channels: [],
     composition: { ...DEFAULT_COMPOSITION },
     settings: { ...DEFAULT_SETTINGS },
     secrets: { sessionSecret: crypto.randomBytes(32).toString('hex') },
@@ -108,9 +114,21 @@ function mergeDefaults(loaded) {
   // old backup must not throw away the key it does not know about, nor crash
   // the relay supervisor by handing it undefined.
   out.relays = Array.isArray(loaded.relays) ? loaded.relays : [];
-  // Streams created before playback ids existed get one on load.
+  // Absent in configurations written before channels existed.
+  out.channels = Array.isArray(loaded.channels) ? loaded.channels : [];
+  // Streams created before playback ids, visibility or access grants existed
+  // get sane defaults on load — private by default, so an upgrade never
+  // silently exposes a stream that was previously reachable only because
+  // per-stream visibility did not exist yet.
   for (const s of out.streams) {
     if (!s.playbackId) s.playbackId = crypto.randomBytes(12).toString('hex');
+    if (s.visibility !== 'public' && s.visibility !== 'private') s.visibility = 'private';
+    if (!Array.isArray(s.sharedWith)) s.sharedWith = [];
+  }
+  for (const c of out.channels) {
+    if (c.visibility !== 'public' && c.visibility !== 'private') c.visibility = 'private';
+    if (!Array.isArray(c.sharedWith)) c.sharedWith = [];
+    if (!Array.isArray(c.streamIds)) c.streamIds = [];
   }
   return out;
 }
@@ -196,4 +214,4 @@ function update(mutator) {
   return result;
 }
 
-module.exports = { get, load, save, update, defaults, DEFAULT_COMPOSITION, DEFAULT_SETTINGS };
+module.exports = { get, load, save, update, defaults, mergeDefaults, DEFAULT_COMPOSITION, DEFAULT_SETTINGS };

@@ -11,6 +11,7 @@ const mediamtx = require('./mediamtx');
 const compositor = require('./compositor');
 const relays = require('./relays');
 const audioRelay = require('./audioRelay');
+const channels = require('./channels');
 const proxy = require('./proxy');
 
 const log = logger.scope('server');
@@ -88,6 +89,13 @@ proxy.mount(app, auth.requireViewAccessApi);
 
 app.use('/api/admin', auth.requireAdmin, require('./routes/admin'));
 
+// -------------------------------------------------------------- channels API
+// Mounted before the viewer API for the same reason: viewing a channel, the
+// available-streams pool and "my channels" each carry their own access rule
+// (public/private/owner), never the blanket publicViewing one.
+
+app.use('/api', require('./routes/channels'));
+
 // ---------------------------------------------------------------- viewer API
 
 app.use('/api', auth.requireViewAccess, require('./routes/api'));
@@ -116,7 +124,24 @@ app.get('/admin', auth.requireUser, (req, res) => {
   return res.sendFile(path.join(publicDir, 'admin.html'));
 });
 
+app.get('/channels', auth.requireUser, (_req, res) => res.sendFile(path.join(publicDir, 'channels.html')));
+
+// A configured homepage channel takes over "/" via redirect, so it reuses
+// every bit of /c/:slug's auth gate and rendering rather than duplicating
+// either. No homepage configured (the common case, and every upgrade until
+// an operator sets one) falls straight through to today's unchanged handler.
+app.get('/', (req, res, next) => {
+  const channel = channels.homepageChannel();
+  if (!channel) return next();
+  return res.redirect(`/c/${channel.slug}`);
+});
 app.get('/', auth.requireViewAccess, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+
+app.get('/c/:slug', channels.requireChannelAccess, (_req, res) => res.sendFile(path.join(publicDir, 'index.html')));
+
+// Uploaded channel background images. Not under publicDir: user-supplied
+// files have no business sharing a directory with the app's own assets.
+app.use('/uploads/channel-backgrounds', express.static(config.channelBackgroundsDir, { index: false, maxAge: '1h' }));
 
 app.use(
   express.static(publicDir, {

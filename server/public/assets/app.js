@@ -7,6 +7,17 @@ import { $, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, formatD
 const WEBRTC = '/mtx/webrtc';
 const HLS = '/mtx/hls';
 
+// `/c/<slug>` views a channel instead of the default global grid — same
+// page, same app.js, just a different state endpoint. See routes/channels.js.
+const CHANNEL_SLUG = location.pathname.startsWith('/c/') ? location.pathname.slice(3).split('/')[0] || null : null;
+const HIDE_RESTRICTED_KEY = CHANNEL_SLUG ? `sc-hide-restricted:${CHANNEL_SLUG}` : null;
+
+function stateUrl() {
+  if (!CHANNEL_SLUG) return '/api/state';
+  const hide = app.hideRestricted ? '?hideRestricted=1' : '';
+  return `/api/channels/${encodeURIComponent(CHANNEL_SLUG)}/state${hide}`;
+}
+
 const app = {
   state: null,
   program: null, // WhepClient for the composed programme
@@ -21,6 +32,10 @@ const app = {
   showStats: false,
   viewMode: 'normal',
   levelRaf: null,
+  // Whether restricted (private, inaccessible) tiles are excluded from a
+  // channel's grid entirely, rather than shown as a placeholder. Per channel,
+  // remembered across visits.
+  hideRestricted: !!(HIDE_RESTRICTED_KEY && localStorage.getItem(HIDE_RESTRICTED_KEY) === '1'),
 };
 
 // ---------------------------------------------------------------- programme
@@ -125,6 +140,49 @@ function stopProgram() {
 // source and positions it into the cell the *server* computed, so the picture
 // matches what the encoder would have produced — same layout rules, same order,
 // same captions — without anything being re-encoded.
+
+let lastBackgroundUrl = undefined;
+
+/**
+ * The grid host (#web-grid), not the player shell — .web-grid is what
+ * program.background's colour already targets (see startWebGrid()), and it
+ * sits opaque on top of the shell, so anything painted on the shell itself
+ * would never show through.
+ */
+function applyChannelBackground(channel) {
+  if (!CHANNEL_SLUG) return; // never creates #web-grid outside channel mode
+  const host = gridHost();
+  const url = channel && channel.backgroundImage ? channel.backgroundImage : null;
+  if (url === lastBackgroundUrl) return;
+  lastBackgroundUrl = url;
+  host.style.backgroundImage = url ? `url("${url}")` : '';
+  host.classList.toggle('has-channel-background', !!url);
+}
+
+function renderHiddenPill(channel) {
+  const host = $('#player-shell');
+  let pill = $('.hidden-pill', host);
+  const count = channel && channel.hiddenCount ? channel.hiddenCount : 0;
+  if (!CHANNEL_SLUG || count === 0) {
+    if (pill) pill.remove();
+    return;
+  }
+  if (!pill) {
+    pill = h('button', { class: 'hidden-pill', type: 'button' });
+    pill.addEventListener('click', () => {
+      app.hideRestricted = !app.hideRestricted;
+      if (HIDE_RESTRICTED_KEY) localStorage.setItem(HIDE_RESTRICTED_KEY, app.hideRestricted ? '1' : '0');
+      // The next state fetch carries a different onAir/layout (server-side
+      // hideRestricted), which naturally changes gridSignature() and makes
+      // syncWebGrid() rebuild — no manual invalidation needed.
+      refresh();
+    });
+    host.appendChild(pill);
+  }
+  pill.textContent = app.hideRestricted
+    ? `${count} hidden — show`
+    : `${count} private — hide`;
+}
 
 function gridHost() {
   let host = $('#web-grid');
@@ -232,16 +290,36 @@ function startWebGrid() {
     // A source the browser cannot take over WebRTC still plays over HLS, so
     // prefer that to an empty cell unless the operator asked to be told instead.
     const useHls = !!(meta && meta.problem) && program.fallback !== 'warn';
+    // A private stream this viewer cannot access: the API never sent a path
+    // for it at all, so there is nothing to subscribe to — a placeholder
+    // fills the cell instead. See routes/channels.js.
+    const restricted = !!(meta && meta.restricted);
 
     let tile = app.tiles.get(source.key);
+    // Access can change between polls (a grant lands, a channel toggles
+    // visibility) — rebuild rather than leave a stale placeholder or a
+    // stale live subscription in place.
+    if (tile && tile.restricted !== restricted) {
+      if (tile.client) tile.client.stop();
+      if (tile.hls) tile.hls.destroy();
+      app.tiles.delete(source.key);
+      tile = null;
+    }
     if (!tile) {
       const video = h('video', { playsinline: true, autoplay: true, muted: true });
       // Tiles autoplay on their own the moment a source comes on air, so the
       // global play/pause button needs its own hook to notice — see syncPlayIcon().
       video.addEventListener('play', syncPlayIcon);
       video.addEventListener('pause', syncPlayIcon);
-      tile = { client: null, hls: null, video, viaHls: useHls, wrap: h('div', { class: 'web-cell' }, [video]) };
-      if (useHls) {
+      tile = { client: null, hls: null, video, viaHls: useHls, restricted, wrap: h('div', { class: 'web-cell' }, [video]) };
+      if (restricted) {
+        tile.wrap.appendChild(
+          h('div', { class: 'web-restricted' }, [
+            h('strong', { text: 'This stream is private' }),
+            h('span', { text: 'Please ask for access.' }),
+          ]),
+        );
+      } else if (useHls) {
         startTileHls(video, source.key).then((hls) => {
           const current = app.tiles.get(source.key);
           if (current === tile) tile.hls = hls;
@@ -271,37 +349,41 @@ function startWebGrid() {
     tile.wrap.style.width = pct(cell.w, layout.width);
     tile.wrap.style.height = pct(cell.h, layout.height);
 
-    // A source the browser cannot decode would otherwise be a black rectangle
-    // with nothing to explain it. Say what is wrong and how to fix it.
-    const existingNote = tile.wrap.querySelector('.web-problem');
-    if (existingNote) existingNote.remove();
-    if (meta && meta.problem && !useHls) {
-      tile.wrap.appendChild(
-        h('div', { class: 'web-problem' }, [
-          h('strong', { text: source.name }),
-          h('span', { text: meta.problem.summary }),
-          meta.problem.fix ? h('span', { class: 'fix', text: meta.problem.fix }) : null,
-        ].filter(Boolean)),
-      );
-    }
+    // None of this applies to a restricted placeholder — there is no video
+    // to explain, fall back for, or caption.
+    if (!restricted) {
+      // A source the browser cannot decode would otherwise be a black rectangle
+      // with nothing to explain it. Say what is wrong and how to fix it.
+      const existingNote = tile.wrap.querySelector('.web-problem');
+      if (existingNote) existingNote.remove();
+      if (meta && meta.problem && !useHls) {
+        tile.wrap.appendChild(
+          h('div', { class: 'web-problem' }, [
+            h('strong', { text: source.name }),
+            h('span', { text: meta.problem.summary }),
+            meta.problem.fix ? h('span', { class: 'fix', text: meta.problem.fix }) : null,
+          ].filter(Boolean)),
+        );
+      }
 
-    const existingBadge = tile.wrap.querySelector('.web-transport');
-    if (existingBadge) existingBadge.remove();
-    if (tile.viaHls) {
-      tile.wrap.appendChild(h('span', {
-        class: 'web-transport',
-        title: 'This source cannot be carried over WebRTC, so it is playing over HLS and runs a few seconds behind the others.',
-        text: 'HLS · delayed',
-      }));
-    }
+      const existingBadge = tile.wrap.querySelector('.web-transport');
+      if (existingBadge) existingBadge.remove();
+      if (tile.viaHls) {
+        tile.wrap.appendChild(h('span', {
+          class: 'web-transport',
+          title: 'This source cannot be carried over WebRTC, so it is playing over HLS and runs a few seconds behind the others.',
+          text: 'HLS · delayed',
+        }));
+      }
 
-    // The caption the encoder would have burnt in, drawn as text instead.
-    const existingCaption = tile.wrap.querySelector('.web-caption');
-    if (existingCaption) existingCaption.remove();
-    if (program.labels && source.name) {
-      // Sizing lives entirely in the .web-caption CSS rule now (font-size:
-      // 2vw), not here — an inline style would override it.
-      tile.wrap.appendChild(h('span', { class: 'web-caption', text: source.name }));
+      // The caption the encoder would have burnt in, drawn as text instead.
+      const existingCaption = tile.wrap.querySelector('.web-caption');
+      if (existingCaption) existingCaption.remove();
+      if (program.labels && source.name) {
+        // Sizing lives entirely in the .web-caption CSS rule now (font-size:
+        // 2vw), not here — an inline style would override it.
+        tile.wrap.appendChild(h('span', { class: 'web-caption', text: source.name }));
+      }
     }
     return tile.wrap;
   }).filter(Boolean);
@@ -652,25 +734,58 @@ function renderTiles() {
   );
 }
 
+/**
+ * Server mode has exactly one video, so the single top-left overlay is the
+ * whole story. Web/channel mode has one video per tile — showing only one
+ * combined reading there hid which specific source was struggling, so each
+ * tile gets its own reading instead (renderTileStats(), below), and the
+ * single overlay is hidden rather than duplicating the aggregate.
+ * `#overlay-readout` (bottom-right, in the control bar) is unaffected either
+ * way — it already is, and stays, the aggregate reading.
+ */
 function renderPlayerStats() {
   const box = $('#player-stats');
   const s = composingHere() ? webGridStats() : app.stats;
-  if (!s) {
-    box.textContent = '';
-    $('#overlay-readout').textContent = '';
-    return;
+  if (composingHere()) {
+    box.classList.remove('show');
+    box.replaceChildren();
+    renderTileStats();
+  } else if (!s) {
+    box.replaceChildren();
+  } else {
+    box.replaceChildren(
+      h('div', { html: `resolution <b>${s.width}×${s.height}</b>` }),
+      h('div', { html: `frame rate <b>${s.fps}</b> fps` }),
+      h('div', { html: `bitrate <b>${s.kbps}</b> kb/s` }),
+      h('div', { html: `codec <b>${(s.codec || '—').toUpperCase()}</b>` }),
+      h('div', { html: `round trip <b>${s.rttMs != null ? `${s.rttMs} ms` : '—'}</b>` }),
+      h('div', { html: `jitter <b>${s.jitterMs} ms</b> · lost <b>${s.packetsLost}</b>` }),
+    );
   }
-  box.replaceChildren(
-    h('div', { html: `resolution <b>${s.width}×${s.height}</b>` }),
-    h('div', { html: `frame rate <b>${s.fps}</b> fps` }),
-    h('div', { html: `bitrate <b>${s.kbps}</b> kb/s` }),
-    h('div', { html: `codec <b>${(s.codec || '—').toUpperCase()}</b>` }),
-    h('div', { html: `round trip <b>${s.rttMs != null ? `${s.rttMs} ms` : '—'}</b>` }),
-    h('div', { html: `jitter <b>${s.jitterMs} ms</b> · lost <b>${s.packetsLost}</b>` }),
-  );
-  $('#overlay-readout').textContent = s.sources
-    ? `${s.sources} sources · ${s.fps} fps · ${s.kbps} kb/s`
-    : `${s.width}×${s.height} · ${s.fps} fps · ${s.kbps} kb/s`;
+  $('#overlay-readout').textContent = !s
+    ? ''
+    : s.sources
+      ? `${s.sources} sources · ${s.fps} fps · ${s.kbps} kb/s`
+      : `${s.width}×${s.height} · ${s.fps} fps · ${s.kbps} kb/s`;
+}
+
+/** One small readout per tile, top-left, toggled by the same #btn-stats. */
+function renderTileStats() {
+  for (const tile of app.tiles.values()) {
+    const existing = tile.wrap.querySelector('.tile-stats');
+    const s = tile.client && tile.client.lastStats;
+    if (!app.showStats || !composingHere() || !s) {
+      if (existing) existing.remove();
+      continue;
+    }
+    const box = existing || h('div', { class: 'tile-stats' });
+    box.replaceChildren(
+      h('div', { html: `<b>${s.width}×${s.height}</b>` }),
+      h('div', { text: `${s.fps} fps · ${s.kbps} kb/s` }),
+      h('div', { text: `${(s.codec || '—').toUpperCase()}${s.rttMs != null ? ` · ${s.rttMs} ms` : ''}` }),
+    );
+    if (!existing) tile.wrap.appendChild(box);
+  }
 }
 
 function renderProgramInfo() {
@@ -725,6 +840,7 @@ function renderUserArea() {
   const children = [];
   if (user && user.role === 'admin') children.push(h('a', { class: 'btn', href: '/admin', text: 'Admin' }));
   if (user) {
+    children.push(h('a', { class: 'btn', href: '/channels', text: 'My channels' }));
     children.push(h('span', { style: 'font-size:.82rem; color:var(--ink-muted)', text: user.username }));
     children.push(
       h('button', {
@@ -819,7 +935,7 @@ let wasComposingHere = false;
 async function refresh() {
   let next;
   try {
-    next = await api('/api/state', { quiet: true });
+    next = await api(stateUrl(), { quiet: true });
   } catch (_) {
     return;
   }
@@ -829,6 +945,8 @@ async function refresh() {
 
   document.title = `${next.settings.siteName} — live`;
   $('#site-name').textContent = next.settings.siteName;
+  applyChannelBackground(next.channel);
+  renderHiddenPill(next.channel);
 
   renderUserArea();
   renderProgramStatus();
@@ -881,7 +999,8 @@ function wireControls() {
 
   $('#btn-stats').addEventListener('click', () => {
     app.showStats = !app.showStats;
-    $('#player-stats').classList.toggle('show', app.showStats);
+    $('#player-stats').classList.toggle('show', app.showStats && !composingHere());
+    renderTileStats();
   });
 
   $('#btn-cinema').addEventListener('click', toggleViewMode);

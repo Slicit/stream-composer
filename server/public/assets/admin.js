@@ -8,6 +8,8 @@ const admin = {
   relays: [],
   relayProviders: [],
   relaySources: [],
+  channels: [],
+  homepageChannelId: null,
   users: [],
   composition: null,
   layouts: [],
@@ -27,6 +29,7 @@ function showPanel(name) {
   window.location.hash = name;
   if (name === 'logs') loadLogs();
   if (name === 'restream') loadRelays();
+  if (name === 'channels') loadChannels();
 }
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', () => showPanel(tab.dataset.panel)));
@@ -168,10 +171,20 @@ function renderStreams() {
       h('td', { class: 'num', text: s.hasAudio ? 'yes' : 'no' }),
       h('td', { class: 'num', text: formatBytes(s.bytesReceived || 0) }),
       h('td', {}, [
+        s.id
+          ? statusChip(s.visibility === 'public' ? 'live' : 'idle', s.visibility === 'public' ? 'Public' : 'Private')
+          : h('span', { style: 'color:var(--ink-muted)', text: '—' }),
+        s.id && s.visibility !== 'public' && (s.sharedWith || []).length
+          ? h('span', { class: 'meta', style: 'display:block; font-size:.7rem; margin-top:.2rem;', text: `${s.sharedWith.length} granted` })
+          : null,
+      ].filter(Boolean)),
+      h('td', {}, [
         h('div', { class: 'row', style: 'flex-wrap:nowrap; justify-content:flex-end;' }, [
           s.id ? h('button', { class: 'ghost', text: 'OBS', onclick: () => obsDialog(s) }) : null,
           s.id ? h('button', { class: 'ghost', text: s.enabled === false ? 'Enable' : 'Disable', onclick: () => patchStream(s.id, { enabled: s.enabled === false }) }) : null,
           s.id ? h('button', { class: 'ghost', text: 'Rename', onclick: () => renameStream(s) }) : null,
+          s.id ? h('button', { class: 'ghost', text: s.visibility === 'public' ? 'Make private' : 'Make public', onclick: () => patchStream(s.id, { visibility: s.visibility === 'public' ? 'private' : 'public' }) }) : null,
+          s.id && s.visibility !== 'public' ? h('button', { class: 'ghost', text: 'Access', onclick: () => editStreamAccess(s) }) : null,
           s.id ? h('button', { class: 'ghost', text: 'New key', onclick: () => rotateKey(s) }) : null,
           s.id ? h('button', { class: 'danger ghost', text: 'Delete', onclick: () => deleteStream(s) }) : null,
         ]),
@@ -191,12 +204,36 @@ function renderStreams() {
           h('th', { class: 'num', text: 'On air' }),
           h('th', { class: 'num', text: 'Audio' }),
           h('th', { class: 'num', text: 'Received' }),
+          h('th', { text: 'Visibility' }),
           h('th', {}),
         ]),
       ]),
       h('tbody', {}, rows),
     ]),
   );
+}
+
+/**
+ * A stream that is not public may list specific users who can still reach
+ * it — over the media proxy directly, and inside any channel that includes
+ * it. Plain-text usernames in, resolved against the users already loaded
+ * for the Users tab, because that beats making someone hunt for user ids.
+ */
+function editStreamAccess(stream) {
+  const current = (stream.sharedWith || [])
+    .map((id) => (admin.users.find((u) => u.id === id) || {}).username)
+    .filter(Boolean)
+    .join(', ');
+  const typed = window.prompt(`Usernames allowed to access “${stream.name}” while private, comma-separated:`, current);
+  if (typed === null) return;
+  const names = typed.split(',').map((n) => n.trim()).filter(Boolean);
+  const unknown = names.filter((n) => !admin.users.some((u) => u.username.toLowerCase() === n.toLowerCase()));
+  if (unknown.length) {
+    toast(`No such user: ${unknown.join(', ')}`, 'error');
+    return;
+  }
+  const sharedWith = names.map((n) => admin.users.find((u) => u.username.toLowerCase() === n.toLowerCase()).id);
+  patchStream(stream.id, { sharedWith });
 }
 
 async function loadStreams() {
@@ -703,6 +740,93 @@ async function loadComposition() {
   renderOrderList();
 }
 
+// ---------------------------------------------------------------- channels
+
+function renderChannels() {
+  const box = $('#channels-table');
+  if (admin.channels.length === 0) {
+    box.replaceChildren(h('div', { class: 'empty', text: 'No channels yet.' }));
+    return;
+  }
+  const rows = admin.channels.map((c) => {
+    const owner = admin.users.find((u) => u.id === c.ownerId);
+    const isHomepage = admin.homepageChannelId === c.id;
+    return h('tr', {}, [
+      h('td', {}, [
+        h('div', { style: 'font-weight:600', text: c.name }),
+        h('div', { class: 'mono', style: 'font-size:.72rem; color:var(--ink-muted)', text: `/c/${c.slug}` }),
+      ]),
+      h('td', { text: owner ? owner.username : '—' }),
+      h('td', {}, [statusChip(c.visibility === 'public' ? 'live' : 'idle', c.visibility === 'public' ? 'Public' : 'Private')]),
+      h('td', { class: 'num', text: String((c.streamIds || []).length) }),
+      h('td', {}, [isHomepage ? h('span', { class: 'warn-chip', text: 'Homepage' }) : null].filter(Boolean)),
+      h('td', {}, [
+        h('div', { class: 'row', style: 'flex-wrap:nowrap; justify-content:flex-end;' }, [
+          h('button', {
+            class: 'ghost',
+            text: isHomepage ? 'Unset homepage' : 'Set as homepage',
+            onclick: () => setHomepageChannel(isHomepage ? null : c.id),
+          }),
+          h('button', { class: 'danger ghost', text: 'Delete', onclick: () => deleteChannel(c) }),
+        ]),
+      ]),
+    ]);
+  });
+  box.replaceChildren(
+    h('table', {}, [
+      h('thead', {}, [
+        h('tr', {}, [
+          h('th', { text: 'Channel' }),
+          h('th', { text: 'Owner' }),
+          h('th', { text: 'Visibility' }),
+          h('th', { class: 'num', text: 'Streams' }),
+          h('th', {}),
+          h('th', {}),
+        ]),
+      ]),
+      h('tbody', {}, rows),
+    ]),
+  );
+}
+
+async function loadChannels() {
+  const data = await api('/api/admin/channels', { quiet: true }).catch(() => null);
+  if (!data) return;
+  admin.channels = data.channels;
+  admin.homepageChannelId = data.homepageChannelId;
+  renderChannels();
+}
+
+async function setHomepageChannel(id) {
+  if (id) await api(`/api/admin/channels/${id}/homepage`, { method: 'PUT' });
+  else await api(`/api/admin/channels/${admin.homepageChannelId}/homepage`, { method: 'DELETE' });
+  toast(id ? 'Homepage channel set.' : 'Homepage channel cleared.', 'good');
+  loadChannels();
+}
+
+async function deleteChannel(channel) {
+  if (!window.confirm(`Delete “${channel.name}”? This cannot be undone.`)) return;
+  await api(`/api/admin/channels/${channel.id}`, { method: 'DELETE' });
+  toast('Channel deleted.', 'good');
+  loadChannels();
+}
+
+$('#channel-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const body = Object.fromEntries(new FormData(form).entries());
+  try {
+    await api('/api/admin/channels', { method: 'POST', body });
+    toast('Channel created.', 'good');
+    form.reset();
+    loadChannels();
+  } catch (err) {
+    toast(err.message || 'Could not create the channel.', 'error');
+  }
+});
+
+$('#channels-refresh').addEventListener('click', loadChannels);
+
 // ------------------------------------------------------------------- users
 
 function renderUsers() {
@@ -989,7 +1113,7 @@ api('/api/auth/me', { quiet: true }).then((data) => {
 const initial = (window.location.hash || '#streams').slice(1);
 if ($(`#panel-${initial}`)) showPanel(initial);
 
-Promise.all([loadStreams(), loadRelays(), loadComposition(), loadUsers(), loadSettings(), loadStatus()]);
+Promise.all([loadStreams(), loadRelays(), loadComposition(), loadChannels(), loadUsers(), loadSettings(), loadStatus()]);
 setInterval(loadStatus, 2000);
 setInterval(loadStreams, 5000);
 // Only while it is on screen: the numbers are per-second, and nobody needs

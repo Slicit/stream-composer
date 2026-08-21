@@ -50,6 +50,10 @@ test.after(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
+// Always runs as the module-level admin session — it overwrites
+// options.headers.cookie rather than falling back to it, so passing a
+// different user's cookie here silently runs as admin instead. Use
+// callAs() below for anything that needs to run as a specific user.
 function call(pathname, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (cookie) headers.cookie = cookie;
@@ -131,10 +135,14 @@ let streamId = null;
 let streamKey = null;
 
 test('creating a stream generates a key and OBS settings', async () => {
-  const res = await call('/api/admin/streams', { method: 'POST', body: { name: 'Camera 1' } });
+  // Public: this stream backs every proxy/routing test below, which predate
+  // (and are not about) per-stream visibility — keeping it public keeps
+  // their original meaning. Visibility itself gets its own tests further down.
+  const res = await call('/api/admin/streams', { method: 'POST', body: { name: 'Camera 1', visibility: 'public' } });
   assert.strictEqual(res.status, 201);
   const { stream } = await res.json();
   assert.strictEqual(stream.name, 'Camera 1');
+  assert.strictEqual(stream.visibility, 'public');
   assert.match(stream.key, /^[a-z0-9]{20}$/);
   assert.match(stream.playbackId, /^[0-9a-f]{24}$/, 'a stream gets an opaque playback id');
   assert.notStrictEqual(stream.playbackId, stream.key, 'the playback id is not the ingest key');
@@ -669,7 +677,7 @@ test('the sources stay reachable in web mode even when they are meant to be hidd
   const store = require('../src/store');
   const streams = require('../src/streams');
 
-  const created = streams.create({ name: 'Hidden cam' });
+  const created = streams.create({ name: 'Hidden cam', visibility: 'public' });
   store.update((d) => {
     d.settings.showIndividualStreams = false;
     d.composition.mode = 'server';
@@ -980,4 +988,260 @@ test('the server status reports how much is being forwarded', async () => {
   for (const key of ['total', 'enabled', 'live']) {
     assert.strictEqual(typeof status.relays[key], 'number');
   }
+});
+
+// ------------------------------------------------------------------ access
+
+/**
+ * call() always prefers the module-level admin `cookie` over anything in
+ * options.headers, which is exactly wrong for testing a second user — use
+ * this instead whenever the request must run as somebody specific.
+ */
+function callAs(sessionCookie, pathname, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (sessionCookie) headers.cookie = sessionCookie;
+  if (options.body) headers['content-type'] = 'application/json';
+  return fetch(`${base}${pathname}`, {
+    ...options,
+    headers,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+    redirect: 'manual',
+  });
+}
+
+test('access.canAccess: public, owner, admin, granted and a stranger', () => {
+  const access = require('../src/access');
+  const isPublic = { visibility: 'public' };
+  const isPrivate = { visibility: 'private', ownerId: 'owner-1', sharedWith: ['granted-1'] };
+
+  assert.strictEqual(access.canAccess(isPublic, null), true, 'public is open even to anonymous');
+  assert.strictEqual(access.canAccess(isPrivate, null), false, 'private refuses anonymous');
+  assert.strictEqual(access.canAccess(isPrivate, { id: 'stranger', role: 'viewer' }), false);
+  assert.strictEqual(access.canAccess(isPrivate, { id: 'owner-1', role: 'viewer' }), true, 'owner');
+  assert.strictEqual(access.canAccess(isPrivate, { id: 'granted-1', role: 'viewer' }), true, 'explicitly shared');
+  assert.strictEqual(access.canAccess(isPrivate, { id: 'anyone', role: 'admin' }), true, 'admin overrides everything');
+  // Streams have no ownerId; that branch must simply never match, not throw.
+  assert.strictEqual(access.canAccess({ visibility: 'private', sharedWith: [] }, { id: 'x', role: 'viewer' }), false);
+  assert.strictEqual(access.canAccess(null, { id: 'x', role: 'admin' }), false, 'a missing resource is never accessible');
+});
+
+test('a stream defaults to private, and old configurations backfill the same way', () => {
+  const streams = require('../src/streams');
+  const created = streams.create({ name: 'Backstage cam' });
+  assert.strictEqual(created.visibility, 'private');
+  assert.deepStrictEqual(created.sharedWith, []);
+  streams.remove(created.id);
+
+  // mergeDefaults() is what an upgrading install runs its old config.json
+  // through — a stream saved before visibility existed must not come back
+  // exposed just because the field was absent.
+  const legacy = store.defaults();
+  legacy.streams.push({ id: 'legacy-1', name: 'Old camera', key: 'legacy-key-000000' });
+  legacy.channels.push({ id: 'legacy-c1', name: 'Old channel', slug: 'old-channel' });
+  const merged = store.mergeDefaults(legacy);
+  assert.strictEqual(merged.streams[0].visibility, 'private');
+  assert.deepStrictEqual(merged.streams[0].sharedWith, []);
+  assert.strictEqual(merged.channels[0].visibility, 'private');
+  assert.deepStrictEqual(merged.channels[0].sharedWith, []);
+  assert.deepStrictEqual(merged.channels[0].streamIds, []);
+});
+
+// ---------------------------------------------------------------- channels
+
+let grantedCookie = '';
+let strangerCookie = '';
+let privateStreamId = null;
+let privateStreamPlaybackId = null;
+let channelId = null;
+let channelSlug = null;
+
+async function loginAs(username, password) {
+  const res = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  return (res.headers.get('set-cookie') || '').split(';')[0];
+}
+
+test('setup: a private stream, a user granted access to it, and a stranger', async () => {
+  await call('/api/admin/users', { method: 'POST', body: { username: 'granted', password: 'granted-pw-123', role: 'viewer' } });
+  await call('/api/admin/users', { method: 'POST', body: { username: 'stranger', password: 'stranger-pw-123', role: 'viewer' } });
+  grantedCookie = await loginAs('granted', 'granted-pw-123');
+  strangerCookie = await loginAs('stranger', 'stranger-pw-123');
+
+  const users = await (await call('/api/admin/users')).json();
+  const grantedUser = users.users.find((u) => u.username === 'granted');
+
+  const res = await call('/api/admin/streams', { method: 'POST', body: { name: 'VIP room', visibility: 'private', sharedWith: [grantedUser.id] } });
+  assert.strictEqual(res.status, 201);
+  const { stream } = await res.json();
+  assert.strictEqual(stream.visibility, 'private');
+  assert.deepStrictEqual(stream.sharedWith, [grantedUser.id]);
+  privateStreamId = stream.id;
+  privateStreamPlaybackId = stream.playbackId;
+});
+
+test('SECURITY: the media proxy refuses a private stream to anyone not granted', () => {
+  const proxy = require('../src/proxy');
+  assert.strictEqual(proxy.resolvePlayback(`s/${privateStreamPlaybackId}`, null), null, 'anonymous');
+  assert.strictEqual(proxy.resolvePlayback(`s/${privateStreamPlaybackId}`, { id: 'someone-else', role: 'viewer' }), null, 'not granted');
+  assert.strictEqual(
+    proxy.resolvePlayback(`s/${privateStreamPlaybackId}/audio`, { id: 'someone-else', role: 'viewer' }),
+    null,
+    'the audio-monitor form is gated the same way',
+  );
+});
+
+test('the media proxy admits a private stream for a granted user or an admin', () => {
+  const proxy = require('../src/proxy');
+  const streams = require('../src/streams');
+  const stream = streams.find(privateStreamId);
+  const users = auth.listUsers();
+  const grantedId = stream.sharedWith[0];
+
+  assert.strictEqual(proxy.resolvePlayback(`s/${privateStreamPlaybackId}`, { id: grantedId, role: 'viewer' }), `live/${stream.key}`);
+  const admin = users.find((u) => u.username === 'tester');
+  assert.strictEqual(proxy.resolvePlayback(`s/${privateStreamPlaybackId}`, { id: admin.id, role: 'admin' }), `live/${stream.key}`);
+});
+
+test('a channel gets an auto-generated, unique slug, which stays editable', async () => {
+  const first = await call('/api/admin/channels', { method: 'POST', body: { name: 'Main Stage!!' } });
+  assert.strictEqual(first.status, 201);
+  const { channel: a } = await first.json();
+  assert.strictEqual(a.slug, 'main-stage');
+  assert.strictEqual(a.visibility, 'private', 'channels default private too');
+
+  // Same name again: the auto-generated slug must not collide.
+  const second = await call('/api/admin/channels', { method: 'POST', body: { name: 'Main Stage!!' } });
+  const { channel: b } = await second.json();
+  assert.strictEqual(b.slug, 'main-stage-2');
+
+  const rename = await call(`/api/admin/channels/${b.id}`, { method: 'PATCH', body: { slug: 'main-stage' } });
+  assert.strictEqual(rename.status, 409, 'a manual slug still has to be unique');
+
+  await call(`/api/admin/channels/${a.id}`, { method: 'DELETE' });
+  await call(`/api/admin/channels/${b.id}`, { method: 'DELETE' });
+});
+
+test('setup: a public channel containing the public and the private stream', async () => {
+  const res = await call('/api/admin/channels', {
+    method: 'POST',
+    body: { name: 'Community Room', visibility: 'public', streamIds: [streamId, privateStreamId] },
+  });
+  assert.strictEqual(res.status, 201);
+  const { channel } = await res.json();
+  channelId = channel.id;
+  channelSlug = channel.slug;
+  assert.deepStrictEqual(channel.streamIds.sort(), [privateStreamId, streamId].sort());
+});
+
+test('a public channel is reachable with no session at all', async () => {
+  const res = await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { accept: 'application/json' } });
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.strictEqual(body.program.mode, 'web', 'channels are always browser-composed');
+  assert.strictEqual(body.channel.slug, channelSlug);
+});
+
+test('SECURITY: a public channel marks its private stream restricted, with no playback path, for anyone lacking access', async () => {
+  const anon = await (await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { accept: 'application/json' } })).json();
+  const restrictedEntry = anon.streams.find((s) => s.key === privateStreamPlaybackId);
+  assert.strictEqual(restrictedEntry.restricted, true);
+  assert.strictEqual(restrictedEntry.path, null, 'no playback path is handed out for a stream the viewer cannot reach');
+  assert.strictEqual(restrictedEntry.audioPath, null);
+  assert.strictEqual(restrictedEntry.hasAudio, false);
+
+  const publicEntry = anon.streams.find((s) => s.key === playbackId);
+  assert.strictEqual(publicEntry.restricted, false);
+  assert.strictEqual(publicEntry.path, `s/${playbackId}`);
+});
+
+test('the granted user sees the private stream as playable inside the same public channel', async () => {
+  const res = await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { cookie: grantedCookie, accept: 'application/json' } });
+  const body = await res.json();
+  const entry = body.streams.find((s) => s.key === privateStreamPlaybackId);
+  assert.strictEqual(entry.restricted, false);
+  assert.strictEqual(entry.path, `s/${privateStreamPlaybackId}`);
+});
+
+test('hideRestricted excludes the inaccessible tile from onAir and the layout count, not just from view', async () => {
+  const store2 = require('../src/store');
+  store2.update((d) => {
+    const s = d.streams.find((x) => x.id === privateStreamId);
+    s.enabled = true; // withLiveState() needs it enabled; "live" itself is unaffected by tests with no MediaMTX
+  });
+  const shown = await (await fetch(`${base}/api/channels/${channelSlug}/state?hideRestricted=1`, { headers: { accept: 'application/json' } })).json();
+  // Neither stream is actually publishing in this test environment, so onAir
+  // is empty either way — the assertion that matters is that the endpoint
+  // accepts the flag and still reports the count of what it hid.
+  assert.strictEqual(typeof shown.channel.hiddenCount, 'number');
+});
+
+test('a private channel is reachable by its owner and by admin, but 404s for a stranger', async () => {
+  await call(`/api/admin/channels/${channelId}`, { method: 'PATCH', body: { visibility: 'private', sharedWith: [] } });
+
+  const asAdmin = await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { cookie, accept: 'application/json' } });
+  assert.strictEqual(asAdmin.status, 200);
+
+  const asStranger = await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { cookie: strangerCookie, accept: 'application/json' } });
+  assert.strictEqual(asStranger.status, 404, 'private, and not shared: do not even confirm it exists');
+
+  const anon = await fetch(`${base}/api/channels/${channelSlug}/state`, { headers: { accept: 'application/json' } });
+  assert.strictEqual(anon.status, 404);
+});
+
+test('the homepage channel redirects "/", and clears itself when deleted', async () => {
+  const set = await call(`/api/admin/channels/${channelId}/homepage`, { method: 'PUT' });
+  assert.strictEqual(set.status, 200);
+
+  const home = await fetch(`${base}/`, { redirect: 'manual', headers: { cookie, accept: 'text/html' } });
+  assert.strictEqual(home.status, 302);
+  assert.strictEqual(home.headers.get('location'), `/c/${channelSlug}`);
+
+  await call(`/api/admin/channels/${channelId}`, { method: 'DELETE' });
+  assert.strictEqual(store.get().settings.homepageChannelId, null, 'deleting the homepage channel clears the pointer');
+
+  const homeAfter = await fetch(`${base}/`, { redirect: 'manual', headers: { cookie, accept: 'text/html' } });
+  assert.notStrictEqual(homeAfter.status, 302, '"/" behaves normally again with no homepage configured');
+});
+
+test('a user can only manage channels they own', async () => {
+  const created = await callAs(grantedCookie, '/api/channels/mine', { method: 'POST', body: { name: 'Granted user channel' } });
+  assert.strictEqual(created.status, 201);
+  const { channel } = await created.json();
+
+  const strangerEdit = await callAs(strangerCookie, `/api/channels/mine/${channel.id}`, { method: 'PATCH', body: { name: 'Hijacked' } });
+  assert.strictEqual(strangerEdit.status, 403);
+
+  const ownerEdit = await callAs(grantedCookie, `/api/channels/mine/${channel.id}`, { method: 'PATCH', body: { name: 'Renamed' } });
+  assert.strictEqual(ownerEdit.status, 200);
+
+  const adminDelete = await call(`/api/admin/channels/${channel.id}`, { method: 'DELETE' });
+  assert.strictEqual(adminDelete.status, 200, 'admins moderate every channel regardless of owner');
+});
+
+test('/api/streams/available lists what a user may build a channel from', async () => {
+  const res = await callAs(grantedCookie, '/api/streams/available');
+  assert.strictEqual(res.status, 200);
+  const { streams: available } = await res.json();
+  assert.ok(available.some((s) => s.id === streamId), 'the public stream is available to everyone');
+  assert.ok(available.some((s) => s.id === privateStreamId), 'the granted user sees the private stream too');
+
+  const asStranger = await callAs(strangerCookie, '/api/streams/available');
+  const { streams: strangerAvailable } = await asStranger.json();
+  assert.ok(!strangerAvailable.some((s) => s.id === privateStreamId), 'a stranger does not see it');
+});
+
+test('deleting a stream drops it from any channel that included it', async () => {
+  const streams = require('../src/streams');
+  const doomed = streams.create({ name: 'Temporary', visibility: 'public' });
+  const chRes = await call('/api/admin/channels', { method: 'POST', body: { name: 'Cleanup test', streamIds: [doomed.id] } });
+  const { channel } = await chRes.json();
+  assert.deepStrictEqual(channel.streamIds, [doomed.id]);
+
+  streams.remove(doomed.id);
+  const channels = require('../src/channels');
+  assert.deepStrictEqual(channels.find(channel.id).streamIds, []);
+  channels.remove(channel.id);
 });

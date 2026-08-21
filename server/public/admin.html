@@ -27,6 +27,7 @@
       <button class="tab is-active" data-panel="streams">Streams</button>
       <button class="tab" data-panel="restream">Restream</button>
       <button class="tab" data-panel="composition">Composition</button>
+      <button class="tab" data-panel="channels">Channels</button>
       <button class="tab" data-panel="users">Users</button>
       <button class="tab" data-panel="server">Server</button>
       <button class="tab" data-panel="logs">Logs</button>
@@ -49,6 +50,13 @@
           <label class="field" style="flex:1 1 240px; margin:0;">
             <span>Stream key</span>
             <input name="key" placeholder="leave empty to generate one" pattern="[A-Za-z0-9_-]{6,64}">
+          </label>
+          <label class="field" style="flex:0 1 140px; margin:0;">
+            <span>Visibility</span>
+            <select name="visibility">
+              <option value="private" selected>Private</option>
+              <option value="public">Public</option>
+            </select>
           </label>
           <button class="primary" type="submit">Create</button>
         </form>
@@ -290,6 +298,39 @@
           </form>
           <pre id="command-box" class="log-view" style="display:none; margin-top:.85rem;"></pre>
         </div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-channels">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Add a channel</h2></div>
+        <p class="hint" style="margin:0 0 1rem;">
+          Any signed-in user can create their own from <a href="/channels">/channels</a> —
+          this is for moderation, and for setting one as the homepage.
+        </p>
+        <form id="channel-form" class="row" style="align-items:flex-end;">
+          <label class="field" style="flex:1 1 220px; margin:0;">
+            <span>Name</span>
+            <input name="name" placeholder="Main stage" required maxlength="48">
+          </label>
+          <label class="field" style="flex:0 1 140px; margin:0;">
+            <span>Visibility</span>
+            <select name="visibility">
+              <option value="private" selected>Private</option>
+              <option value="public">Public</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">Create</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Channels</h2>
+          <span class="spacer"></span>
+          <button id="channels-refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="channels-table"></div>
       </div>
     </section>
 

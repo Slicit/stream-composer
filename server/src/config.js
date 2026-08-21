@@ -35,6 +35,7 @@ const config = {
   dataDir,
   configFile: path.join(dataDir, 'config.json'),
   logDir: process.env.LOG_DIR || path.join(dataDir, 'logs'),
+  channelBackgroundsDir: path.join(dataDir, 'channel-backgrounds'),
 
   // --- Logging (defaults; runtime values live in the store) ---
   logLevel: process.env.LOG_LEVEL || 'info',

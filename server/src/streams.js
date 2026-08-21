@@ -15,11 +15,28 @@ const logger = require('./logger');
 const mediamtx = require('./mediamtx');
 const playability = require('./playability');
 const relays = require('./relays');
+const auth = require('./auth');
 
 const log = logger.scope('streams');
 
 // Unambiguous alphabet: no 0/O, 1/l/I.
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+const VISIBILITIES = ['private', 'public'];
+
+/**
+ * Deduplicated, existing user ids only, capped the same way relays.js caps
+ * the number of restream destinations — a runaway list here is either a
+ * mistake or an attempt to bloat the config file, not a real access list.
+ */
+function cleanSharedWith(value) {
+  const ids = Array.isArray(value) ? value : [];
+  const unique = [...new Set(ids.map((v) => String(v)))].filter((id) => auth.findById(id));
+  if (unique.length > 200) {
+    throw Object.assign(new Error('That is more people than one stream will track access for.'), { status: 400 });
+  }
+  return unique;
+}
 
 /**
  * Public, non-secret handle a browser uses to ask for a stream. Viewers must
@@ -68,7 +85,7 @@ function findByKey(key) {
   return store.get().streams.find((s) => s.key === key);
 }
 
-function create({ name, key, enabled = true, note = '', nickname = '' }) {
+function create({ name, key, enabled = true, note = '', nickname = '', visibility = 'private', sharedWith = [] }) {
   const label = String(name || '').trim();
   if (!label || label.length > 48) {
     throw Object.assign(new Error('Give the stream a name of 1-48 characters.'), { status: 400 });
@@ -80,6 +97,9 @@ function create({ name, key, enabled = true, note = '', nickname = '' }) {
   if (findByKey(finalKey)) {
     throw Object.assign(new Error('That stream key is already in use.'), { status: 409 });
   }
+  if (!VISIBILITIES.includes(visibility)) {
+    throw Object.assign(new Error('Visibility must be "private" or "public".'), { status: 400 });
+  }
   const stream = {
     id: crypto.randomUUID(),
     name: label,
@@ -88,10 +108,14 @@ function create({ name, key, enabled = true, note = '', nickname = '' }) {
     nickname: cleanNickname(nickname),
     enabled: !!enabled,
     note: String(note || '').slice(0, 200),
+    // Private by default: a stream must be deliberately made public, not
+    // accidentally exposed by whatever the default used to be.
+    visibility,
+    sharedWith: cleanSharedWith(sharedWith),
     createdAt: new Date().toISOString(),
   };
   store.update((d) => d.streams.push(stream));
-  log.info('stream created', { name: label, key: finalKey });
+  log.info('stream created', { name: label, key: finalKey, visibility });
   return { ...stream };
 }
 
@@ -108,6 +132,13 @@ function update(id, patch) {
   if (patch.nickname !== undefined) changes.nickname = cleanNickname(patch.nickname);
   if (patch.note !== undefined) changes.note = String(patch.note).slice(0, 200);
   if (patch.enabled !== undefined) changes.enabled = !!patch.enabled;
+  if (patch.visibility !== undefined) {
+    if (!VISIBILITIES.includes(patch.visibility)) {
+      throw Object.assign(new Error('Visibility must be "private" or "public".'), { status: 400 });
+    }
+    changes.visibility = patch.visibility;
+  }
+  if (patch.sharedWith !== undefined) changes.sharedWith = cleanSharedWith(patch.sharedWith);
   if (patch.key !== undefined) {
     const next = String(patch.key).trim();
     if (!isValidKey(next)) throw Object.assign(new Error('A stream key may only contain letters, digits, dashes and underscores (6-64 characters).'), { status: 400 });
@@ -143,6 +174,11 @@ function remove(id) {
     // Restream destinations belong to their source. Leaving them behind would
     // keep forwarding a key that has just been handed to somebody else.
     d.relays = (d.relays || []).filter((r) => r.streamId !== id);
+    // Channels reference streams by id; a deleted stream just drops out of
+    // whatever channels included it rather than leaving a dangling id.
+    for (const c of d.channels || []) {
+      c.streamIds = (c.streamIds || []).filter((sid) => sid !== id);
+    }
   });
   relays.nudge(); // stop anything still forwarding it
   mediamtx.kickPublisher(`${config.ingestPrefix}/${stream.key}`).catch(() => {});
@@ -201,4 +237,19 @@ async function withLiveState() {
   return [...configured, ...unknown];
 }
 
-module.exports = { generateKey, generatePlaybackId, isValidKey, cleanNickname, list, find, findByKey, create, update, rotateKey, remove, withLiveState, ingestInfo };
+module.exports = {
+  VISIBILITIES,
+  generateKey,
+  generatePlaybackId,
+  isValidKey,
+  cleanNickname,
+  list,
+  find,
+  findByKey,
+  create,
+  update,
+  rotateKey,
+  remove,
+  withLiveState,
+  ingestInfo,
+};
