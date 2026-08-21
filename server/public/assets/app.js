@@ -299,18 +299,9 @@ function startWebGrid() {
     const existingCaption = tile.wrap.querySelector('.web-caption');
     if (existingCaption) existingCaption.remove();
     if (program.labels && source.name) {
-      tile.wrap.appendChild(
-        h('span', {
-          class: 'web-caption',
-          text: source.name,
-          // Scale the caption the way drawtext does: relative to the canvas,
-          // so it looks the same whatever size the player is on screen. The
-          // 1.3 factor is a deliberate departure from that parity — the
-          // browser-drawn caption now runs 30% larger than the server's
-          // drawtext would at the same "label size" setting.
-          style: `font-size:${((program.labelSize || 22) / layout.height) * 100 * 1.3}cqh`,
-        }),
-      );
+      // Sizing lives entirely in the .web-caption CSS rule now (font-size:
+      // 2vw), not here — an inline style would override it.
+      tile.wrap.appendChild(h('span', { class: 'web-caption', text: source.name }));
     }
     return tile.wrap;
   }).filter(Boolean);

@@ -342,26 +342,24 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
   object-fit: contain;
 }
 
-/* The caption drawtext would have burnt in: white, black outline, bottom
- * centre. Sized in cqh so it tracks the canvas rather than the viewport.
- * The extra 20px in `bottom` is a fixed offset on top of the proportional
- * one, so it holds at any cell size rather than scaling away on small tiles. */
 .web-caption {
   position: absolute;
   left: 50%;
-  bottom: calc(2% + 20px);
+  bottom: 0vh;
   transform: translateX(-50%);
   max-width: 92%;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: #fff;
+  color: #09ab00;
   font-weight: 600;
   line-height: 1.2;
   pointer-events: none;
   paint-order: stroke fill;
-  -webkit-text-stroke: 0.12em #000;
-  text-shadow: 0 0 0.25em rgba(0, 0, 0, 0.9);
+  background-color: rgba(0, 0, 0, 0.9);
+  border-radius: 10px;
+  padding: 2px 10px;
+  font-size: 2vw;
 }
 
 /* Marks a cell that is playing over HLS, and so runs behind the others. */
