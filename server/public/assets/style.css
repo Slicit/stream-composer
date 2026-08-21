@@ -343,11 +343,13 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
 }
 
 /* The caption drawtext would have burnt in: white, black outline, bottom
- * centre. Sized in cqh so it tracks the canvas rather than the viewport. */
+ * centre. Sized in cqh so it tracks the canvas rather than the viewport.
+ * The extra 20px in `bottom` is a fixed offset on top of the proportional
+ * one, so it holds at any cell size rather than scaling away on small tiles. */
 .web-caption {
   position: absolute;
   left: 50%;
-  bottom: 2%;
+  bottom: calc(2% + 20px);
   transform: translateX(-50%);
   max-width: 92%;
   overflow: hidden;
@@ -416,6 +418,10 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
 .player-shell:hover .player-overlay,
 .player-shell:focus-within .player-overlay,
 .player-shell.is-idle .player-overlay { opacity: 1; }
+
+/* The sidebar's own volume control is outside #player-shell, so it vanishes
+ * in full screen. This is the same control surfaced where it stays reachable. */
+.player-overlay .volume-overlay { width: 5.5rem; }
 
 .player-message {
   position: absolute;

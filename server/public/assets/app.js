@@ -51,6 +51,24 @@ function composingHere() {
   return !!(app.state && app.state.program && app.state.program.mode === 'web');
 }
 
+/** Whatever the play/pause button currently controls: one video, or one per tile. */
+function playbackVideos() {
+  return composingHere() ? [...app.tiles.values()].map((t) => t.video) : [programVideo()];
+}
+
+/**
+ * Reflect the actual state of the video(s), rather than assuming a click's
+ * effect. Web-composed tiles autoplay on their own the moment a source comes
+ * on air — nothing routes their native `play`/`pause` events to this button
+ * unless every tile's video is wired to call this too, which is why it is a
+ * shared function rather than inlined at each call site.
+ */
+function syncPlayIcon() {
+  const videos = playbackVideos();
+  const playing = videos.some((v) => !v.paused);
+  $('#btn-play').replaceChildren(icon(playing ? 'pause' : 'play'));
+}
+
 function startProgram() {
   stopProgram();
   if (composingHere()) return startWebGrid();
@@ -218,6 +236,10 @@ function startWebGrid() {
     let tile = app.tiles.get(source.key);
     if (!tile) {
       const video = h('video', { playsinline: true, autoplay: true, muted: true });
+      // Tiles autoplay on their own the moment a source comes on air, so the
+      // global play/pause button needs its own hook to notice — see syncPlayIcon().
+      video.addEventListener('play', syncPlayIcon);
+      video.addEventListener('pause', syncPlayIcon);
       tile = { client: null, hls: null, video, viaHls: useHls, wrap: h('div', { class: 'web-cell' }, [video]) };
       if (useHls) {
         startTileHls(video, source.key).then((hls) => {
@@ -282,8 +304,11 @@ function startWebGrid() {
           class: 'web-caption',
           text: source.name,
           // Scale the caption the way drawtext does: relative to the canvas,
-          // so it looks the same whatever size the player is on screen.
-          style: `font-size:${((program.labelSize || 22) / layout.height) * 100}cqh`,
+          // so it looks the same whatever size the player is on screen. The
+          // 1.3 factor is a deliberate departure from that parity — the
+          // browser-drawn caption now runs 30% larger than the server's
+          // drawtext would at the same "label size" setting.
+          style: `font-size:${((program.labelSize || 22) / layout.height) * 100 * 1.3}cqh`,
         }),
       );
     }
@@ -850,18 +875,18 @@ function wireControls() {
 
   $('#btn-play').addEventListener('click', () => {
     // In web mode there are several videos, and they pause and resume together.
-    const videos = composingHere() ? [...app.tiles.values()].map((t) => t.video) : [programVideo()];
+    const videos = playbackVideos();
     if (videos.length === 0) return;
     const paused = videos.every((v) => v.paused);
     for (const v of videos) {
       if (paused) v.play().catch(() => {});
       else v.pause();
     }
-    $('#btn-play').replaceChildren(icon(paused ? 'pause' : 'play'));
+    syncPlayIcon();
   });
 
-  programVideo().addEventListener('play', () => $('#btn-play').replaceChildren(icon('pause')));
-  programVideo().addEventListener('pause', () => $('#btn-play').replaceChildren(icon('play')));
+  programVideo().addEventListener('play', syncPlayIcon);
+  programVideo().addEventListener('pause', syncPlayIcon);
 
   $('#btn-stats').addEventListener('click', () => {
     app.showStats = !app.showStats;
@@ -876,9 +901,33 @@ function wireControls() {
     else shell.requestFullscreen().catch(() => toast('Full screen was refused by the browser.', 'error'));
   });
 
-  $('#volume').addEventListener('input', (e) => {
-    $('#audio-out').volume = Number(e.target.value) / 100;
+  $('#btn-mute').appendChild(icon('volume'));
+
+  // Two sliders, one volume: the sidebar's and the one surfaced in the player
+  // overlay so it stays reachable in full screen, where the sidebar is not
+  // part of the fullscreen element and disappears from view.
+  const volumeInputs = [$('#volume'), $('#volume-overlay')];
+  let volumeBeforeMute = Number($('#volume').value) || 80;
+
+  function applyVolume(value) {
+    const clamped = Math.max(0, Math.min(100, Number(value) || 0));
+    for (const input of volumeInputs) input.value = clamped;
+    $('#audio-out').volume = clamped / 100;
+    $('#btn-mute').replaceChildren(icon(clamped === 0 ? 'mute' : 'volume'));
+    if (clamped > 0) volumeBeforeMute = clamped;
+  }
+
+  for (const input of volumeInputs) {
+    input.addEventListener('input', (e) => applyVolume(e.target.value));
+  }
+
+  $('#btn-mute').addEventListener('click', () => {
+    applyVolume(Number($('#volume').value) > 0 ? 0 : volumeBeforeMute);
   });
+
+  // The <audio> element's own default (1.0) otherwise wins until the first
+  // slider touch, ignoring what the sliders show from the very first paint.
+  applyVolume(volumeBeforeMute);
 
   const setMode = (mode) => {
     if (app.mode === mode) return;
