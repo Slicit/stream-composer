@@ -1,5 +1,5 @@
 ---
-status: active
+status: shipped
 branch: feat-channels
 ---
 
@@ -163,6 +163,18 @@ choices and their reasoning; the plan itself was written to
 - **Impact:** `routes/channels.js`'s state handler takes `hideRestricted`
   as a query flag; the client just refetches on toggle rather than doing
   any layout math itself.
+
+### 2026-08-22 (ship)
+
+- **Decision:** shipped as commit `1317b9c` on `main`, tagged `v1.3.0`.
+- **Why:** full test suite green (109/109), manually verified end-to-end
+  against the local dev server (channel creation, viewing, homepage
+  redirect, restricted-stream placeholder for both anonymous and granted
+  viewers, background image upload round-trip).
+- **Impact:** live in the `v1.3.0` release. See `LOGBOOK/candidates.md`
+  (2026-08-22 entries) for what was deliberately left out: a stream picker
+  on the admin channel-creation form, and a "link-only" visibility tier
+  for channels.
 
 ## Links
 
