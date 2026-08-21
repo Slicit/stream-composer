@@ -165,9 +165,25 @@ stays with its original stream, and the player subscribes to whichever one the
 viewer selects, one at a time, over an audio-only WebRTC session. Everything
 starts muted.
 
-Two useful side effects: no AAC encode in the programme pipeline (a few percent
-of CPU back), and switching what you are listening to costs nothing on the
-server.
+One useful side effect: no AAC encode in the programme pipeline (a few percent
+of CPU back).
+
+### Why the monitor needs its own transcode
+
+Every source arrives as AAC — the codec OBS (and every other RTMP/SRT
+publisher) produces — but browsers only negotiate Opus, G.711 or G.722 for
+audio over WebRTC. An audio-only WHEP session against the raw ingest path has
+no codec in common with the browser and plays nothing.
+
+`server/src/audioRelay.js` keeps one supervised ffmpeg per live source with an
+audio track, transcoding it to Opus and republishing it to MediaMTX under
+`audio/<key>`, the same RTSP-republish shape the compositor already uses for
+the programme. The proxy exposes it to viewers as `s/<playbackId>/audio`,
+alongside the existing `s/<playbackId>` video path. This one runs whether or
+not anyone is currently listening — Opus encoding is cheap (roughly the same
+order of cost as the restream module's own AAC re-encode, about one percent
+of a core), so it is not worth the extra machinery of starting and stopping
+it per viewer.
 
 ![The viewer's audio monitor with one source selected and its level meter moving, the others muted](screenshots/viewer-audio.png)
 

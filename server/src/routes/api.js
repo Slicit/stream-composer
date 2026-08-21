@@ -76,6 +76,10 @@ router.get('/state', async (req, res) => {
         problem: s.playback && s.playback.problem ? s.playback.problem : null,
         // Media path the player subscribes to, via the authenticated proxy.
         path: `s/${s.playbackId}`,
+        // Opus-transcoded audio monitor feed — see audioRelay.js. Distinct
+        // from `path` above, which carries the source's raw (AAC) audio that
+        // no browser can decode over WebRTC.
+        audioPath: `s/${s.playbackId}/audio`,
       })),
     version: config.version,
     serverTime: new Date().toISOString(),

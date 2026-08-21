@@ -63,6 +63,22 @@ const HLS_FILE = /^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$/;
 const SAFE_QUERY = /^[A-Za-z0-9_.\-=&%~+/]*$/;
 
 /**
+ * A playback id resolves to a stream only when it is both known and, per the
+ * same visibility rule as the video path, allowed to be addressed at all.
+ * Shared by the video and the audio-monitor forms of resolvePlayback below.
+ */
+function resolveStream(playbackId) {
+  const d = store.get();
+  // "Show individual sources to viewers" hides the sources *behind* the
+  // programme. In web mode there is no programme — the sources are what the
+  // player composes — so the setting cannot apply without hiding everything.
+  if (!d.settings.showIndividualStreams && d.composition.mode !== 'web') return null;
+  const stream = d.streams.find((s) => s.playbackId === playbackId);
+  if (!stream || stream.enabled === false) return null;
+  return stream;
+}
+
+/**
  * Map a public playback reference onto the real MediaMTX path.
  * Returns null when the reference is unknown or not currently playable.
  */
@@ -70,16 +86,17 @@ function resolvePlayback(publicPath) {
   if (publicPath === PUBLIC_PROGRAM) return config.programPath;
 
   const parts = publicPath.split('/');
-  if (parts.length !== 2 || parts[0] !== 's' || !PLAYBACK_ID.test(parts[1])) return null;
 
-  const d = store.get();
-  // "Show individual sources to viewers" hides the sources *behind* the
-  // programme. In web mode there is no programme — the sources are what the
-  // player composes — so the setting cannot apply without hiding everything.
-  if (!d.settings.showIndividualStreams && d.composition.mode !== 'web') return null;
-  const stream = d.streams.find((s) => s.playbackId === parts[1]);
-  if (!stream || stream.enabled === false) return null;
-  return `${config.ingestPrefix}/${stream.key}`;
+  // The Opus audio monitor: `s/<playbackId>/audio`, distinct from the raw
+  // (AAC) ingest path a browser cannot decode over WebRTC. See audioRelay.js.
+  if (parts.length === 3 && parts[0] === 's' && parts[2] === 'audio' && PLAYBACK_ID.test(parts[1])) {
+    const stream = resolveStream(parts[1]);
+    return stream ? `${config.audioPrefix}/${stream.key}` : null;
+  }
+
+  if (parts.length !== 2 || parts[0] !== 's' || !PLAYBACK_ID.test(parts[1])) return null;
+  const stream = resolveStream(parts[1]);
+  return stream ? `${config.ingestPrefix}/${stream.key}` : null;
 }
 
 /**
@@ -98,7 +115,8 @@ function parseRequest(rawUrl, kind) {
   if (!SAFE_QUERY.test(query)) return null;
 
   const segments = pathPart.split('/').filter((s) => s !== '');
-  if (segments.length < 2 || segments.length > 4) return null;
+  // Up to 5: `s/<playbackId>/audio/whep/<sessionId>` for the audio monitor.
+  if (segments.length < 2 || segments.length > 5) return null;
   if (segments.some((s) => s === '.' || s === '..')) return null;
 
   if (kind === 'webrtc') {

@@ -72,6 +72,10 @@ const config = {
   ingestPrefix: process.env.INGEST_PREFIX || 'live',
   // Path the composed program is published to.
   programPath: process.env.PROGRAM_PATH || 'program',
+  // Path prefix for each source's Opus-transcoded audio monitor feed, e.g.
+  // audio/<key>. See audioRelay.js — browsers cannot decode the AAC every
+  // source publishes, so the audio monitor needs a codec they can.
+  audioPrefix: process.env.AUDIO_PREFIX || 'audio',
 
   // --- Bootstrap admin ---
   adminUser: process.env.ADMIN_USER || 'admin',

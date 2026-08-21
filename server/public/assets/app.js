@@ -391,7 +391,7 @@ function selectAudio(key) {
   if (key) {
     const stream = (app.state.streams || []).find((s) => s.key === key);
     if (stream) {
-      const client = new WhepClient(`${WEBRTC}/${stream.path}/whep`, { video: false, audio: true });
+      const client = new WhepClient(`${WEBRTC}/${stream.audioPath}/whep`, { video: false, audio: true });
       app.audio = client;
       client.addEventListener('track', () => {
         out.srcObject = client.stream;

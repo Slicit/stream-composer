@@ -10,6 +10,7 @@ const encoder = require('./encoder');
 const mediamtx = require('./mediamtx');
 const compositor = require('./compositor');
 const relays = require('./relays');
+const audioRelay = require('./audioRelay');
 const proxy = require('./proxy');
 
 const log = logger.scope('server');
@@ -164,12 +165,16 @@ async function main() {
     // Restreaming is independent of composition: it forwards the individual
     // sources whether or not an encoder is running.
     relays.startLoop();
+    // Likewise the audio monitor's Opus transcode: it follows the sources,
+    // not the composed programme.
+    audioRelay.startLoop();
   });
 
   const shutdown = (signal) => {
     log.info('shutting down', { signal });
     compositor.stop();
     relays.stop();
+    audioRelay.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 8000).unref();
   };

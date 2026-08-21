@@ -103,6 +103,12 @@ function decide(body) {
         ? { allow: true, reason: 'compositor' }
         : { allow: false, reason: 'the program path is written by the compositor only' };
     }
+    // Only the audio relay may write a source's Opus monitor feed.
+    if (path.startsWith(`${config.audioPrefix}/`)) {
+      return internal
+        ? { allow: true, reason: 'audio relay' }
+        : { allow: false, reason: 'the audio path is written by the audio relay only' };
+    }
     if (!path.startsWith(prefix)) return { allow: false, reason: `publish to "${config.ingestPrefix}/<stream key>"` };
     const key = path.slice(prefix.length);
     if (key.includes('/')) return { allow: false, reason: 'nested paths are not allowed' };
@@ -122,6 +128,12 @@ function decide(body) {
       const key = path.slice(prefix.length).split('/')[0];
       const stream = streams.findByKey(key);
       if (stream && stream.enabled !== false) return { allow: true, reason: 'ingest preview' };
+      return { allow: false, reason: 'unknown or disabled stream key' };
+    }
+    if (path.startsWith(`${config.audioPrefix}/`)) {
+      const key = path.slice(`${config.audioPrefix}/`.length).split('/')[0];
+      const stream = streams.findByKey(key);
+      if (stream && stream.enabled !== false) return { allow: true, reason: 'audio monitor' };
       return { allow: false, reason: 'unknown or disabled stream key' };
     }
     return { allow: false, reason: 'unknown path' };

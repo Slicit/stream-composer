@@ -289,6 +289,17 @@ test('the auth hook rejects nested paths and unknown actions', () => {
   assert.strictEqual(hooks.decide({ action: 'read', path: 'something/else', ...INTERNAL }).allow, false);
 });
 
+test('SECURITY: only the audio relay may publish a source\'s audio monitor feed', () => {
+  assert.strictEqual(hooks.decide({ action: 'publish', path: `audio/${streamKey}`, ...INTERNAL }).allow, true);
+  assert.strictEqual(hooks.decide({ action: 'publish', path: `audio/${streamKey}`, user: '', password: '' }).allow, false);
+});
+
+test('the auth hook admits audio-monitor reads carrying the internal credential, for a known enabled key', () => {
+  assert.strictEqual(hooks.decide({ action: 'read', path: `audio/${streamKey}`, ...INTERNAL }).allow, true);
+  assert.strictEqual(hooks.decide({ action: 'read', path: `audio/${streamKey}`, user: '', password: '' }).allow, false);
+  assert.strictEqual(hooks.decide({ action: 'read', path: 'audio/not-a-real-key', ...INTERNAL }).allow, false);
+});
+
 test('the hook endpoint answers only when the shared secret matches', async () => {
   const good = await call(`/internal/${INTERNAL.password}/mediamtx/auth`, {
     method: 'POST',
@@ -395,6 +406,7 @@ test('SECURITY: the viewer API never discloses an ingest stream key', async () =
   const serialised = JSON.stringify(body);
   assert.ok(!serialised.includes(streamKey), 'the publishing credential is absent from the viewer API');
   assert.ok(body.streams.some((s) => s.path === `s/${playbackId}`), 'streams are addressed by playback id');
+  assert.ok(body.streams.some((s) => s.audioPath === `s/${playbackId}/audio`), 'the audio monitor is addressed by playback id too');
 });
 
 test('SECURITY: percent-encoded traversal cannot reach another MediaMTX path', () => {
@@ -408,6 +420,7 @@ test('SECURITY: percent-encoded traversal cannot reach another MediaMTX path', (
     `/program/whep/../../live/${streamKey}/whep`,
     `/s/${playbackId}/..%2f..%2fadmin/whep`,
     '/..%2f..%2fetc/whep',
+    `/s/${playbackId}/audio/../../live/${streamKey}/whep`,
   ];
   for (const url of attacks) {
     assert.strictEqual(proxy.parseRequest(url, 'webrtc'), null, `refused: ${url}`);
@@ -434,6 +447,20 @@ test('the proxy accepts a well-formed WHEP request and its session URL', () => {
   assert.strictEqual(session.upstreamPath, `/live/${streamKey}/whep/abc-123`);
   const hls = proxy.parseRequest('/program/index.m3u8', 'hls');
   assert.strictEqual(hls.upstreamPath, '/program/index.m3u8');
+});
+
+test('the audio monitor resolves to the Opus feed, not the raw (AAC) ingest path', () => {
+  const proxy = require('../src/proxy');
+  assert.strictEqual(proxy.resolvePlayback(`s/${playbackId}/audio`), `audio/${streamKey}`);
+  // The plain video form must keep pointing at the ingest path, unaffected.
+  assert.strictEqual(proxy.resolvePlayback(`s/${playbackId}`), `live/${streamKey}`);
+  // Publishing straight to the audio prefix is not a valid playback reference.
+  assert.strictEqual(proxy.resolvePlayback(`audio/${streamKey}`), null);
+
+  const create = proxy.parseRequest(`/s/${playbackId}/audio/whep`, 'webrtc');
+  assert.strictEqual(create.upstreamPath, `/audio/${streamKey}/whep`);
+  const session = proxy.parseRequest(`/s/${playbackId}/audio/whep/abc-123`, 'webrtc');
+  assert.strictEqual(session.upstreamPath, `/audio/${streamKey}/whep/abc-123`);
 });
 
 test('SECURITY: a client-supplied Authorization header is not forwarded upstream', async () => {
@@ -840,6 +867,18 @@ test('the shown command never contains the stream key', () => {
   const shown = relays.previewCommand({ url: 'rtmp://example.test/live', key: 'super-secret-key', audio: 'copy' }, 'live/abc');
   assert.ok(!shown.includes('super-secret-key'));
   assert.match(shown, /STREAM-KEY/);
+});
+
+test('the audio monitor transcode reads the ingest path and writes only Opus audio', () => {
+  const audioRelay = require('../src/audioRelay');
+  const args = audioRelay.buildArgs('abc');
+
+  assert.ok(args.some((a) => a.endsWith('/live/abc')), 'reads the source over RTSP');
+  assert.ok(args.some((a) => a.endsWith('/audio/abc')), 'republishes under the audio prefix');
+  assert.strictEqual(args[args.indexOf('-c:a') + 1], 'libopus');
+  assert.ok(args.includes('-vn'), 'never carries video — this is an audio-only feed');
+  assert.strictEqual(args[args.indexOf('-map') + 1], '0:a:0');
+  assert.strictEqual(args[args.indexOf('-f') + 1], 'rtsp', 'republished over RTSP, the stack\'s internal transport');
 });
 
 test('destinations are created, listed with a masked key, toggled and deleted', async () => {

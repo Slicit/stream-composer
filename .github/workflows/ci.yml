@@ -139,6 +139,13 @@ jobs:
           docker exec sc-ci ffmpeg -hide_banner -version | head -1
           curl -fsS http://127.0.0.1:3000/login | grep -q "Sign in" && echo "Login page renders."
 
+      - name: Check the encoder that the audio monitor depends on
+        # A native `opus` encoder exists in ffmpeg regardless of build flags,
+        # but it is not what audioRelay.js asks for and is not what the
+        # audio monitor was fixed to use — only libopus, an external
+        # dependency, is enabled. Assert that one specifically.
+        run: docker exec sc-ci ffmpeg -hide_banner -encoders 2>&1 | grep -q "libopus" && echo "libopus encoder present."
+
       - name: Tear down
         if: always()
         run: docker rm -f sc-ci || true
