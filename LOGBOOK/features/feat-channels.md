@@ -176,6 +176,47 @@ choices and their reasoning; the plan itself was written to
   on the admin channel-creation form, and a "link-only" visibility tier
   for channels.
 
+### 2026-08-22 (post-ship fix)
+
+- **Bug (reported by the user on their live deployment, minutes after
+  v1.3.0 went out):** a public channel's public stream never connected —
+  metadata (caption, audio-monitor entry) rendered fine, but the video
+  never came up, "0 of 1 connected."
+- **Root cause, found by tracing the actual request path rather than
+  guessing:** `proxy.mount(app, auth.requireViewAccessApi)` in `index.js`
+  put a blanket "signed in, or the site-wide publicViewing setting is on"
+  guard in front of *every* WHEP/HLS request, unconditionally, before
+  `resolvePlayback` ever ran. That guard predates this feature and has no
+  concept of a stream's or channel's own visibility — so an anonymous
+  viewer of a public channel's public stream was 401'd by the guard before
+  ever reaching the check that should have admitted them. Two separate
+  access systems were stacked in series (global session gate, then
+  per-resource visibility) instead of one replacing the other.
+- **A second, smaller issue found in the same pass:** `resolveStream` in
+  the same file also still checked the *global* `showIndividualStreams` +
+  `composition.mode` setting — a presentation choice for the classic
+  view's "strip of previews behind the programme," unrelated to channels —
+  which would have broken every channel's video too, for any operator who
+  had that setting turned off, independent of the bug above.
+- **Fix:** access is now decided exactly once, inside
+  `resolvePlayback`/`resolveStream` itself. The composed programme (which
+  has no visibility of its own) keeps the original publicViewing-or-signed-in
+  rule, moved into `resolvePlayback`'s `PUBLIC_PROGRAM` branch. Individual
+  streams rely solely on `access.canAccess`. `showIndividualStreams` moved
+  to where it actually belongs — `routes/api.js` now omits `path`/
+  `audioPath` from the classic view's own JSON when that setting says to
+  hide them, instead of the proxy refusing the request. The now-redundant
+  `auth.requireViewAccessApi` was deleted (zero remaining callers).
+- **Why this got through initial testing:** every test that exercised the
+  proxy did so as the signed-in admin (`call()`'s default cookie) or
+  against a stream/channel where the difference did not surface. Nothing
+  exercised the exact combination the user hit: *anonymous* request,
+  *public* stream, *default* (false) site-wide publicViewing. New
+  SECURITY tests cover that combination directly, plus the programme's own
+  narrower rule, so this class of regression fails CI next time.
+- **Impact:** `server/src/auth.js`, `index.js`, `proxy.js`, `routes/api.js`,
+  plus two new SECURITY tests and one rewritten test. Shipped as `v1.3.1`.
+
 ## Links
 
 - Branch: `feat-channels` (trunk-based repo; work lands on `main`)

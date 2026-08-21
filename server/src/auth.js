@@ -274,17 +274,6 @@ function requireViewAccess(req, res, next) {
   return requireUser(req, res, next);
 }
 
-/**
- * Same rule, but for machine endpoints: never redirect to the sign-in page.
- * A redirect would be followed by fetch() and hand the WHEP client an HTML
- * page with a 200, instead of a 401 it can report as "please sign in again".
- */
-function requireViewAccessApi(req, res, next) {
-  if (store.get().settings.publicViewing) return next();
-  if (req.user) return next();
-  return res.status(401).json({ error: 'Sign in to continue.' });
-}
-
 module.exports = {
   COOKIE,
   hashPassword,
@@ -308,5 +297,4 @@ module.exports = {
   requireUser,
   requireAdmin,
   requireViewAccess,
-  requireViewAccessApi,
 };

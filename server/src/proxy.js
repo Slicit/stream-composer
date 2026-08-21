@@ -64,23 +64,32 @@ const HLS_FILE = /^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$/;
 const SAFE_QUERY = /^[A-Za-z0-9_.\-=&%~+/]*$/;
 
 /**
- * A playback id resolves to a stream only when it is both known and, per the
- * same visibility rule as the video path, allowed to be addressed at all —
- * by the "show individual sources" setting, and now by the stream's own
- * visibility/sharedWith against whoever is asking. `user` is whatever
- * requireViewAccessApi already attached to the request (null when
- * anonymous); this is the one place that decides whether a private
- * stream's media is actually reachable, so it is checked here regardless
- * of what a higher-level API (e.g. the channel-state endpoint) already
- * filtered — a playback id, once it exists anywhere, must not be a bypass.
+ * A playback id resolves to a stream only when it is both known and
+ * allowed to be addressed at all — by the stream's own visibility/
+ * sharedWith against whoever is asking. `user` is whatever auth.attachUser
+ * already attached to the request (null when anonymous; see index.js,
+ * where the media proxy is mounted with no gating middleware of its own
+ * any more — this is where that gating now lives instead). This is the one
+ * place that decides whether a private stream's media is actually
+ * reachable, so it is checked here regardless of what a higher-level API
+ * (e.g. the channel-state endpoint) already filtered — a playback id, once
+ * it exists anywhere, must not be a bypass.
  * Shared by the video and the audio-monitor forms of resolvePlayback below.
+ *
+ * "Show individual sources to viewers" deliberately is NOT checked here
+ * any more. That setting hides the classic view's strip of individual
+ * previews *behind the programme* — a presentation choice for that one
+ * page, not an access-control rule — and it has no meaning for a channel,
+ * whose entire point is showing specific individual streams regardless of
+ * what the classic page's declutter setting is doing. Enforcing it here
+ * blocked every channel's video whenever an operator had turned it off,
+ * which has nothing to do with channels at all. routes/api.js now applies
+ * it only where it belongs: by omitting the path from the classic view's
+ * own JSON, the same way routes/channels.js omits it for a restricted
+ * stream.
  */
 function resolveStream(playbackId, user) {
   const d = store.get();
-  // "Show individual sources to viewers" hides the sources *behind* the
-  // programme. In web mode there is no programme — the sources are what the
-  // player composes — so the setting cannot apply without hiding everything.
-  if (!d.settings.showIndividualStreams && d.composition.mode !== 'web') return null;
   const stream = d.streams.find((s) => s.playbackId === playbackId);
   if (!stream || stream.enabled === false) return null;
   if (!access.canAccess(stream, user)) return null;
@@ -92,7 +101,13 @@ function resolveStream(playbackId, user) {
  * Returns null when the reference is unknown or not currently playable.
  */
 function resolvePlayback(publicPath, user) {
-  if (publicPath === PUBLIC_PROGRAM) return config.programPath;
+  if (publicPath === PUBLIC_PROGRAM) {
+    // The composed programme has no visibility of its own to check — it is
+    // not a stream or a channel — so it keeps exactly the rule it always
+    // had: the site-wide "public viewing" setting, or being signed in.
+    if (!store.get().settings.publicViewing && !user) return null;
+    return config.programPath;
+  }
 
   const parts = publicPath.split('/');
 

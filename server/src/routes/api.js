@@ -63,24 +63,37 @@ router.get('/state', async (req, res) => {
       }),
     streams: all
       .filter((s) => s.enabled !== false && s.playbackId)
-      .map((s) => ({
-        // The ingest key is a publishing credential and is deliberately absent.
-        key: s.playbackId,
-        // The nickname is the on-air name, so viewers see the same words that
-        // are burnt into the cell rather than the operator's internal label.
-        name: (s.nickname || '').trim() || s.name,
-        live: s.live,
-        hasAudio: s.hasAudio,
-        // Set when the browser cannot play this source directly — a black
-        // rectangle with no explanation is the worst possible outcome.
-        problem: s.playback && s.playback.problem ? s.playback.problem : null,
-        // Media path the player subscribes to, via the authenticated proxy.
-        path: `s/${s.playbackId}`,
-        // Opus-transcoded audio monitor feed — see audioRelay.js. Distinct
-        // from `path` above, which carries the source's raw (AAC) audio that
-        // no browser can decode over WebRTC.
-        audioPath: `s/${s.playbackId}/audio`,
-      })),
+      .map((s) => {
+        // "Show individual sources to viewers" hides the sources *behind* the
+        // programme on this page specifically. In web mode there is no
+        // programme — the sources are what the player composes — so the
+        // setting cannot apply without hiding everything. This is a
+        // presentation choice for the classic view, not access control (that
+        // is `visibility`/`sharedWith`, checked in the proxy itself), and it
+        // has no bearing on a channel: routes/channels.js never consults it.
+        const hideBehindProgramme = !d.settings.showIndividualStreams && d.composition.mode !== 'web';
+        return {
+          // The ingest key is a publishing credential and is deliberately absent.
+          key: s.playbackId,
+          // The nickname is the on-air name, so viewers see the same words that
+          // are burnt into the cell rather than the operator's internal label.
+          name: (s.nickname || '').trim() || s.name,
+          live: s.live,
+          hasAudio: hideBehindProgramme ? false : s.hasAudio,
+          // Set when the browser cannot play this source directly — a black
+          // rectangle with no explanation is the worst possible outcome.
+          problem: s.playback && s.playback.problem ? s.playback.problem : null,
+          // Media path the player subscribes to, via the authenticated proxy.
+          // Absent entirely (not just unused) when hidden behind the
+          // programme, so there is nothing for the client to open a WHEP
+          // session with even by mistake.
+          path: hideBehindProgramme ? null : `s/${s.playbackId}`,
+          // Opus-transcoded audio monitor feed — see audioRelay.js. Distinct
+          // from `path` above, which carries the source's raw (AAC) audio that
+          // no browser can decode over WebRTC.
+          audioPath: hideBehindProgramme ? null : `s/${s.playbackId}/audio`,
+        };
+      }),
     version: config.version,
     serverTime: new Date().toISOString(),
   });

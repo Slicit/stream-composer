@@ -400,6 +400,43 @@ test('the media proxy refuses paths that are not configured streams', async () =
   assert.strictEqual(res.status, 404);
 });
 
+test('SECURITY: an anonymous viewer reaches a public stream over the proxy, with no login and no site-wide public viewing', async () => {
+  // Regression: the proxy used to sit behind a blanket "signed in, or
+  // publicViewing is on" guard (auth.requireViewAccessApi) ahead of
+  // resolvePlayback ever running. That guard knew nothing about a stream's
+  // own visibility, so an anonymous viewer of a *public* stream — the
+  // entire point of a public channel — was rejected before getting anywhere
+  // near the check that should have admitted them. Access is now decided
+  // once, inside resolvePlayback itself; there is nothing left standing in
+  // front of it that could 401 a request resolvePlayback would allow.
+  const res = await fetch(`${base}/mtx/webrtc/s/${playbackId}/whep`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/sdp' },
+    body: 'v=0',
+  });
+  assert.notStrictEqual(res.status, 401, 'not rejected for lack of a session');
+  assert.notStrictEqual(res.status, 404, 'the public stream itself resolves');
+  // No real MediaMTX is running in this test environment, so the request
+  // that *did* get through fails downstream — that failure is not what is
+  // under test here.
+  assert.strictEqual(res.status, 502);
+});
+
+test('the composed programme still requires sign-in or site-wide public viewing — it has no visibility of its own', () => {
+  const proxy = require('../src/proxy');
+  const programPath = require('../src/config').programPath;
+  assert.strictEqual(proxy.resolvePlayback('program', null), null, 'anonymous, publicViewing off');
+  assert.strictEqual(proxy.resolvePlayback('program', { id: 'x', role: 'viewer' }), programPath, 'signed in');
+
+  store.update((d) => {
+    d.settings.publicViewing = true;
+  });
+  assert.strictEqual(proxy.resolvePlayback('program', null), programPath, 'anonymous is fine once publicViewing is on');
+  store.update((d) => {
+    d.settings.publicViewing = false;
+  });
+});
+
 test('SECURITY: the media proxy addresses streams by playback id, never by ingest key', () => {
   const proxy = require('../src/proxy');
   assert.strictEqual(proxy.resolvePlayback(`s/${playbackId}`), `live/${streamKey}`);
@@ -453,7 +490,9 @@ test('the proxy accepts a well-formed WHEP request and its session URL', () => {
   assert.strictEqual(create.upstreamPath, `/live/${streamKey}/whep`);
   const session = proxy.parseRequest(`/s/${playbackId}/whep/abc-123`, 'webrtc');
   assert.strictEqual(session.upstreamPath, `/live/${streamKey}/whep/abc-123`);
-  const hls = proxy.parseRequest('/program/index.m3u8', 'hls');
+  // The programme has no visibility of its own — signed-in or public
+  // viewing is what it still checks, so a signed-in user resolves it.
+  const hls = proxy.parseRequest('/program/index.m3u8', 'hls', { id: 'someone', role: 'viewer' });
   assert.strictEqual(hls.upstreamPath, '/program/index.m3u8');
 });
 
@@ -672,9 +711,15 @@ test('web mode reports no programme to play', async () => {
   assert.ok(body.program.labelSize > 0);
 });
 
-test('the sources stay reachable in web mode even when they are meant to be hidden', () => {
+test('"show individual sources" hides a stream\'s path from the classic view, not from the proxy', async () => {
+  // Regression: the proxy used to enforce this setting itself, which meant a
+  // stream stayed unreachable over WHEP from *any* page — including a
+  // channel, which has nothing to do with the classic view's "sources
+  // behind the programme" presentation choice and broke as a result. The
+  // setting now only ever controls what the classic /api/state hands out;
+  // the proxy's own rule is purely visibility/sharedWith (SECURITY tests
+  // above), which does not care about this setting at all.
   const proxy = require('../src/proxy');
-  const store = require('../src/store');
   const streams = require('../src/streams');
 
   const created = streams.create({ name: 'Hidden cam', visibility: 'public' });
@@ -682,15 +727,25 @@ test('the sources stay reachable in web mode even when they are meant to be hidd
     d.settings.showIndividualStreams = false;
     d.composition.mode = 'server';
   });
-  // On the server the programme is what viewers get, so a source stays hidden.
-  assert.strictEqual(proxy.resolvePlayback(`s/${created.playbackId}`), null);
 
-  // In web mode the sources *are* the programme; hiding them would leave the
-  // player with nothing at all to show.
+  assert.strictEqual(
+    proxy.resolvePlayback(`s/${created.playbackId}`, null),
+    `live/${created.key}`,
+    'the proxy still resolves a public stream regardless of this setting',
+  );
+
+  const state = await (await call('/api/state')).json();
+  const entry = state.streams.find((s) => s.key === created.playbackId);
+  assert.strictEqual(entry.path, null, 'but the classic view does not hand out a path to build a WHEP session from');
+  assert.strictEqual(entry.audioPath, null);
+  assert.strictEqual(entry.hasAudio, false);
+
   store.update((d) => {
     d.composition.mode = 'web';
   });
-  assert.strictEqual(proxy.resolvePlayback(`s/${created.playbackId}`), `live/${created.key}`);
+  const webState = await (await call('/api/state')).json();
+  const webEntry = webState.streams.find((s) => s.key === created.playbackId);
+  assert.strictEqual(webEntry.path, `s/${created.playbackId}`, 'in web mode the sources are the programme, so the path stays');
 
   store.update((d) => {
     d.settings.showIndividualStreams = true;

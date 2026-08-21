@@ -80,8 +80,17 @@ app.use('/internal', (_req, res) => res.status(404).json({ error: 'Not found.' }
 app.use('/api/auth', require('./routes/auth'));
 
 // ------------------------------------------------------------ media proxy
+//
+// No blanket "must be signed in" guard here any more: since streams and
+// channels each carry their own visibility, that decision now belongs to
+// resolvePlayback/resolveStream (proxy.js), which is where every playback
+// request ends up regardless of which page it came from. A guard here that
+// still enforced the old site-wide "public viewing" setting would block an
+// anonymous viewer from a public channel's public stream — exactly the
+// case this proxy is supposed to allow. req.user is already attached by
+// auth.attachUser above; there is nothing left for a guard to add.
 
-proxy.mount(app, auth.requireViewAccessApi);
+proxy.mount(app, (_req, _res, next) => next());
 
 // ----------------------------------------------------------------- admin API
 // Mounted before the viewer API so administration never inherits the

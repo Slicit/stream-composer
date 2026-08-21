@@ -250,10 +250,15 @@ configured leaves `/` exactly as it has always behaved.
 MediaMTX's API (9997), RTSP (8554), HLS (8888) and WHEP (8889) listeners stay on
 the internal Docker network.
 
-**Playback is proxied and authenticated.** Browsers never talk to MediaMTX
-directly. WHEP and HLS requests go to the composer, which checks the session
-cookie, resolves the requested playback id, and only then forwards. One
-hostname, one certificate, one place where access is decided.
+**Playback is proxied, and access is decided in one place.** Browsers never
+talk to MediaMTX directly. WHEP and HLS requests go to the composer, which
+resolves the requested playback id against whoever is asking — session
+cookie if there is one, anonymous if not — and the resource's own rules
+(a stream's `visibility`/`sharedWith`, or for the composed programme
+specifically, the site-wide "public viewing" setting), and only then
+forwards. One hostname, one certificate, one function
+(`resolvePlayback`/`resolveStream` in `proxy.js`) where every one of those
+decisions is made, whichever page the request came from.
 
 Four rules in the proxy each exist because the obvious version was exploitable:
 
