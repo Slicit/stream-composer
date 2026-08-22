@@ -12,6 +12,7 @@ class Stream < ApplicationRecord
   MAX_SHARED_WITH = 200
 
   belongs_to :owner, class_name: "User", optional: true
+  has_many :relay_destinations, dependent: :destroy
 
   before_validation :assign_key, on: :create
   before_validation :assign_playback_id, on: :create

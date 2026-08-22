@@ -14,6 +14,14 @@ Rails.application.routes.draw do
       post ":id/rotate-key", action: :rotate_key
     end
 
+    scope path: "relays/mine", controller: "relays" do
+      get "", action: :index
+      post "", action: :create
+      patch ":id", action: :update
+      delete ":id", action: :destroy
+      get ":id/key", action: :key
+    end
+
     namespace :admin do
       resources :users, only: %i[index create update destroy]
 
@@ -23,6 +31,13 @@ Rails.application.routes.draw do
         patch ":id", action: :update
         delete ":id", action: :destroy
         post ":id/rotate-key", action: :rotate_key
+      end
+
+      scope path: "relays", controller: "relays" do
+        get "", action: :index
+        post "", action: :create
+        patch ":id", action: :update
+        delete ":id", action: :destroy
       end
     end
   end

@@ -10,10 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_22_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_22_000005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "relay_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "audio", default: "copy", null: false
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true, null: false
+    t.string "key", default: "", null: false
+    t.string "name", null: false
+    t.string "provider", default: "custom", null: false
+    t.uuid "stream_id", null: false
+    t.datetime "updated_at", null: false
+    t.string "url", null: false
+    t.index ["stream_id"], name: "index_relay_destinations_on_stream_id"
+    t.check_constraint "audio::text = ANY (ARRAY['copy'::character varying, 'aac'::character varying]::text[])", name: "relay_destinations_audio_check"
+  end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
@@ -59,6 +73,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_22_000004) do
     t.check_constraint "stream_quota >= 0 AND stream_quota <= 1000", name: "users_stream_quota_range"
   end
 
+  add_foreign_key "relay_destinations", "streams", on_delete: :cascade
   add_foreign_key "sessions", "users"
   add_foreign_key "streams", "users", column: "owner_id", on_delete: :nullify
 end

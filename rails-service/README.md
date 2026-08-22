@@ -39,14 +39,10 @@ docker compose -f docker-compose.migration.yml up -d postgres rails
 curl http://localhost:13000/up
 ```
 
-No bootstrap-admin flow exists yet (that's the Node backend's
-`ADMIN_USER`/`ADMIN_PASSWORD` env vars, not yet ported) — seed one by hand
-for now:
-
-```bash
-docker compose -f docker-compose.migration.yml exec rails bin/rails runner \
-  'User.create!(username: "admin", password: "change-me-please", role: "admin")'
-```
+The first `db:prepare` on a freshly created database seeds a bootstrap
+admin (`User.ensure_bootstrap_admin!`, `db/seeds.rb`), same as the Node
+backend's `ADMIN_USER`/`ADMIN_PASSWORD` env vars — set those, or read the
+generated password it prints once, in the `rails` container's logs.
 
 ## Migrating from the legacy `config.json`
 
@@ -72,11 +68,18 @@ against the same file; matches existing rows by `id`.
   `accessible_to?`, ported from `access.js`'s `canAccess` the same way the
   Go data plane's `internal/access` ports it, so all three implementations
   stay diffable against each other.
+- `app/models/relay_destination.rb` — restream destinations' *data model*
+  only (validation, provider defaults, key masking), ported from
+  `relays.js`. The ffmpeg process supervision half of that file (starting,
+  backing off, progress) is not here — that stays a data-plane concern for
+  a later Go slice, same boundary as the media proxy.
 - `app/controllers/api/` — `auth#login/logout/me`,
-  `admin/{users,streams}` (full admin CRUD), `streams` (the streamer role's
-  `/streams/mine` self-service, quota-enforced, ownership-scoped).
-- `lib/tasks/migrate_from_json.rake` — the config.json -> Postgres import.
+  `admin/{users,streams,relays}` (full admin CRUD), `streams`/`relays` (the
+  streamer role's `/streams/mine` and `/relays/mine` self-service,
+  quota-enforced and ownership-scoped — a relay's ownership follows its
+  source stream, not the relay row itself).
+- `lib/tasks/migrate_from_json.rake` — the config.json -> Postgres import
+  (users and streams so far; relay destinations not yet added).
 
-Not yet ported: channels, restream destinations, the audio-monitor
-relay's configuration, admin settings. Those are later slices of this same
-phase.
+Not yet ported: channels, the audio-monitor relay's configuration, admin
+settings. Those are later slices of this same phase.

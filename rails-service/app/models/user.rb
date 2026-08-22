@@ -95,6 +95,47 @@ class User < ApplicationRecord
       user.save!
       user
     end
+
+    # Mirrors auth.js's ensureBootstrapAdmin(): only ever acts on a
+    # genuinely empty install (no users at all), from ADMIN_USER/
+    # ADMIN_PASSWORD, generating and printing a random password when
+    # ADMIN_PASSWORD is unset or too weak. Called from db/seeds.rb, not an
+    # initializer — an initializer running database queries at every Rails
+    # boot (console, asset tasks, migrations) is the well-known anti-pattern
+    # this deliberately avoids.
+    def ensure_bootstrap_admin!
+      return if exists?
+
+      password = ENV["ADMIN_PASSWORD"].presence
+      generated = false
+      if password.nil? || password.length < 8 || password.match?(/\A\s|\s\z/)
+        password = SecureRandom.urlsafe_base64(12)
+        generated = true
+      end
+
+      username = ENV["ADMIN_USER"].presence || "admin"
+      unless username.match?(USERNAME_FORMAT)
+        warn %(ADMIN_USER "#{username}" is not a valid username — using "admin" instead)
+        username = "admin"
+      end
+
+      user = create!(username: username, password: password, role: "admin")
+
+      if generated
+        puts <<~BANNER
+
+          ┌────────────────────────────────────────────────────────────┐
+          │  Stream Composer — initial administrator account created   │
+          └────────────────────────────────────────────────────────────┘
+             username: #{user.username}
+             password: #{password}
+
+          Set ADMIN_PASSWORD to choose your own, or change it after signing in.
+        BANNER
+      end
+
+      user
+    end
   end
 
   private

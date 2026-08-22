@@ -49,18 +49,52 @@ repo, not its own.
 6. ~~End-to-end smoke test against the real running server (not just
    RSpec): login, cookie issued, authenticated stream creation, anonymous
    refusal — all confirmed over real HTTP through `docker compose up`.~~
-7. Not yet started: channels, restream destinations, admin settings, the
-   bootstrap-admin flow (`ADMIN_USER`/`ADMIN_PASSWORD` env vars in the Node
-   backend — nothing seeds a first admin yet, see the README's manual
-   workaround).
-8. Not started: wiring the Go data plane's `streamstore.Store` to a real
-   Rails internal API client (see phase 1's plan item 7 — the actual
-   "connect the services" step).
-9. Not started: React frontend.
+7. ~~`User.ensure_bootstrap_admin!`, ported from `ensureBootstrapAdmin()`:
+   only acts on a genuinely empty install, from `ADMIN_USER`/
+   `ADMIN_PASSWORD`, generating and printing a password when unset/weak.
+   Called from `db/seeds.rb` (run by `db:prepare` on first create), not an
+   initializer — the latter runs at every boot, including `rails console`
+   and asset tasks with no live database.~~
+8. ~~Restream destinations: `RelayDestination` model (validation, provider
+   defaults, key masking) ported from `relays.js`'s *data* half only — the
+   ffmpeg process supervision half stays a data-plane concern, deferred to
+   a later Go slice, same boundary the media proxy already draws.
+   `Api::Admin::RelaysController` (full CRUD) and `Api::RelaysController`
+   (`/relays/mine`, ownership following the source stream, not the relay
+   row) with the same cross-tenant-isolation test coverage as streams. 102
+   RSpec examples total now. Verified end to end against the real running
+   server (create, list, key masked in the response).~~
+9. Not yet started: channels, admin settings.
+10. Not started: relay destinations in `migrate_from_json.rake` (only
+    users and streams migrate so far).
+11. Not started: wiring the Go data plane's `streamstore.Store` to a real
+    Rails internal API client (see phase 1's plan item 7 — the actual
+    "connect the services" step).
+12. Not started: React frontend.
 
 ## Decisions
 
 ### 2026-08-22
+
+- **Bug, tooling gotcha (not a code bug):** writing `relay_destination.rb`'s
+  URL-validation regex as `/[\s\x00-\x1f\x7f]/` produced a file containing
+  *literal* raw NUL, 0x1f and 0x7f bytes instead of the six-character Ruby
+  escape sequences — invisible in a normal read/diff, confirmed only with
+  `xxd`. The regex silently matched nothing useful and every "no control
+  characters" test still happened to pass for unrelated reasons, which is
+  what made it dangerous rather than merely broken.
+- **Why it matters:** `\xHH`-style escape sequences in file content passed
+  through Claude Code's Write tool can be decoded into literal bytes rather
+  than staying as source text, at least in this session. POSIX bracket
+  expressions (`[[:space:][:cntrl:]]`) and literal printable-range
+  characters (`[!-~]` instead of `[\x21-\x7e]`) sidestep the whole class of
+  mistake and read at least as clearly.
+- **Impact:** rewrote the one affected method; swept the entire
+  `rails-service` tree for the same byte pattern (`grep -P
+  '[\x00-\x08\x0e-\x1f\x7f]'` — a comparison run purely inside the Bash
+  tool, not written as file content, so the same risk does not apply there)
+  and found nothing else affected. Worth a `notes.md` entry once confirmed
+  a second time.
 
 - **Decision:** passwords stay scrypt (N: 16384, r: 8, p: 1, keylen: 64),
   not switched to bcrypt/`has_secure_password`.

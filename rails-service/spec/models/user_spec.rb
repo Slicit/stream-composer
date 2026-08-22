@@ -94,6 +94,41 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe ".ensure_bootstrap_admin!" do
+    it "does nothing when a user already exists" do
+      build_user.save!
+      expect { User.ensure_bootstrap_admin! }.not_to change(User, :count)
+    end
+
+    it "creates an admin from ADMIN_USER/ADMIN_PASSWORD when the install is empty" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("ADMIN_USER").and_return("bootstrapped")
+      allow(ENV).to receive(:[]).with("ADMIN_PASSWORD").and_return("correct-horse-1")
+
+      user = User.ensure_bootstrap_admin!
+      expect(user.username).to eq("bootstrapped")
+      expect(user.role).to eq("admin")
+      expect(User.authenticate_credentials("bootstrapped", "correct-horse-1")).to eq(user)
+    end
+
+    it "generates a password when ADMIN_PASSWORD is unset or too weak" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("ADMIN_PASSWORD").and_return(nil)
+
+      user = User.ensure_bootstrap_admin!
+      expect(user).to be_persisted
+      expect(user.role).to eq("admin")
+    end
+
+    it "falls back to a valid username when ADMIN_USER is malformed" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("ADMIN_USER").and_return("not a valid username!!")
+
+      user = User.ensure_bootstrap_admin!
+      expect(user.username).to eq("admin")
+    end
+  end
+
   describe "the last-administrator guard" do
     it "refuses to demote the sole remaining admin" do
       admin = build_user(username: "solo-admin", role: "admin").tap(&:save!)
