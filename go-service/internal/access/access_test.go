@@ -43,3 +43,35 @@ func TestCanAccess(t *testing.T) {
 		})
 	}
 }
+
+// Same truth table as TestCanAccess, for Channel — the two resource types
+// share one rule (see canAccess()'s own comment), so this proves the
+// Channel-typed entry point applies it identically rather than drifting.
+func TestCanAccessChannel(t *testing.T) {
+	isPublic := &streamstore.Channel{Visibility: "public"}
+	isPrivate := &streamstore.Channel{Visibility: "private", OwnerID: "owner-1", SharedWith: []string{"granted-1"}}
+
+	cases := []struct {
+		name    string
+		channel *streamstore.Channel
+		user    *streamstore.User
+		want    bool
+	}{
+		{"public is open even to anonymous", isPublic, nil, true},
+		{"private refuses anonymous", isPrivate, nil, false},
+		{"private refuses a stranger", isPrivate, &streamstore.User{ID: "stranger", Role: "viewer"}, false},
+		{"owner", isPrivate, &streamstore.User{ID: "owner-1", Role: "viewer"}, true},
+		{"explicitly shared", isPrivate, &streamstore.User{ID: "granted-1", Role: "viewer"}, true},
+		{"admin overrides everything", isPrivate, &streamstore.User{ID: "anyone", Role: "admin"}, true},
+		{"a missing resource is never accessible", nil, &streamstore.User{ID: "x", Role: "admin"}, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := CanAccessChannel(c.channel, c.user)
+			if got != c.want {
+				t.Errorf("CanAccessChannel() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

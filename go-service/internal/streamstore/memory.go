@@ -7,25 +7,29 @@ import "sync"
 // this service runs against standalone, before Rails/Postgres exist — see
 // the package doc comment.
 type Memory struct {
-	mu            sync.RWMutex
-	streams       []Stream
-	relays        []Relay
-	publicViewing bool
+	mu                  sync.RWMutex
+	streams             []Stream
+	relays              []Relay
+	channels            []Channel
+	publicViewing       bool
+	homepageChannelSlug string
 }
 
 func NewMemory() *Memory {
 	return &Memory{}
 }
 
-// Replace swaps the entire stream and relay set atomically — how a
-// future JSON-file or polling-based loader would apply a refresh without a
-// caller ever observing a half-updated set.
-func (m *Memory) Replace(streams []Stream, relays []Relay, publicViewing bool) {
+// Replace swaps the entire stream, relay and channel set atomically — how
+// a future JSON-file or polling-based loader would apply a refresh
+// without a caller ever observing a half-updated set.
+func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, publicViewing bool, homepageChannelSlug string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.streams = append([]Stream(nil), streams...)
 	m.relays = append([]Relay(nil), relays...)
+	m.channels = append([]Channel(nil), channels...)
 	m.publicViewing = publicViewing
+	m.homepageChannelSlug = homepageChannelSlug
 }
 
 func (m *Memory) FindByPlaybackID(playbackID string) (*Stream, bool) {
@@ -80,4 +84,22 @@ func (m *Memory) Streams() []Stream {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return append([]Stream(nil), m.streams...)
+}
+
+func (m *Memory) FindChannelBySlug(slug string) (*Channel, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.channels {
+		if m.channels[i].Slug == slug {
+			c := m.channels[i]
+			return &c, true
+		}
+	}
+	return nil, false
+}
+
+func (m *Memory) HomepageChannelSlug() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.homepageChannelSlug
 }

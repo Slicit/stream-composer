@@ -33,8 +33,19 @@ type jsonConfig struct {
 		Audio    string `json:"audio"`
 		Enabled  bool   `json:"enabled"`
 	} `json:"relays"`
+	Channels []struct {
+		ID              string   `json:"id"`
+		Name            string   `json:"name"`
+		Slug            string   `json:"slug"`
+		Visibility      string   `json:"visibility"`
+		OwnerID         string   `json:"ownerId"`
+		SharedWith      []string `json:"sharedWith"`
+		StreamIDs       []string `json:"streamIds"`
+		BackgroundImage string   `json:"backgroundImage"`
+	} `json:"channels"`
 	Settings struct {
-		PublicViewing bool `json:"publicViewing"`
+		PublicViewing       bool   `json:"publicViewing"`
+		HomepageChannelSlug string `json:"homepageChannelSlug"`
 	} `json:"settings"`
 }
 
@@ -73,6 +84,23 @@ func (cfg jsonConfig) toRelays() []Relay {
 	return relays
 }
 
+func (cfg jsonConfig) toChannels() []Channel {
+	channels := make([]Channel, 0, len(cfg.Channels))
+	for _, c := range cfg.Channels {
+		channels = append(channels, Channel{
+			ID:              c.ID,
+			Name:            c.Name,
+			Slug:            c.Slug,
+			Visibility:      c.Visibility,
+			OwnerID:         c.OwnerID,
+			SharedWith:      c.SharedWith,
+			StreamIDs:       c.StreamIDs,
+			BackgroundImage: c.BackgroundImage,
+		})
+	}
+	return channels
+}
+
 // JSONBridge polls the legacy JSON config file on an interval and refreshes
 // a Memory store from it.
 //
@@ -99,7 +127,7 @@ func (b *JSONBridge) Load() error {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", b.Path, err)
 	}
-	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.Settings.PublicViewing)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug)
 	return nil
 }
 

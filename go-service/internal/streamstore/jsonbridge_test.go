@@ -21,7 +21,10 @@ func TestJSONBridgeLoad(t *testing.T) {
 		"relays": []map[string]any{
 			{"id": "r1", "streamId": "s1", "provider": "twitch", "name": "Twitch", "url": "rtmp://live.twitch.tv/app", "key": "relay-key", "audio": "copy", "enabled": true},
 		},
-		"settings": map[string]any{"publicViewing": true},
+		"channels": []map[string]any{
+			{"id": "c1", "name": "Community Room", "slug": "community-room", "visibility": "public", "ownerId": "u1", "sharedWith": []string{}, "streamIds": []string{"s1"}, "backgroundImage": ""},
+		},
+		"settings": map[string]any{"publicViewing": true, "homepageChannelSlug": "community-room"},
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {
@@ -56,6 +59,14 @@ func TestJSONBridgeLoad(t *testing.T) {
 	relays := store.Relays()
 	if len(relays) != 1 || relays[0].StreamID != "s1" || relays[0].Key != "relay-key" {
 		t.Errorf("relays: got %+v", relays)
+	}
+
+	channel, ok := store.FindChannelBySlug("community-room")
+	if !ok || channel.Name != "Community Room" || len(channel.StreamIDs) != 1 || channel.StreamIDs[0] != "s1" {
+		t.Errorf("channel: got %+v, ok=%v", channel, ok)
+	}
+	if store.HomepageChannelSlug() != "community-room" {
+		t.Errorf("HomepageChannelSlug() = %q, want community-room", store.HomepageChannelSlug())
 	}
 }
 

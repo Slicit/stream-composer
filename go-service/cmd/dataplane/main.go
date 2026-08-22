@@ -27,6 +27,7 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/audiomonitor"
 	"github.com/Slicit/stream-composer/go-service/internal/authhook"
 	"github.com/Slicit/stream-composer/go-service/internal/bandwidthhistory"
+	"github.com/Slicit/stream-composer/go-service/internal/channelstate"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
@@ -193,6 +194,35 @@ func main() {
 		if err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "could not reach mediamtx"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state)
+	}))
+
+	// The channel-scoped equivalent of GET /api/state — same session
+	// guard, since a channel's own visibility/sharedWith is what gates it
+	// (see channelstate.Build), and a member stream's own access gates
+	// each entry's restricted flag independently of the channel's own.
+	mux.Handle("GET /api/channels/{slug}/state", guard(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		live, err := mtxClient.ListIngest(ctx)
+		if err == nil {
+			for _, l := range live {
+				if l.Ready {
+					checker.Inspect(l.Key, fmt.Sprintf("%s/%s/%s", rtspBase(cfg), cfg.IngestPrefix, l.Key), l.ReadyTime)
+				}
+			}
+		}
+
+		state, found, err := channelstate.Build(ctx, store, mtxClient, checker, audio, composition, cfg.IngestPrefix, r.PathValue("slug"), mediaproxy.UserFromContext(ctx))
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "could not reach mediamtx"})
+			return
+		}
+		if !found {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

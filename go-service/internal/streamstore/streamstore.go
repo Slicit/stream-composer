@@ -45,6 +45,21 @@ type User struct {
 	Role string // "admin", "streamer", "viewer"
 }
 
+// Channel is a curated, browser-composed stream list — configuration
+// only, the same split Channel's own Rails model doc comment describes:
+// viewing a channel's live state (layout, on-air status) is entirely a
+// data-plane concern, not stored here.
+type Channel struct {
+	ID              string
+	Name            string
+	Slug            string
+	Visibility      string // "public" or "private"
+	OwnerID         string
+	SharedWith      []string
+	StreamIDs       []string // ordered — defines membership AND layout order
+	BackgroundImage string
+}
+
 // Store is read-only from the data plane's perspective — nothing here ever
 // creates or mutates a stream or a user. Every method must be safe for
 // concurrent use, since the HTTP handlers and the relay runner's own poll
@@ -74,4 +89,12 @@ type Store interface {
 	// selection/ordering decision (e.g. sourceselector) needs to resolve a
 	// live ingest key back to its name, nickname and enabled flag.
 	Streams() []Stream
+
+	// FindChannelBySlug looks up a channel by its public slug. Returns
+	// (nil, false) when unknown.
+	FindChannelBySlug(slug string) (*Channel, bool)
+
+	// HomepageChannelSlug is the channel "/" should redirect to, or ""
+	// when none is configured.
+	HomepageChannelSlug() string
 }

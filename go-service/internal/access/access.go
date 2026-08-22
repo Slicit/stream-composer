@@ -13,7 +13,23 @@ func CanAccess(stream *streamstore.Stream, user *streamstore.User) bool {
 	if stream == nil {
 		return false
 	}
-	if stream.Visibility == "public" {
+	return canAccess(stream.Visibility, stream.OwnerID, stream.SharedWith, user)
+}
+
+// CanAccessChannel is CanAccess's identical twin for a Channel — same
+// visibility/owner/sharedWith rule, kept as its own function (rather than
+// a shared interface both types implement) since that is exactly how
+// Rails' own Accessible concern and Node's access.js already express it:
+// one small rule, applied to two resource types.
+func CanAccessChannel(channel *streamstore.Channel, user *streamstore.User) bool {
+	if channel == nil {
+		return false
+	}
+	return canAccess(channel.Visibility, channel.OwnerID, channel.SharedWith, user)
+}
+
+func canAccess(visibility, ownerID string, sharedWith []string, user *streamstore.User) bool {
+	if visibility == "public" {
 		return true
 	}
 	if user == nil {
@@ -22,10 +38,10 @@ func CanAccess(stream *streamstore.Stream, user *streamstore.User) bool {
 	if user.Role == "admin" {
 		return true
 	}
-	if stream.OwnerID != "" && stream.OwnerID == user.ID {
+	if ownerID != "" && ownerID == user.ID {
 		return true
 	}
-	for _, id := range stream.SharedWith {
+	for _, id := range sharedWith {
 		if id == user.ID {
 			return true
 		}

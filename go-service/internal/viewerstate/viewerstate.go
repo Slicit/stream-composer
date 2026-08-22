@@ -21,6 +21,10 @@ import (
 
 type Settings struct {
 	PublicViewing bool `json:"publicViewing"`
+	// HomepageChannelSlug is which channel "/" should redirect a viewer
+	// to, or "" when none is configured — carried on the global state so
+	// the React app can decide this without a second round trip.
+	HomepageChannelSlug string `json:"homepageChannelSlug"`
 }
 
 type Program struct {
@@ -53,13 +57,30 @@ type OnAirEntry struct {
 }
 
 type StreamEntry struct {
-	Key       string               `json:"key"` // playback id — the ingest key is deliberately never sent
-	Name      string               `json:"name"`
-	Live      bool                 `json:"live"`
-	HasAudio  bool                 `json:"hasAudio"`
-	Problem   *playability.Problem `json:"problem"`
-	Path      *string              `json:"path"`
-	AudioPath *string              `json:"audioPath"`
+	Key      string               `json:"key"` // playback id — the ingest key is deliberately never sent
+	Name     string               `json:"name"`
+	Live     bool                 `json:"live"`
+	HasAudio bool                 `json:"hasAudio"`
+	Problem  *playability.Problem `json:"problem"`
+	Path     *string              `json:"path"`
+	// AudioPath is deliberately omitted (both fields nil) rather than
+	// pointing at a session the caller cannot open, for a channel member
+	// this viewer cannot access — set by internal/channelstate; always
+	// false/populated normally on the global endpoint.
+	AudioPath *string `json:"audioPath"`
+	// Restricted is true only on a channel's state (internal/
+	// channelstate): a member stream this particular viewer cannot reach.
+	// Path/AudioPath are nil whenever this is true, so there is nothing
+	// for a client to open a WHEP session with even by mistake.
+	Restricted bool `json:"restricted"`
+}
+
+// ChannelInfo is present only on a channel-scoped State (internal/
+// channelstate) — nil on the global GET /api/state.
+type ChannelInfo struct {
+	Name            string `json:"name"`
+	Slug            string `json:"slug"`
+	BackgroundImage string `json:"backgroundImage"`
 }
 
 type State struct {
@@ -69,6 +90,7 @@ type State struct {
 	OnAir      []OnAirEntry  `json:"onAir"`
 	Streams    []StreamEntry `json:"streams"`
 	ServerTime string        `json:"serverTime"`
+	Channel    *ChannelInfo  `json:"channel,omitempty"`
 }
 
 // IngestLister is the one MediaMTX capability Build needs — the same
@@ -179,7 +201,7 @@ func Build(ctx context.Context, store streamstore.Store, mtx IngestLister, check
 	}
 
 	return State{
-		Settings: Settings{PublicViewing: store.PublicViewingEnabled()},
+		Settings: Settings{PublicViewing: store.PublicViewingEnabled(), HomepageChannelSlug: store.HomepageChannelSlug()},
 		Program: Program{
 			Mode:   "web",
 			Ready:  len(placement.Placed) > 0,

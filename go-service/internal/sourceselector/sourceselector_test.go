@@ -11,12 +11,14 @@ type fakeStore struct {
 	streams []streamstore.Stream
 }
 
-func (f *fakeStore) FindByPlaybackID(string) (*streamstore.Stream, bool) { return nil, false }
-func (f *fakeStore) FindByKey(string) (*streamstore.Stream, bool)        { return nil, false }
-func (f *fakeStore) FindByID(string) (*streamstore.Stream, bool)         { return nil, false }
-func (f *fakeStore) PublicViewingEnabled() bool                          { return false }
-func (f *fakeStore) Relays() []streamstore.Relay                         { return nil }
-func (f *fakeStore) Streams() []streamstore.Stream                       { return f.streams }
+func (f *fakeStore) FindByPlaybackID(string) (*streamstore.Stream, bool)   { return nil, false }
+func (f *fakeStore) FindByKey(string) (*streamstore.Stream, bool)          { return nil, false }
+func (f *fakeStore) FindByID(string) (*streamstore.Stream, bool)           { return nil, false }
+func (f *fakeStore) PublicViewingEnabled() bool                            { return false }
+func (f *fakeStore) Relays() []streamstore.Relay                           { return nil }
+func (f *fakeStore) Streams() []streamstore.Stream                         { return f.streams }
+func (f *fakeStore) FindChannelBySlug(string) (*streamstore.Channel, bool) { return nil, false }
+func (f *fakeStore) HomepageChannelSlug() string                           { return "" }
 
 func TestSelectOrdersManualModeByOperatorOrderOnly(t *testing.T) {
 	store := &fakeStore{streams: []streamstore.Stream{

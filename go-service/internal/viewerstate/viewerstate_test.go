@@ -12,8 +12,10 @@ import (
 )
 
 type fakeStore struct {
-	streams       []streamstore.Stream
-	publicViewing bool
+	streams             []streamstore.Stream
+	channels            []streamstore.Channel
+	publicViewing       bool
+	homepageChannelSlug string
 }
 
 func (f *fakeStore) FindByPlaybackID(string) (*streamstore.Stream, bool) { return nil, false }
@@ -22,6 +24,15 @@ func (f *fakeStore) FindByID(string) (*streamstore.Stream, bool)         { retur
 func (f *fakeStore) PublicViewingEnabled() bool                          { return f.publicViewing }
 func (f *fakeStore) Relays() []streamstore.Relay                         { return nil }
 func (f *fakeStore) Streams() []streamstore.Stream                       { return f.streams }
+func (f *fakeStore) HomepageChannelSlug() string                         { return f.homepageChannelSlug }
+func (f *fakeStore) FindChannelBySlug(slug string) (*streamstore.Channel, bool) {
+	for i := range f.channels {
+		if f.channels[i].Slug == slug {
+			return &f.channels[i], true
+		}
+	}
+	return nil, false
+}
 
 type fakeLister struct{ live []mediamtx.IngestPath }
 
