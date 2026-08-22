@@ -6,6 +6,11 @@ Rails.application.routes.draw do
   # the URL is this endpoint's only gate, not a session.
   get "internal/:token/streams", to: "internal/streams#index"
 
+  # Lets the Go data plane resolve a viewer's sc_session cookie (sent as
+  # its digest, never the raw token — see Internal::SessionsController)
+  # without holding its own copy of the sessions table.
+  get "internal/:token/sessions/:digest", to: "internal/sessions#show"
+
   namespace :api do
     post "auth/login", to: "auth#login"
     delete "auth/logout", to: "auth#logout"

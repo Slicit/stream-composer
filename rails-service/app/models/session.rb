@@ -22,7 +22,17 @@ class Session < ApplicationRecord
     # An expired match is deleted on the way out rather than left to rot.
     def authenticate(raw_token)
       return nil if raw_token.blank?
-      session = find_by(token_digest: digest(raw_token))
+      authenticate_by_digest(digest(raw_token))
+    end
+
+    # Same lookup as authenticate, but for a caller that already has the
+    # digest rather than the raw token — the Go data plane's internal
+    # session check, so a leaked request/log never carries anything a
+    # cookie thief could replay directly (a digest lookup is one-way; the
+    # raw token isn't).
+    def authenticate_by_digest(token_digest)
+      return nil if token_digest.blank?
+      session = find_by(token_digest: token_digest)
       return nil unless session
       if session.expires_at.past?
         session.destroy
