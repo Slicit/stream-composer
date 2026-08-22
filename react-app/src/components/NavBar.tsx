@@ -28,7 +28,7 @@ export function NavBar() {
         {user ? (
           <>
             <span className="text-muted-foreground">{user.username}</span>
-            <Button variant="ghost" size="sm" onClick={() => logout()}>
+            <Button variant="outline" size="sm" onClick={() => logout()}>
               Sign out
             </Button>
           </>

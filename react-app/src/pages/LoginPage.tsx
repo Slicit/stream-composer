@@ -62,7 +62,7 @@ export function LoginPage() {
                 {error}
               </p>
             )}
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" variant="outline" disabled={submitting}>
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
           </form>

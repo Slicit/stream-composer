@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { Stream } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { KeyField } from '@/components/KeyField'
 
 export function AdminStreamsPage() {
   const [streams, setStreams] = useState<Stream[] | null>(null)
@@ -117,7 +119,7 @@ export function AdminStreamsPage() {
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" disabled={creating}>
+          <Button type="submit" variant="outline" disabled={creating}>
             Add stream
           </Button>
         </form>
@@ -139,7 +141,9 @@ export function AdminStreamsPage() {
               {streams.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{s.key}</TableCell>
+                  <TableCell>
+                    <KeyField value={s.key} onRotate={() => rotateKey(s.id)} label={`Key for ${s.name}`} />
+                  </TableCell>
                   <TableCell>
                     <Select value={s.visibility} onValueChange={(v) => setStreamVisibility(s.id, v as 'private' | 'public')}>
                       <SelectTrigger aria-label={`Visibility for ${s.name}`} className="w-28">
@@ -152,16 +156,18 @@ export function AdminStreamsPage() {
                     </Select>
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant={s.enabled ? 'outline' : 'secondary'} onClick={() => toggleEnabled(s)}>
-                      {s.enabled ? <Badge>Enabled</Badge> : <Badge variant="secondary">Disabled</Badge>}
-                    </Button>
+                    <Switch checked={s.enabled} onCheckedChange={() => toggleEnabled(s)} aria-label={`Enabled for ${s.name}`} />
                   </TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="sm" onClick={() => rotateKey(s.id)}>
-                      Rotate key
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => remove(s.id)}>
-                      Delete
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => remove(s.id)}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </TableCell>
                 </TableRow>

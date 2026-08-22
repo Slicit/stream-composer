@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { Channel } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -97,7 +99,7 @@ export function AdminChannelsPage() {
             <Label htmlFor="new-channel-name">Name</Label>
             <Input id="new-channel-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
-          <Button type="submit" disabled={creating}>
+          <Button type="submit" variant="outline" disabled={creating}>
             Add channel
           </Button>
         </form>
@@ -124,19 +126,22 @@ export function AdminChannelsPage() {
                     <Badge variant={c.visibility === 'public' ? 'default' : 'secondary'}>{c.visibility}</Badge>
                   </TableCell>
                   <TableCell>
-                    {homepageChannelId === c.id ? (
-                      <Button size="sm" variant="outline" onClick={() => clearHomepage(c.id)}>
-                        Unset homepage
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="ghost" onClick={() => setHomepage(c.id)}>
-                        Set as homepage
-                      </Button>
-                    )}
+                    <Switch
+                      checked={homepageChannelId === c.id}
+                      onCheckedChange={(checked) => (checked ? setHomepage(c.id) : clearHomepage(c.id))}
+                      aria-label={`Homepage channel: ${c.name}`}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => remove(c.id)}>
-                      Delete
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => remove(c.id)}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </TableCell>
                 </TableRow>

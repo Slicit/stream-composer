@@ -1,13 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { RelayDestination, RelayProvider } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
 
 export function AdminRelaysPage() {
   const [relays, setRelays] = useState<RelayDestination[] | null>(null)
@@ -119,7 +120,7 @@ export function AdminRelaysPage() {
             <Label htmlFor="new-relay-key">Stream key</Label>
             <Input id="new-relay-key" type="password" value={key} onChange={(e) => setKey(e.target.value)} required className="w-48" />
           </div>
-          <Button type="submit" disabled={creating}>
+          <Button type="submit" variant="outline" disabled={creating}>
             Add relay
           </Button>
         </form>
@@ -146,13 +147,18 @@ export function AdminRelaysPage() {
                   <TableCell>{r.providerLabel}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{r.keyMasked}</TableCell>
                   <TableCell>
-                    <Button size="sm" variant={r.enabled ? 'outline' : 'secondary'} onClick={() => toggleEnabled(r)}>
-                      {r.enabled ? <Badge>Enabled</Badge> : <Badge variant="secondary">Disabled</Badge>}
-                    </Button>
+                    <Switch checked={r.enabled} onCheckedChange={() => toggleEnabled(r)} aria-label={`Enabled for ${r.sourceName || 'relay'}`} />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => remove(r.id)}>
-                      Delete
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => remove(r.id)}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </TableCell>
                 </TableRow>

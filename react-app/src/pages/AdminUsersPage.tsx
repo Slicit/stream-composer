@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { Role, User } from '../api/types'
@@ -140,7 +141,7 @@ export function AdminUsersPage() {
               />
             </div>
           )}
-          <Button type="submit" disabled={creating}>
+          <Button type="submit" variant="outline" disabled={creating}>
             Add user
           </Button>
         </form>
@@ -186,14 +187,15 @@ export function AdminUsersPage() {
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
                   <TableCell className="text-right">
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="outline"
+                      size="icon"
                       className="text-destructive hover:text-destructive"
                       onClick={() => remove(u.id)}
                       disabled={u.id === currentUser?.id}
                       title={u.id === currentUser?.id ? 'You cannot delete the account you are signed in with.' : 'Delete'}
                     >
-                      Delete
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete</span>
                     </Button>
                   </TableCell>
                 </TableRow>

@@ -44,9 +44,13 @@ proxy putting both behind the same host).
   See the note above; change the token values here to re-theme everything,
   not per-component.
 - `src/components/ui/` — shadcn's generated primitives (`button`, `input`,
-  `label`, `card`, `table`, `select`, `badge`, `separator`). Owned by the
-  project once generated, not a dependency — edit directly rather than
-  fighting the CLI if one needs to diverge from its default.
+  `label`, `card`, `table`, `select`, `badge`, `separator`, `switch`,
+  `textarea`). Owned by the project once generated, not a dependency —
+  edit directly rather than fighting the CLI if one needs to diverge from
+  its default.
+- [`UI_CONVENTIONS.md`](./UI_CONVENTIONS.md) — binding rules for icon-only
+  actions, toggles, API key display, and button styling. Read before
+  adding or editing any control.
 - `src/api/client.ts` — a thin fetch wrapper (`credentials: 'include'`,
   JSON in/out, throws `ApiError` with the server's own message).
 - `src/api/types.ts` — TypeScript types matching each Rails model's

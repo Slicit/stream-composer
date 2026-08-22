@@ -60,11 +60,22 @@ export function AudioPicker({ streams }: AudioPickerProps) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border p-3">
       <span className="text-sm font-medium">Audio:</span>
-      <Button size="sm" variant={activeKey === null ? 'default' : 'outline'} onClick={() => setActiveKey(null)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className={activeKey === null ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}
+        onClick={() => setActiveKey(null)}
+      >
         Muted
       </Button>
       {candidates.map((s) => (
-        <Button key={s.key} size="sm" variant={activeKey === s.key ? 'default' : 'outline'} onClick={() => setActiveKey(s.key)}>
+        <Button
+          key={s.key}
+          size="sm"
+          variant="outline"
+          className={activeKey === s.key ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}
+          onClick={() => setActiveKey(s.key)}
+        >
           {s.name}
         </Button>
       ))}

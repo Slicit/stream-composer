@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { RelayDestination, RelayProvider, RelaySource, Stream } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Badge } from '@/components/ui/badge'
+import { KeyField } from '@/components/KeyField'
 
 // Self-service for the streamer role: /streams/mine and /relays/mine,
 // combined on one page since a relay's ownership follows its source
@@ -178,7 +180,7 @@ export function StreamerPage() {
               <Label htmlFor="new-my-stream">Name</Label>
               <Input id="new-my-stream" value={streamName} onChange={(e) => setStreamName(e.target.value)} required />
             </div>
-            <Button type="submit" disabled={creatingStream || (streams !== null && streams.length >= quota)}>
+            <Button type="submit" variant="outline" disabled={creatingStream || (streams !== null && streams.length >= quota)}>
               Add stream
             </Button>
           </form>
@@ -202,7 +204,9 @@ export function StreamerPage() {
                 {streams.map((s) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{s.key}</TableCell>
+                    <TableCell>
+                      <KeyField value={s.key} onRotate={() => rotateKey(s.id)} label={`Key for ${s.name}`} />
+                    </TableCell>
                     <TableCell>
                       <Select value={s.visibility} onValueChange={(v) => setVisibility(s.id, v as 'private' | 'public')}>
                         <SelectTrigger aria-label={`Visibility for ${s.name}`} className="w-28">
@@ -215,16 +219,18 @@ export function StreamerPage() {
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Button size="sm" variant={s.enabled ? 'outline' : 'secondary'} onClick={() => toggleStream(s)}>
-                        {s.enabled ? <Badge>Enabled</Badge> : <Badge variant="secondary">Disabled</Badge>}
-                      </Button>
+                      <Switch checked={s.enabled} onCheckedChange={() => toggleStream(s)} aria-label={`Enabled for ${s.name}`} />
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
-                      <Button variant="ghost" size="sm" onClick={() => rotateKey(s.id)}>
-                        Rotate key
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => removeStream(s.id)}>
-                        Delete
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => removeStream(s.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -279,7 +285,7 @@ export function StreamerPage() {
               <Label htmlFor="new-relay-key-mine">Stream key</Label>
               <Input id="new-relay-key-mine" type="password" value={relayKey} onChange={(e) => setRelayKey(e.target.value)} required className="w-48" />
             </div>
-            <Button type="submit" disabled={creatingRelay || sources.length === 0}>
+            <Button type="submit" variant="outline" disabled={creatingRelay || sources.length === 0}>
               Add relay
             </Button>
           </form>
@@ -308,13 +314,18 @@ export function StreamerPage() {
                     <TableCell>{r.providerLabel}</TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.keyMasked}</TableCell>
                     <TableCell>
-                      <Button size="sm" variant={r.enabled ? 'outline' : 'secondary'} onClick={() => toggleRelay(r)}>
-                        {r.enabled ? <Badge>Enabled</Badge> : <Badge variant="secondary">Disabled</Badge>}
-                      </Button>
+                      <Switch checked={r.enabled} onCheckedChange={() => toggleRelay(r)} aria-label={`Enabled for ${r.sourceName || 'relay'}`} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => removeRelay(r.id)}>
-                        Delete
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => removeRelay(r.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
                       </Button>
                     </TableCell>
                   </TableRow>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { AvailableStream, Channel } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -119,7 +120,7 @@ export function ChannelsPage() {
               <Label htmlFor="new-channel-mine">Name</Label>
               <Input id="new-channel-mine" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            <Button type="submit" disabled={creating}>
+            <Button type="submit" variant="outline" disabled={creating}>
               Add channel
             </Button>
           </form>
@@ -149,8 +150,15 @@ export function ChannelsPage() {
                           <SelectItem value="public">Public</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => remove(c.id)}>
-                        Delete
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => remove(c.id)}
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Delete</span>
                       </Button>
                     </div>
                   </CardHeader>
