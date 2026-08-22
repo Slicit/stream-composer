@@ -1,0 +1,126 @@
+# Overlay: Traefik in front, with automatic Let's Encrypt certificates —
+# the same Traefik image, version and ACME approach as the pre-migration
+# stack's docker-compose.tls.yml, re-pointed at the new services. One
+# domain now fronts two backends instead of one, split by path: `rails`
+# gets everything by default (the API, admin/self-service, and the built
+# React SPA), `dataplane` gets the specific paths that are actually its
+# own (viewer/channel state, the WHEP/HLS media proxy).
+#
+# What this adds
+#   * HTTPS on 443 with an ACME certificate for ${DOMAIN}, renewed automatically.
+#   * A permanent redirect from port 80, plus HSTS.
+#   * RTMPS on 1936: Traefik terminates TLS using the same certificate and
+#     forwards plain RTMP to MediaMTX, so OBS can push over an encrypted link
+#     without any extra certificate management.
+#
+# Requirements: ${DOMAIN} must already resolve to this host, and ports 80, 443
+# and 1936 must be reachable from the internet (80 is needed for the ACME
+# HTTP-01 challenge and for the redirect).
+#
+# /internal/* on both `rails` and `dataplane` deliberately has no router
+# here at all — it is the shared-secret channel the two services use to
+# talk to each other directly over the container network, and must never
+# be reachable from outside it. The rails router below explicitly excludes
+# it too, as defense in depth against that ever changing by accident.
+
+services:
+  traefik:
+    image: traefik:${TRAEFIK_VERSION:-v3.7}
+    container_name: sc-traefik
+    restart: unless-stopped
+    # See docker-compose.tls.yml's own comment: Traefik must be 3.6.1+ for
+    # Docker Engine 29's raised API minimum.
+    command:
+      - --global.checknewversion=false
+      - --global.sendanonymoususage=false
+      - --log.level=${TRAEFIK_LOG_LEVEL:-INFO}
+      - --accesslog=${TRAEFIK_ACCESS_LOG:-false}
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=streamnet
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls.certresolver=le
+      - --entrypoints.rtmps.address=:1936
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL:?set ACME_EMAIL in .env}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # Point at the staging directory while testing to avoid rate limits:
+      # - --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    ports:
+      - "80:80"
+      - "443:443"
+      - "${RTMPS_PORT:-1936}:1936"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/letsencrypt
+    networks: [streamnet]
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+        max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
+  rails:
+    # config.assume_ssl/force_ssl are already unconditional in
+    # production.rb — this stack has no non-TLS production path — so
+    # there is no SECURE_COOKIES-style environment toggle needed here,
+    # unlike the pre-migration Node app.
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: streamnet
+      traefik.http.routers.rails.rule: Host(`${DOMAIN:?set DOMAIN in .env}`) && !PathPrefix(`/internal`)
+      traefik.http.routers.rails.entrypoints: websecure
+      traefik.http.routers.rails.tls.certresolver: le
+      traefik.http.routers.rails.middlewares: sc-headers@docker
+      traefik.http.routers.rails.priority: "1"
+      traefik.http.services.rails.loadbalancer.server.port: "3000"
+      # HSTS plus the usual hardening. Framing is left to SAMEORIGIN so the
+      # player can be embedded on the same site.
+      traefik.http.middlewares.sc-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.sc-headers.headers.stsIncludeSubdomains: "false"
+      traefik.http.middlewares.sc-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.sc-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.sc-headers.headers.customFrameOptionsValue: SAMEORIGIN
+
+  dataplane:
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: streamnet
+      # /api/state and /api/channels/:slug/state — a plain PathPrefix on
+      # /api/channels would also catch /api/channels/mine (self-service
+      # CRUD, which must go to rails), so that one needs the same regex
+      # shape the dev-server Vite proxy already uses for the same reason.
+      traefik.http.routers.dataplane-state.rule: Host(`${DOMAIN}`) && (Path(`/api/state`) || PathRegexp(`^/api/channels/[^/]+/state$`))
+      traefik.http.routers.dataplane-state.entrypoints: websecure
+      traefik.http.routers.dataplane-state.tls.certresolver: le
+      traefik.http.routers.dataplane-state.middlewares: sc-headers@docker
+      traefik.http.routers.dataplane-state.priority: "10"
+      traefik.http.routers.dataplane-mtx.rule: Host(`${DOMAIN}`) && PathPrefix(`/mtx`)
+      traefik.http.routers.dataplane-mtx.entrypoints: websecure
+      traefik.http.routers.dataplane-mtx.tls.certresolver: le
+      traefik.http.routers.dataplane-mtx.middlewares: sc-headers@docker
+      traefik.http.routers.dataplane-mtx.priority: "10"
+      traefik.http.services.dataplane.loadbalancer.server.port: "8080"
+
+  mediamtx:
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${DOMAIN}
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: streamnet
+      # RTMPS: TLS is terminated here and plain RTMP is forwarded onward.
+      traefik.tcp.routers.rtmps.rule: HostSNI(`*`)
+      traefik.tcp.routers.rtmps.entrypoints: rtmps
+      traefik.tcp.routers.rtmps.tls: "true"
+      traefik.tcp.routers.rtmps.tls.certresolver: le
+      traefik.tcp.routers.rtmps.tls.domains[0].main: ${DOMAIN}
+      traefik.tcp.services.rtmps.loadbalancer.server.port: "1935"
+
+volumes:
+  traefik-acme:
+    name: sc-traefik-acme

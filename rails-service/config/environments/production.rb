@@ -68,4 +68,10 @@ Rails.application.configure do
   # "allow any Host," same posture as this app already has in development
   # and test, since a value only ever needs to be added here, not guessed at.
   config.hosts << ENV["DOMAIN"] if ENV["DOMAIN"].present?
+  # The Go data plane calls this service as http://rails:3000 (its Docker
+  # Compose service name, not the public domain) for its internal API
+  # polling and session lookups — same reason development.rb already
+  # allows this host, just needed again here since config.hosts only
+  # otherwise carries the public-facing DOMAIN in production.
+  config.hosts << "rails"
 end

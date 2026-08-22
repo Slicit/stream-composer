@@ -1,0 +1,125 @@
+# Stream Composer — Go/Rails/React stack (base, plain HTTP internally).
+#
+# This file on its own does not publish the web interface — pair it with
+# docker-compose.go-rails-react.tls.yml (Traefik + Let's Encrypt), the same
+# approach docker-compose.tls.yml already uses for the pre-migration Node
+# stack. There is deliberately no plain-HTTP overlay yet (the equivalent of
+# docker-compose.local.yml) — this stack's production path assumes Traefik.
+#
+# Replaces the single `composer` container with three services: `rails`
+# (control plane — API, auth, admin/self-service CRUD, and the built React
+# SPA served from its own public/ directory) and `dataplane` (Go — media
+# proxy, restream/audio-monitor process supervision, viewer/channel state).
+# `mediamtx` is unchanged from the Node stack.
+
+name: stream-composer
+
+services:
+  # ------------------------------------------------------------------ ingest
+  mediamtx:
+    image: bluenviron/mediamtx:${MEDIAMTX_VERSION:-1.19.1}
+    container_name: sc-mediamtx
+    restart: unless-stopped
+    environment:
+      # Advertised to browsers as an ICE candidate host. Without this,
+      # viewers outside the server cannot establish WebRTC.
+      MTX_WEBRTCADDITIONALHOSTS: ${PUBLIC_HOST:-}
+      # The Go data plane's auth hook, not Rails — MediaMTX asks it
+      # directly over the container network, never through Traefik. The
+      # shared secret in the URL is this endpoint's only gate.
+      MTX_AUTHHTTPADDRESS: http://dataplane:8080/internal/${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}/mediamtx/auth
+    volumes:
+      - ./config/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "${RTMP_PORT:-1935}:1935"
+      - "${SRT_PORT:-8890}:8890/udp"
+      - "${WEBRTC_UDP_PORT:-8189}:8189/udp"
+    networks: [streamnet]
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+        max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
+  # -------------------------------------------------------------- database
+  postgres:
+    image: postgres:16-alpine
+    container_name: sc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stream_composer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: stream_composer_production
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks: [streamnet]
+    logging: *logging
+
+  # ----------------------------------------------------------- control plane
+  rails:
+    build:
+      context: .
+      dockerfile: rails-service/Dockerfile
+    image: ${RAILS_IMAGE:-sc-rails}:${RAILS_TAG:-latest}
+    container_name: sc-rails
+    restart: unless-stopped
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgres://stream_composer:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/stream_composer_production
+      RAILS_MASTER_KEY: ${RAILS_MASTER_KEY:?set RAILS_MASTER_KEY in .env — see config/master.key locally}
+      # Gates Internal::StreamsController/SessionsController — the Go data
+      # plane's only credential for reading stream/channel config and
+      # resolving a viewer's session, both server-to-server only.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Set by the TLS overlay; left unset here so DOMAIN stays optional
+      # for anyone building the base file's image on its own.
+      DOMAIN: ${DOMAIN:-}
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Channel background-image uploads (Api::ChannelsController#background)
+      # — must survive an image rebuild/redeploy, unlike the rest of public/,
+      # which the Dockerfile regenerates from the React build every time.
+      - rails-uploads:/rails/public/uploads
+    networks: [streamnet]
+    logging: *logging
+
+  # ----------------------------------------------------------------- data plane
+  dataplane:
+    build: ./go-service
+    image: ${DATAPLANE_IMAGE:-sc-dataplane}:${DATAPLANE_TAG:-latest}
+    container_name: sc-dataplane
+    restart: unless-stopped
+    depends_on: [mediamtx, rails]
+    environment:
+      RAILS_INTERNAL_API_URL: http://rails:3000
+      RAILS_INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      MEDIAMTX_API: http://mediamtx:9997
+      MEDIAMTX_WEBRTC: http://mediamtx:8889
+      MEDIAMTX_HLS: http://mediamtx:8888
+      MEDIAMTX_RTSP_HOST: mediamtx
+      MEDIAMTX_INTERNAL_USER: composer
+      MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      DATA_DIR: /data
+      ENCODER: ${ENCODER:-}
+    volumes:
+      - dataplane-data:/data
+    # Uncomment to give ffmpeg access to an Intel/AMD GPU for VA-API.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    networks: [streamnet]
+    logging: *logging
+
+networks:
+  streamnet:
+    name: streamnet
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: sc-postgres-data
+  rails-uploads:
+    name: sc-rails-uploads
+  dataplane-data:
+    name: sc-dataplane-data
