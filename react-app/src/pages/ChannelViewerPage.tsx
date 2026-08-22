@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useChannelState } from '@/hooks/useChannelState'
 import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
 import { ComposedGrid } from '@/components/ComposedGrid'
+import { LiveDot } from '@/components/LiveDot'
 import { Card, CardContent } from '@/components/ui/card'
 
 // A channel's own viewer, at /c/:slug — same grid/audio-picking machinery
@@ -57,7 +58,12 @@ export function ChannelViewerPage() {
       className="flex w-full flex-col gap-4"
       style={state.channel?.backgroundImage ? { backgroundImage: `url(${state.channel.backgroundImage})`, backgroundSize: 'cover' } : undefined}
     >
-      {state.channel && <h1 className="text-2xl font-semibold tracking-tight">{state.channel.name}</h1>}
+      {state.channel && (
+        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+          <LiveDot live={state.streams.some((s) => s.live)} className="h-2.5 w-2.5" />
+          {state.channel.name}
+        </h1>
+      )}
       <ComposedGrid state={state} hiddenKeys={hiddenKeys} spotlightKey={spotlightKey} />
     </div>
   )

@@ -67,5 +67,9 @@ describe('ChannelViewerPage', () => {
     await waitFor(() => expect(screen.getByText('Mixed Channel')).toBeInTheDocument())
     expect(screen.getByText('This stream is private')).toBeInTheDocument()
     expect(document.querySelector('video')).toBeNull()
+    // The one member is live (even though restricted), so the channel
+    // itself counts as live — matches ComposedGrid's own "restricted
+    // still occupies a cell" treatment.
+    expect(screen.getByRole('heading').querySelector('[role="status"]')).toHaveAccessibleName('Live')
   })
 })

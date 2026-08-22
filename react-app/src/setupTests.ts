@@ -23,3 +23,23 @@ if (!Element.prototype.releasePointerCapture) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
+
+// jsdom has neither ResizeObserver nor real layout (every element reports
+// 0×0), so recharts' <ResponsiveContainer> (BandwidthChart) would sit
+// permanently at zero size and never render its children — a stub that
+// reports a plausible size the moment something starts observing is the
+// standard workaround.
+if (!globalThis.ResizeObserver) {
+  class ResizeObserverStub {
+    private callback: ResizeObserverCallback
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback
+    }
+    observe(target: Element) {
+      this.callback([{ target, contentRect: { width: 600, height: 240 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+    }
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+}

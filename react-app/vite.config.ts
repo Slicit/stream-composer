@@ -35,6 +35,16 @@ export default defineConfig({
         target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
         changeOrigin: true,
       },
+      // The left nav's bulk live-status check — same data plane route
+      // shape as the two above, just not slug-scoped. Must also come
+      // before the general /api/channels/:slug/state regex would ever
+      // matter here, and definitely before the catch-all /api below —
+      // omitting this left it silently falling through to Rails' SPA
+      // catch-all (index.html, not JSON) until caught live in the browser.
+      '/api/channels/live': {
+        target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
+        changeOrigin: true,
+      },
       '/mtx': {
         target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
         changeOrigin: true,

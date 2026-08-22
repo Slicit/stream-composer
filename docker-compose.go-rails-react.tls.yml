@@ -91,11 +91,12 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: streamnet
-      # /api/state and /api/channels/:slug/state — a plain PathPrefix on
-      # /api/channels would also catch /api/channels/mine (self-service
-      # CRUD, which must go to rails), so that one needs the same regex
-      # shape the dev-server Vite proxy already uses for the same reason.
-      traefik.http.routers.dataplane-state.rule: Host(`${DOMAIN}`) && (Path(`/api/state`) || PathRegexp(`^/api/channels/[^/]+/state$`))
+      # /api/state, /api/channels/live, and /api/channels/:slug/state — a
+      # plain PathPrefix on /api/channels would also catch /api/channels/
+      # mine (self-service CRUD, which must go to rails), so the slug
+      # form needs the same regex shape the dev-server Vite proxy already
+      # uses for the same reason.
+      traefik.http.routers.dataplane-state.rule: Host(`${DOMAIN}`) && (Path(`/api/state`) || Path(`/api/channels/live`) || PathRegexp(`^/api/channels/[^/]+/state$`))
       traefik.http.routers.dataplane-state.entrypoints: websecure
       traefik.http.routers.dataplane-state.tls.certresolver: le
       traefik.http.routers.dataplane-state.middlewares: sc-headers@docker
