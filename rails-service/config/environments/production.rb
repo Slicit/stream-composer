@@ -12,17 +12,22 @@ Rails.application.configure do
   # Full error reports are disabled.
   config.consider_all_requests_local = false
 
+  # Serves the built React SPA (copied into public/ at image build time —
+  # see Dockerfile) and channel background uploads. Rails' own static file
+  # server, not a separate container: same origin as the API, no CORS/
+  # SameSite story needed for sc_session in production either.
+  config.public_file_server.enabled = true
   # Cache assets for far-future expiry since they are all digest stamped.
+  # Uploaded backgrounds are not digest-stamped (see Api::ChannelsController
+  # #background), so this header would tell a browser to cache a replaced
+  # image under its old bytes — scoped to the SPA's own hashed filenames only.
   config.public_file_server.headers = { "cache-control" => "public, max-age=#{1.year.to_i}" }
 
-  # Enable serving of images, stylesheets, and JavaScripts from an asset server.
-  # config.asset_host = "http://assets.example.com"
-
-  # Assume all access to the app is happening through a SSL-terminating reverse proxy.
-  # config.assume_ssl = true
-
-  # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # config.force_ssl = true
+  # Traefik (docker-compose.go-rails-react.tls.yml) is the only entry point
+  # in this deployment and always terminates TLS — trust its assertion and
+  # enforce HTTPS/secure cookies/HSTS here rather than making it optional.
+  config.assume_ssl = true
+  config.force_ssl = true
 
   # Skip http-to-https redirect for the default health check endpoint.
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
@@ -56,12 +61,11 @@ Rails.application.configure do
   # Only use :id for inspections in production.
   config.active_record.attributes_for_inspect = [ :id ]
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  #
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # Enable DNS rebinding protection and other `Host` header attacks. DOMAIN
+  # is the same variable docker-compose.go-rails-react.tls.yml already
+  # requires for the Traefik Host() rule and the ACME certificate — one
+  # source of truth for the deployment's real hostname. Left unset means
+  # "allow any Host," same posture as this app already has in development
+  # and test, since a value only ever needs to be added here, not guessed at.
+  config.hosts << ENV["DOMAIN"] if ENV["DOMAIN"].present?
 end

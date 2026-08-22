@@ -70,4 +70,12 @@ Rails.application.routes.draw do
       end
     end
   end
+
+  # The React SPA shell — only reached in production (see PagesController's
+  # own comment). Declared last so every /api, /internal and /up route above
+  # still wins; ActionDispatch::Static already intercepts requests for a
+  # real built asset (JS/CSS/images) before routing ever sees them, so this
+  # only ever serves index.html, for React Router to take over client-side.
+  root to: "pages#app"
+  get "*path", to: "pages#app"
 end
