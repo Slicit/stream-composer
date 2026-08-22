@@ -1,0 +1,11 @@
+.git/
+log/*
+!log/.keep
+tmp/*
+!tmp/.keep
+!tmp/pids
+tmp/pids/*
+!tmp/pids/.keep
+.bundle
+vendor/bundle
+.env*

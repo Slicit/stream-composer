@@ -1,15 +1,16 @@
-# Migration dev stack — Go data plane, standing next to (never inside) the
-# existing Node service and networks. Everything here is prefixed `scmig-`
-# and lives on its own network/ports so it can run alongside both the
-# existing stream-composer stack and unrelated projects on the same host
-# (e.g. siberian-next) with zero collisions.
+# Migration dev stack — the Go data plane and the Rails control plane,
+# standing next to (never inside) the existing Node service and networks.
+# Everything here is prefixed `scmig-` and lives on its own network/ports so
+# it can run alongside both the existing stream-composer stack and
+# unrelated projects on the same host (e.g. siberian-next) with zero
+# collisions.
 #
 # Usage:
 #   docker compose -f docker-compose.migration.yml up -d --build
 #
 # This does not publish anything to the internet — every port below is for
-# local/dev access only. INTERNAL_SECRET is a throwaway dev value; never
-# reuse it for a real deployment.
+# local/dev access only. INTERNAL_SECRET/POSTGRES_PASSWORD are throwaway dev
+# values; never reuse them for a real deployment.
 
 name: sc-migration
 
@@ -50,7 +51,39 @@ services:
       - "18080:8080"
     networks: [scmig-net]
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: scmig-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: scmig
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-migration-dev-secret}
+      POSTGRES_DB: scmig_development
+    volumes:
+      - scmig-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"   # dev convenience only, not for internet exposure
+    networks: [scmig-net]
+
+  rails:
+    build:
+      context: ./rails-service
+      dockerfile: Dockerfile.dev
+    container_name: scmig-rails
+    restart: unless-stopped
+    depends_on: [postgres]
+    environment:
+      DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_development
+      RAILS_ENV: development
+    ports:
+      - "13000:3000"
+    networks: [scmig-net]
+
 networks:
   scmig-net:
     name: scmig-net
     driver: bridge
+
+volumes:
+  scmig-postgres-data:
+    name: scmig-postgres-data
