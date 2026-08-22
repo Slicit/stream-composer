@@ -1,5 +1,6 @@
-# Migration dev stack — the Go data plane and the Rails control plane,
-# standing next to (never inside) the existing Node service and networks.
+# Migration dev stack — the Go data plane, the Rails control plane, and the
+# React frontend, standing next to (never inside) the existing Node service
+# and networks.
 # Everything here is prefixed `scmig-` and lives on its own network/ports so
 # it can run alongside both the existing stream-composer stack and
 # unrelated projects on the same host (e.g. siberian-next) with zero
@@ -86,6 +87,23 @@ services:
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-migration-dev-internal-api-token}
     ports:
       - "13000:3000"
+    networks: [scmig-net]
+
+  react:
+    build:
+      context: ./react-app
+      dockerfile: Dockerfile.dev
+    container_name: scmig-react
+    restart: unless-stopped
+    depends_on: [rails]
+    environment:
+      # Vite's dev-server proxy target for /api — see vite.config.ts. The
+      # browser never talks to Rails directly; every request goes through
+      # Vite's own origin, which keeps the sc_session cookie same-origin
+      # with zero CORS/SameSite configuration needed for local dev.
+      VITE_RAILS_ORIGIN: http://rails:3000
+    ports:
+      - "15173:5173"
     networks: [scmig-net]
 
 networks:

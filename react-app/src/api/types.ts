@@ -1,0 +1,66 @@
+// Mirrors the JSON shapes rails-service actually serializes (see each
+// model's as_public_json). Kept in one file, field-for-field, so a drift
+// between the two is easy to spot in review.
+
+export type Role = 'admin' | 'viewer' | 'streamer'
+
+export interface User {
+  id: string
+  username: string
+  role: Role
+  streamQuota: number
+  createdAt: string
+  lastLoginAt: string | null
+}
+
+export interface Stream {
+  id: string
+  name: string
+  nickname: string
+  key: string
+  playbackId: string
+  enabled: boolean
+  note: string
+  visibility: 'private' | 'public'
+  ownerId: string | null
+  sharedWith: string[]
+  createdAt: string
+}
+
+export interface RelayProvider {
+  id: string
+  label: string
+  url: string
+  urlLabel: string
+  urlHint: string
+  keyLabel: string
+  keyHint: string
+}
+
+export interface RelayDestination {
+  id: string
+  streamId: string
+  sourceName: string | null
+  sourceMissing: boolean
+  provider: string
+  providerLabel: string
+  name: string
+  url: string
+  keyMasked: string
+  hasKey: boolean
+  audio: 'copy' | 'aac'
+  enabled: boolean
+  createdAt: string
+}
+
+export interface Channel {
+  id: string
+  name: string
+  slug: string
+  visibility: 'private' | 'public'
+  ownerId: string
+  backgroundImage: string | null
+  streamIds: string[]
+  sharedWith: string[]
+  createdAt: string
+}

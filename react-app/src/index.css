@@ -1,0 +1,81 @@
+/* Minimal placeholder styling — just enough to make the admin/login
+   screens usable while the real design system question (reuse the
+   existing server/public/assets/style.css, or something new?) is open.
+   See the open questions this phase ends on. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --surface: #171a21;
+  --surface-2: #1e222b;
+  --line: #2a2f3a;
+  --ink: #e8eaed;
+  --ink-2: #b7bcc7;
+  --ink-muted: #7d8494;
+  --accent: #3987e5;
+  --critical: #d03b3b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; background: var(--bg); color: var(--ink); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand { font-weight: 700; }
+.spacer { flex: 1 1 auto; }
+.username { color: var(--ink-muted); font-size: 0.85rem; }
+
+.row { display: flex; gap: 0.6rem; align-items: flex-end; flex-wrap: wrap; }
+
+.wrap { width: min(1100px, 100%); margin: 0 auto; padding: 1.25rem; }
+.wrap.narrow { width: min(420px, 100%); margin-top: 3rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; }
+.field input, .field select, table select, table input {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  color: var(--ink);
+  font: inherit;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.ghost { background: transparent; }
+button.ghost.danger { color: var(--critical); border-color: color-mix(in srgb, var(--critical) 40%, transparent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); }
+th { color: var(--ink-muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.02em; }
+
+.error { color: var(--critical); font-size: 0.85rem; }
+.hint { color: var(--ink-muted); font-size: 0.85rem; }
+.page-loading { padding: 2rem; text-align: center; color: var(--ink-muted); }
+
+a { color: var(--accent); }
