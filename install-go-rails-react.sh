@@ -436,6 +436,8 @@ validate_config() {
 write_env() {
   local tag; tag="$(channel_tag)"
 
+  $SUDO mkdir -p "$INSTALL_DIR"
+
   local tmp; tmp="$(mktemp)"
   cat > "$tmp" <<EOF
 # Written by install-go-rails-react.sh on $(date -u '+%Y-%m-%d %H:%M:%S UTC').
