@@ -15,8 +15,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,9 +30,25 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
+	"github.com/Slicit/stream-composer/go-service/internal/playability"
 	"github.com/Slicit/stream-composer/go-service/internal/relayrunner"
+	"github.com/Slicit/stream-composer/go-service/internal/sourceselector"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
+	"github.com/Slicit/stream-composer/go-service/internal/viewerstate"
 )
+
+// rtspBase mirrors relayrunner's own rtspBase() — duplicated rather than
+// exported from that package, since it is a two-line detail of MediaMTX's
+// own RTSP credential shape, not shared behavior.
+func rtspBase(cfg config.Config) string {
+	host, port := cfg.MediaMTX.RTSPHost, cfg.MediaMTX.RTSPPort
+	user, pass := cfg.MediaMTX.InternalUser, cfg.MediaMTX.InternalPassword
+	creds := ""
+	if pass != "" {
+		creds = fmt.Sprintf("%s:%s@", url.QueryEscape(user), url.QueryEscape(pass))
+	}
+	return fmt.Sprintf("rtsp://%s%s:%s", creds, host, port)
+}
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -89,6 +107,15 @@ func main() {
 	defer close(bandwidthStop)
 	go bandwidth.Start(context.Background(), bandwidthStop)
 
+	checker := playability.New(cfg.FFprobePath)
+	composition := sourceselector.Composition{
+		Include: "auto",
+		Layout:  cfg.CompositionLayout,
+		Width:   cfg.CompositionWidth,
+		Height:  cfg.CompositionHeight,
+		GapPx:   cfg.CompositionGapPx,
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -130,6 +157,31 @@ func main() {
 	})
 	mux.HandleFunc(mediaproxy.HLSMount+"/", func(w http.ResponseWriter, r *http.Request) {
 		proxy.ServeHLS(w, r, cfg.MediaMTX.HLS)
+	})
+
+	// The browser-composition equivalent of server/src/routes/api.js's
+	// GET /api/state. No session guard yet — same open question as the
+	// WHEP/HLS handlers above; every caller currently sees exactly what a
+	// public/anonymous viewer would.
+	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		live, err := mtxClient.ListIngest(ctx)
+		if err == nil {
+			for _, l := range live {
+				if l.Ready {
+					checker.Inspect(l.Key, fmt.Sprintf("%s/%s/%s", rtspBase(cfg), cfg.IngestPrefix, l.Key), l.ReadyTime)
+				}
+			}
+		}
+
+		state, err := viewerstate.Build(ctx, store, mtxClient, checker, audio, composition, cfg.IngestPrefix)
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "could not reach mediamtx"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(state)
 	})
 
 	addr := ":" + strings.TrimPrefix(cfg.Port, ":")

@@ -24,7 +24,8 @@ type Config struct {
 	ProgramPath  string // e.g. "program"
 	AudioPrefix  string // e.g. "audio" -> audio/<key>
 
-	FFmpegPath string // "ffmpeg" unless overridden
+	FFmpegPath  string // "ffmpeg" unless overridden
+	FFprobePath string // "ffprobe" unless overridden
 
 	// Restream backoff. Not yet a Rails-side setting (see AppSetting's own
 	// comment on staying deliberately small) — these are the same numeric
@@ -35,6 +36,15 @@ type Config struct {
 	PollIntervalMs    int
 
 	DataDir string // where persistent state (e.g. bandwidth history) is written
+
+	// Browser composition defaults (server/src/store.js's DEFAULT_COMPOSITION,
+	// the subset sourceselector needs). Not yet a Rails-side setting — see
+	// the LOGBOOK's open-questions note on where per-operator layout
+	// settings should eventually live.
+	CompositionLayout string
+	CompositionWidth  int
+	CompositionHeight int
+	CompositionGapPx  int
 }
 
 func env(key, def string) string {
@@ -77,9 +87,14 @@ func Load() Config {
 		ProgramPath:       env("PROGRAM_PATH", "program"),
 		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
 		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
+		FFprobePath:       env("FFPROBE_PATH", "ffprobe"),
 		RestartDelayMs:    envInt("RESTART_DELAY_MS", 2000),
 		MaxRestartDelayMs: envInt("MAX_RESTART_DELAY_MS", 15000),
 		PollIntervalMs:    envInt("POLL_INTERVAL_MS", 2000),
 		DataDir:           env("DATA_DIR", "/data"),
+		CompositionLayout: env("COMPOSITION_LAYOUT", "auto"),
+		CompositionWidth:  envInt("COMPOSITION_WIDTH", 1920),
+		CompositionHeight: envInt("COMPOSITION_HEIGHT", 1080),
+		CompositionGapPx:  envInt("COMPOSITION_GAP_PX", 4),
 	}
 }

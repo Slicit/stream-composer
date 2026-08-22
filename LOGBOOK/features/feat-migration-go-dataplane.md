@@ -112,9 +112,34 @@ itself on the same host with zero collisions.
    dataplane container in the dev stack, confirmed the endpoint returns
    real JSON (a first sample reporting zero, as expected with no prior
    baseline).~~
-8. Not yet started: viewer-state endpoint (the next natural consumer of
-   `sourceselector` and `audiomonitor`'s status) — the last remaining
-   slice of this Go phase.
+8. ~~Viewer-state endpoint (`internal/viewerstate`, item 5/8): the Go,
+   browser-composition-only equivalent of routes/api.js's GET /api/state.
+   Wires together sourceselector (on-air sources + grid layout),
+   audiomonitor's live status (a source only reports hasAudio once its
+   Opus republish is actually live, not merely requested — avoids a
+   viewer opening a WHEP audio session against a path that isn't
+   publishing yet), and playability (per-source B-frames-over-WebRTC
+   check). mediamtx.IngestPath gained ReadyTime so a republish re-probes
+   playability instead of reusing a stale verdict, matching
+   playability.js's own cache-keyed-by-session behavior. Exposed at
+   GET /api/state, unauthenticated for now — the same open access-control
+   question already flagged for the WHEP/HLS handlers. Composition
+   defaults (layout/width/height/gap) are env-configurable on the Go side
+   only for now; not yet a Rails-side setting (see the LOGBOOK note on
+   config.go).
+
+   Verified live end to end on the dev stack: with nothing publishing,
+   /api/state correctly reported program.ready=false and an empty grid;
+   after publishing a real synthetic RTMP+audio source, it correctly
+   flipped to ready=true, a one-cell "auto" layout, the source appearing
+   in both onAir and streams with live=true, and hasAudio=true only once
+   the audio monitor's own Opus transcode came up — not the instant the
+   source itself went live.~~
+
+This closes every item of the original 8-item gap-fill plan except
+production build/deploy (never scoped here) and the React viewer/admin
+screens that consume these new endpoints — those remain open work outside
+this Go data-plane phase.
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~

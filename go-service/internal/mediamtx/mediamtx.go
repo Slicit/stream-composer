@@ -32,6 +32,7 @@ func (c *Client) client() *http.Client {
 type pathItem struct {
 	Name          string   `json:"name"`
 	Ready         bool     `json:"ready"`
+	ReadyTime     string   `json:"readyTime"`
 	Tracks        []string `json:"tracks"`
 	BytesReceived int64    `json:"bytesReceived"`
 	BytesSent     int64    `json:"bytesSent"`
@@ -56,9 +57,10 @@ type pathsListResponse struct {
 // IngestPath is a live ingest slot, mapped from MediaMTX's own path name
 // (live/<key>) down to just the key relayrunner cares about.
 type IngestPath struct {
-	Key      string
-	Ready    bool
-	HasAudio bool
+	Key       string
+	Ready     bool
+	HasAudio  bool
+	ReadyTime string // identifies the publishing session; a republish gets a new one
 }
 
 // Path is one raw MediaMTX path entry, name unmodified — what callers that
@@ -115,7 +117,7 @@ func (c *Client) ListIngest(ctx context.Context) ([]IngestPath, error) {
 			if key == "" || strings.Contains(key, "/") {
 				continue
 			}
-			out = append(out, IngestPath{Key: key, Ready: it.Ready, HasAudio: hasAudioTrack(it.Tracks)})
+			out = append(out, IngestPath{Key: key, Ready: it.Ready, HasAudio: hasAudioTrack(it.Tracks), ReadyTime: it.ReadyTime})
 		}
 		page++
 		if page >= pageCount {
