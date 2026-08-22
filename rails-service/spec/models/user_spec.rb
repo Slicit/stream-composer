@@ -129,19 +129,20 @@ RSpec.describe User, type: :model do
     end
   end
 
-  describe "the last-administrator guard" do
-    it "refuses to demote the sole remaining admin" do
+  describe "the admin role immutability guard" do
+    it "refuses to change the role of the sole remaining admin" do
       admin = build_user(username: "solo-admin", role: "admin").tap(&:save!)
       admin.role = "viewer"
       expect(admin).not_to be_valid
       expect(admin.errors[:role]).not_to be_empty
     end
 
-    it "allows demoting an admin when another admin still exists" do
+    it "refuses to change an admin's role even when another admin still exists" do
       build_user(username: "admin-one", role: "admin").save!
       admin_two = build_user(username: "admin-two", role: "admin").tap(&:save!)
       admin_two.role = "viewer"
-      expect(admin_two).to be_valid
+      expect(admin_two).not_to be_valid
+      expect(admin_two.errors[:role]).not_to be_empty
     end
 
     it "refuses to delete the sole remaining admin" do

@@ -27,7 +27,7 @@ class User < ApplicationRecord
 
   validates :password, presence: true, on: :create, unless: -> { @password_assignment_attempted || @importing_legacy_hash }
   validate :password_is_strong, if: -> { @password_assignment_attempted }
-  validate :cannot_demote_the_last_admin, on: :update, if: :role_changed?
+  validate :cannot_change_an_admins_role, on: :update, if: :role_changed?
 
   before_destroy :refuse_to_delete_the_last_admin
 
@@ -153,10 +153,9 @@ class User < ApplicationRecord
     errors.add(:password, problems.join(" and ")) if problems.any?
   end
 
-  def cannot_demote_the_last_admin
+  def cannot_change_an_admins_role
     return unless role_was == "admin"
-    return if User.where(role: "admin").where.not(id: id).exists?
-    errors.add(:role, "cannot be changed — this is the last administrator")
+    errors.add(:role, "cannot be changed — admins cannot be demoted")
   end
 
   def refuse_to_delete_the_last_admin

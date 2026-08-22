@@ -43,7 +43,7 @@ RSpec.describe "Api::Admin::Users", type: :request do
       expect(body["user"]["streamQuota"]).to eq(2)
     end
 
-    it "refuses to demote the last administrator" do
+    it "refuses to change an administrator's role" do
       patch "/api/admin/users/#{admin.id}", params: { role: "viewer" }, as: :json
       expect(response).to have_http_status(:bad_request)
       expect(admin.reload.role).to eq("admin")
