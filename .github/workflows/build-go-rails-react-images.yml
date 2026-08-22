@@ -1,0 +1,168 @@
+name: Build Go/Rails/React images
+
+# Publishes the two images the go-rails-react stack actually builds from
+# source (rails — which bundles the React SPA into its own public/ — and
+# dataplane). mediamtx is pulled from its own upstream image and never
+# built here. Unlike release.yml (the pre-migration single-container app,
+# still the one main/install.sh installs), this only targets linux/amd64:
+# the deploy targets seen so far are all x86_64, and Ruby's native gems
+# make QEMU-emulated arm64 builds disproportionately slow for a workflow
+# whose whole point is build time.
+#
+# Tag scheme: pushes to migration/go-rails-react publish the `beta`
+# channel; pushes to main (once this stack is merged) publish `stable`.
+# Both also get an immutable `<channel>-<short-sha>` tag so a specific
+# build can be pinned. install-go-rails-react.sh/update-go-rails-react.sh
+# consume these tags via RAILS_TAG/DATAPLANE_TAG in .env.
+
+on:
+  push:
+    branches: [main, migration/go-rails-react]
+    paths:
+      - 'rails-service/**'
+      - 'react-app/**'
+      - 'go-service/**'
+      - '.github/workflows/build-go-rails-react-images.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-go-rails-react-images-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  RAILS_IMAGE: ghcr.io/${{ github.repository_owner }}/stream-composer-rails
+  DATAPLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/stream-composer-dataplane
+  CHANNEL: ${{ github.ref == 'refs/heads/main' && 'stable' || 'beta' }}
+
+jobs:
+  # Each image only rebuilds (and only republishes) when its own inputs
+  # actually changed — a dataplane-only commit does not touch the rails
+  # image's tags at all, and vice versa. react-app counts toward rails
+  # since the Rails image's react-build stage bundles it.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rails: ${{ steps.filter.outputs.rails }}
+      dataplane: ${{ steps.filter.outputs.dataplane }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rails:
+              - 'rails-service/**'
+              - 'react-app/**'
+            dataplane:
+              - 'go-service/**'
+
+  rails:
+    name: Build and publish rails
+    needs: changes
+    if: needs.changes.outputs.rails == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.RAILS_IMAGE }}
+          tags: |
+            type=raw,value=${{ env.CHANNEL }}
+            type=sha,prefix=${{ env.CHANNEL }}-,format=short
+          labels: |
+            org.opencontainers.image.title=Stream Composer (Rails control plane)
+            org.opencontainers.image.description=API, admin/self-service CRUD, auth, and the built React SPA
+
+      # Multi-stage build (react-build -> gems/precompile -> slim runtime,
+      # see rails-service/Dockerfile) with a GHA-backed layer cache scoped
+      # to this image, so an unchanged Gemfile/package-lock skips the
+      # expensive install steps entirely on the next run instead of
+      # starting cold. No secret ever reaches the image or this build —
+      # RAILS_MASTER_KEY/INTERNAL_API_TOKEN/DATABASE_URL are supplied at
+      # container start, not baked in (see .env.go-rails-react.example);
+      # the only encrypted file that IS baked in is
+      # config/credentials.yml.enc, which is already ciphertext and
+      # useless without that runtime-supplied key.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: rails-service/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=rails
+          cache-to: type=gha,mode=max,scope=rails
+
+      - name: Report what was published
+        run: |
+          echo "### Published rails image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  dataplane:
+    name: Build and publish dataplane
+    needs: changes
+    if: needs.changes.outputs.dataplane == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DATAPLANE_IMAGE }}
+          tags: |
+            type=raw,value=${{ env.CHANNEL }}
+            type=sha,prefix=${{ env.CHANNEL }}-,format=short
+          labels: |
+            org.opencontainers.image.title=Stream Composer (Go data plane)
+            org.opencontainers.image.description=Media proxy, restream/audio-monitor supervision, viewer/channel state
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./go-service
+          file: go-service/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=dataplane
+          cache-to: type=gha,mode=max,scope=dataplane
+
+      - name: Report what was published
+        run: |
+          echo "### Published dataplane image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

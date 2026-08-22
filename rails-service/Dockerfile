@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+#
 # Production image: builds the React SPA and bundles it into Rails' own
 # public/ directory, so the deployed stack is Rails (serving the SPA and
 # the API) plus the Go data plane behind Traefik — no separate static-file
@@ -7,7 +9,7 @@
 FROM node:20-slim AS react-build
 WORKDIR /app
 COPY react-app/package.json react-app/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 COPY react-app/ .
 RUN npm run build
 

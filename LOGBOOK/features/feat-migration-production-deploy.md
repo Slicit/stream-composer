@@ -117,6 +117,88 @@ and the path-based routing rules are all validated as above; the ACME
 flow specifically is the one piece that can only be proven by an actual
 deployment.
 
+### 2026-08-22 (build/publish pipeline + fast installer)
+
+- **Decision:** CI publishes two pre-built images (rails, dataplane) to
+  GHCR, public, on every push to `migration/go-rails-react` (channel
+  `beta`) and `main` (channel `stable`, once this stack merges there) —
+  `.github/workflows/build-go-rails-react-images.yml`. Each image only
+  rebuilds when its own inputs changed (`dorny/paths-filter`: rails
+  watches `rails-service/**` and `react-app/**` since the React build is
+  bundled into the Rails image; dataplane watches `go-service/**` only),
+  and both use a GHA-backed BuildKit layer cache scoped per image
+  (`cache-from/to: type=gha,scope=...`), plus `RUN --mount=type=cache`
+  for the Go build/module cache and npm's cache — none of that touches
+  what ends up `COPY --from=`'d into a later stage, so nothing needed for
+  the final image silently vanishes into a cache mount.
+- **Why:** the actual ask — installs/upgrades should take seconds, not
+  the ~10 minutes a from-source build takes on the box this whole
+  migration was developed on.
+- **Impact:** `rails-service/Dockerfile` and `go-service/Dockerfile`
+  gained cache mounts (`# syntax=docker/dockerfile:1` added to the former
+  for it); new workflow file; `ci.yml`'s shellcheck step covers the two
+  new install scripts too.
+
+- **Decision:** amd64-only for now, unlike `release.yml`'s amd64+arm64
+  for the pre-migration single-container app.
+- **Why:** every real deploy target seen this migration is x86_64, and
+  Ruby's native gems make QEMU-emulated arm64 disproportionately slow —
+  directly working against the one thing this pipeline exists to fix.
+  Easy to add back (`platforms: linux/amd64,linux/arm64` + `setup-qemu-
+  action`) if an arm64 target shows up.
+
+- **Decision:** no secret ever reaches an image or the build that
+  produces it. RAILS_MASTER_KEY/INTERNAL_API_TOKEN/DATABASE_URL stay
+  runtime-only env vars (already true — see the 2026-08-22 entry above);
+  CI needs none of them, since `bootsnap precompile` never touches
+  encrypted credentials. The only encrypted file baked into the image is
+  config/credentials.yml.enc, already ciphertext and useless without the
+  runtime-supplied key.
+- **Why:** this was explicitly asked for ("if a master key or ciphered
+  files must be mounted, extract only these") — verified rather than
+  assumed, by reading what each Dockerfile stage actually needs.
+- **Impact:** none — this was already the case; documented in the
+  workflow file's own comment so it stays a checked fact, not folklore.
+
+- **Decision:** a dedicated installer/updater for this stack —
+  install-go-rails-react.sh / update-go-rails-react.sh — rather than
+  extending the pre-migration install.sh/update.sh, which remain main
+  branch's installer for the currently-shipping app.
+- **Why:** the two apps have unrelated .env shapes (three images and a
+  Postgres URL vs. one image and SESSION_SECRET) and this stack is still
+  pre-merge; overloading the existing scripts would either break current
+  installs or require a channel switch inside a script whose whole job
+  today is installing something else.
+- **Impact:** the new installer never builds anything — no source
+  tarball, no npm ci/bundle install/go build. It fetches just the two
+  compose files and config/mediamtx.yml individually (raw.
+  githubusercontent.com, not a full-repo tarball) from the selected
+  channel's branch, writes .env (image refs, generated secrets, and the
+  one thing that truly can't be generated — RAILS_MASTER_KEY, which the
+  installer refuses to proceed without, interactively prompting for it
+  or failing loudly under --yes), then docker compose pull && up -d.
+  --channel beta|stable (--beta/--stable shorthands) selects the channel
+  and is remembered across upgrades the same way install.sh already
+  remembers DOMAIN; only beta actually exists while this lives on a
+  branch. validate_config() is one place that checks every required
+  setting is non-empty before .env is ever written, rather than letting
+  an incomplete config fail opaquely inside a container later.
+- **Not carried over from install.sh:** the plain-HTTP/local mode
+  (docker-compose.go-rails-react.yml has no such overlay yet — offering
+  it would be a dead end, not a real option) and the Compose v1 fallback
+  (these compose files are already Compose-Specification-only with
+  nothing generating a v1-compatible copy, unlike the pre-migration
+  app's scripts/make-compat.py).
+
+## Verification
+
+Confirmed (2026-08-22): shellcheck --severity=warning clean on both new
+scripts; docker compose config resolves correctly with
+RAILS_IMAGE/RAILS_TAG/DATAPLANE_IMAGE/DATAPLANE_TAG pointed at real GHCR
+coordinates. Not yet verified: an actual install-go-rails-react.sh run
+against published images, since publishing only happens once this commit
+reaches GitHub — planned as the immediate next step after this lands.
+
 ## Links
 
 - Branch: `migration/go-rails-react`
@@ -124,4 +206,5 @@ deployment.
   [[feat-migration-rails-control-plane]], [[feat-migration-react-frontend]]
 - Related docs: `docs/ARCHITECTURE.md` ("Security model"), the
   pre-migration `docker-compose.tls.yml` this overlay's Traefik
-  configuration mirrors
+  configuration mirrors, `.github/workflows/release.yml` (the pattern
+  build-go-rails-react-images.yml adapts)

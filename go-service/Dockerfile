@@ -4,7 +4,9 @@ WORKDIR /app
 COPY go.mod ./
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -o /dataplane ./cmd/dataplane
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 go build -o /dataplane ./cmd/dataplane
 
 FROM debian:12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
