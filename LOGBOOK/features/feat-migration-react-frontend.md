@@ -60,8 +60,26 @@ instead of guessed through, per the user's own instruction for this phase.
    an actual Select open/select/close cycle to prove the stubs work, not
    just that the page renders. 10 Vitest tests (was 9), `tsc -b` and
    `vite build` both clean, re-verified live in a real browser.~~
-7. Not started, and not guessed at: everything below "Open questions"
-   other than design system (now resolved, see above).
+7. ~~Viewer/player page (item 2 of the follow-on "what's still missing"
+   plan) — see "How does the viewer/player page work in React at all?"
+   below, now answered. `WhepClient` ported field-for-field from
+   `server/public/assets/whep.js` (`src/lib/whep.ts`), `useViewerState`
+   polls `GET /api/state`, `ViewerTile` opens one WHEP session per on-air
+   source positioned as a percentage of the composed canvas, `AudioPicker`
+   enforces exactly one audible source at a time (muted by default).
+   `vite.config.ts` gained `/api/state` and `/mtx` proxy routes to the Go
+   data plane — previously only `/api` (Rails) existed, and `GET
+   /api/state` has no Rails route at all. 14 Vitest tests (was 10),
+   `tsc --noEmit` clean.
+
+   Verified live in a real browser, not just component tests: signed in
+   as admin, published a real synthetic RTMP+audio source under a private
+   stream, and confirmed actual decoded video (640x480, readyState 4) and
+   live audio playing through the full stack. This surfaced and fixed a
+   real infra gap — see Decisions.
+8. Not started, and not guessed at: everything below "Open questions"
+   other than design system and the viewer/player page (both now
+   resolved, see above).
 
 ## Open questions for this phase
 
@@ -79,17 +97,14 @@ these before building further, not infer one from what already exists:
   question below.
 - ~~**Design system**~~ — answered 2026-08-22: shadcn/ui, themed from the
   vanilla app's own palette. See the Plan and Decisions.
-- **How does the viewer/player page work in React at all?** This is the
-  single biggest gap. The vanilla app's `app.js` does WHEP session
-  negotiation directly against the Go data plane's media proxy
-  (`/mtx/webrtc`, `/mtx/hls` — see `go-service/internal/mediaproxy`) with
-  substantial client-side logic (web-composed grid layout, per-tile stats,
-  audio-source picking, HLS fallback). None of that has an owner in the
-  React app yet, and it is not a small port — it is most of the vanilla
-  frontend's actual complexity. Does React reimplement all of it, wrap the
-  existing vanilla JS as an escape hatch, or does the player stay
-  server-rendered/vanilla indefinitely while React only owns admin/CRUD
-  surfaces?
+- ~~**How does the viewer/player page work in React at all?**~~ —
+  answered 2026-08-22: React reimplements it directly (`ViewerPage`,
+  `WhepClient` ported from `whep.js`, `useViewerState`, `ViewerTile`,
+  `AudioPicker`). Two pieces of the vanilla app's client-side logic are
+  deliberately not ported yet, left for a later pass rather than
+  half-built here: the HLS fallback for a source with a playability
+  problem (a static "cannot play here" placeholder is shown instead) and
+  the per-tile stats overlay. See the Plan and Decisions.
 - **Build/deploy target.** This phase only has a Vite *dev* server
   (`Dockerfile.dev`, `npm run dev`). There is no production Dockerfile,
   no decision on static hosting vs. SSR, and no decision on how the built
@@ -152,6 +167,50 @@ these before building further, not infer one from what already exists:
   Verified against a live instance, not just by eye: computed
   `backgroundColor`/`color` on real rendered elements came back within 1
   RGB unit of the source hex values.
+
+### 2026-08-22 (viewer page + a real ICE-connectivity gap)
+
+- **Decision:** `WhepClient` is a near-verbatim TypeScript port of
+  `server/public/assets/whep.js`, not a redesign — same reconnect/backoff
+  shape, same non-trickle "gather everything then offer" ICE approach,
+  same stats collection. It is wrapped as a plain `EventTarget` subclass
+  (not a hook itself); `onState`/`onTrack`/`onStats` are thin subscription
+  helpers a component's own `useEffect` calls, so the WebRTC lifecycle
+  stays framework-agnostic and easy to diff against the original.
+- **Why:** this class already handles a lot of WebRTC-specific edge cases
+  (H.264 capability detection, ICE gathering timeouts, 401/403/404-specific
+  messaging, exponential backoff) that a rewrite would have to
+  rediscover — the same reasoning `internal/relayrunner` and friends
+  already used porting Go code from the Node backend.
+- **Impact:** a future change to WHEP behavior should stay diffable
+  against `whep.js` until the vanilla app is actually retired.
+
+- **Finding:** building this surfaced a real, previously-unverified gap —
+  `docker-compose.migration.yml` never published MediaMTX's WebRTC ICE UDP
+  port (8189) to the host and never set `MTX_WEBRTCADDITIONALHOSTS`. WHEP
+  *signaling* worked fine (the POST got its 201 and an SDP answer), but
+  ICE could never actually complete for any browser outside the container
+  network — the connection sat at `deadline exceeded while waiting
+  connection` and closed. Every prior "verified live" check in this
+  migration (Go phases, Rails phases) used `curl` or MediaMTX's own
+  logs/API, which only proves signaling and server-side state, not that
+  real media can reach a real browser. This is the first check that
+  actually opened a browser and looked at a `<video>` element's
+  `readyState`/`videoWidth`.
+- **Fix:** published `8189:8189/udp` (not remapped — the port number is
+  embedded directly in the SDP candidate MediaMTX advertises, so a
+  remapped external port would be unreachable) and wired
+  `MTX_WEBRTCADDITIONALHOSTS` to a `MEDIAMTX_PUBLIC_HOST` env var, passed
+  at `docker compose up` time rather than persisted in a `.env` file — this
+  compose project deliberately has none, so a LAN-IP override here can
+  never bleed into the unrelated production `docker-compose.yml` that
+  lives in the same directory.
+- **Impact:** anyone recreating the `mediamtx` service (including a plain
+  `docker compose up -d` with no service argument, once the compose file
+  itself has changed) needs to pass `MEDIAMTX_PUBLIC_HOST` again or ICE
+  silently regresses back to container-network-only — documented at the
+  top of `docker-compose.migration.yml` after this was hit twice in a row
+  during this same session.
 
 ## Links
 
