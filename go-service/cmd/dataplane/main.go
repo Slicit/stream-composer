@@ -2,11 +2,14 @@
 // the WHEP/HLS media proxy, split out of the Node backend during the
 // Rails/Postgres/React migration (see LOGBOOK/features for the plan).
 //
-// It reads stream configuration from the same JSON file the Node backend
-// still writes (see internal/streamstore.JSONBridge) — an interim bridge for
-// this migration window, replaced by an internal API client once the Rails
-// control plane exists. Nothing in the auth hook or the media proxy needs to
-// change either time; both depend only on the streamstore.Store interface.
+// Stream configuration comes from one of two sources, chosen at boot by
+// which environment variables are set: RailsBridge (RAILS_INTERNAL_API_URL
+// + RAILS_INTERNAL_API_TOKEN) polls the Rails control plane's internal
+// API — the real integration, once Rails owns the data. JSONBridge
+// (STREAM_CONFIG_PATH) reads the same JSON file the legacy Node backend
+// still writes — kept only for standalone testing without Rails running.
+// Nothing in the auth hook or the media proxy changes for either choice;
+// both depend only on the streamstore.Store interface.
 package main
 
 import (
@@ -29,8 +32,24 @@ func main() {
 
 	store := streamstore.NewMemory()
 
-	if configPath := os.Getenv("STREAM_CONFIG_PATH"); configPath != "" {
-		bridge := &streamstore.JSONBridge{Path: configPath, Store: store, Log: log}
+	switch {
+	case os.Getenv("RAILS_INTERNAL_API_URL") != "":
+		bridge := &streamstore.RailsBridge{
+			BaseURL: os.Getenv("RAILS_INTERNAL_API_URL"),
+			Token:   os.Getenv("RAILS_INTERNAL_API_TOKEN"),
+			Store:   store,
+			Log:     log,
+		}
+		if err := bridge.Load(); err != nil {
+			log.Error("initial stream config load from Rails failed", "error", err.Error())
+			os.Exit(1)
+		}
+		stop := make(chan struct{})
+		defer close(stop)
+		go bridge.Poll(2*time.Second, stop)
+		log.Info("streaming stream config from Rails", "url", bridge.BaseURL)
+	case os.Getenv("STREAM_CONFIG_PATH") != "":
+		bridge := &streamstore.JSONBridge{Path: os.Getenv("STREAM_CONFIG_PATH"), Store: store, Log: log}
 		if err := bridge.Load(); err != nil {
 			log.Error("initial stream config load failed", "error", err.Error())
 			os.Exit(1)
@@ -38,9 +57,9 @@ func main() {
 		stop := make(chan struct{})
 		defer close(stop)
 		go bridge.Poll(2*time.Second, stop)
-		log.Info("streaming stream config from the legacy JSON file", "path", configPath)
-	} else {
-		log.Warn("STREAM_CONFIG_PATH is not set — running with an empty stream set")
+		log.Info("streaming stream config from the legacy JSON file", "path", os.Getenv("STREAM_CONFIG_PATH"))
+	default:
+		log.Warn("neither RAILS_INTERNAL_API_URL nor STREAM_CONFIG_PATH is set — running with an empty stream set")
 	}
 
 	hook := authhook.New(store, cfg, log)

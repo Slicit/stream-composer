@@ -10,7 +10,7 @@
 # (matched by id) rather than duplicating them, so a failed partial run can
 # just be re-run.
 namespace :migrate_from_json do
-  desc "Import users and streams from the legacy config.json"
+  desc "Import users, streams, restream destinations and channels from the legacy config.json"
   task :run, [:path] => :environment do |_t, args|
     path = args[:path] || ENV["CONFIG_JSON_PATH"]
     abort "Usage: bin/rails migrate_from_json:run[/path/to/config.json]" if path.blank?
@@ -56,5 +56,51 @@ namespace :migrate_from_json do
       end
     end
     puts "Imported #{stream_count} stream(s)."
+
+    relay_count = 0
+    ActiveRecord::Base.transaction do
+      (data["relays"] || []).each do |r|
+        relay = RelayDestination.find_or_initialize_by(id: r["id"])
+        relay.assign_attributes(
+          stream_id: r["streamId"],
+          provider: r["provider"],
+          name: r["name"],
+          url: r["url"],
+          key: r["key"] || "",
+          audio: r["audio"] || "copy",
+          enabled: r.fetch("enabled", true),
+        )
+        relay.created_at = r["createdAt"] if r["createdAt"] && relay.new_record?
+        relay.save!
+        relay_count += 1
+      end
+    end
+    puts "Imported #{relay_count} restream destination(s)."
+
+    channel_count = 0
+    ActiveRecord::Base.transaction do
+      (data["channels"] || []).each do |c|
+        channel = Channel.find_or_initialize_by(id: c["id"])
+        channel.assign_attributes(
+          name: c["name"],
+          slug: c["slug"],
+          visibility: c["visibility"] || "private",
+          owner_id: c["ownerId"],
+          background_image: c["backgroundImage"] || "",
+          stream_ids: c["streamIds"] || [],
+          shared_with: c["sharedWith"] || [],
+        )
+        channel.created_at = c["createdAt"] if c["createdAt"] && channel.new_record?
+        channel.save!
+        channel_count += 1
+      end
+    end
+    puts "Imported #{channel_count} channel(s)."
+
+    homepage_id = data.dig("settings", "homepageChannelId")
+    if homepage_id.present?
+      AppSetting.instance.update!(homepage_channel_id: homepage_id)
+      puts "Set the homepage channel."
+    end
   end
 end

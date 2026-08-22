@@ -91,10 +91,16 @@ against the same file; matches existing rows by `id`.
   (`Api::ChannelsController#background`) written to `public/uploads/`, no
   multipart parsing and no new dependency — mirrors `express.raw()` in the
   Node backend exactly.
+- `app/controllers/internal/streams_controller.rb` — `GET
+  /internal/:token/streams`, the read-only feed `go-service`'s
+  `RailsBridge` polls every 2s. This is the actual integration point
+  between the two services: same shared-secret-in-the-URL convention as
+  the Node backend's own `/internal/*` (see its `routes/hooks.js`).
 - `lib/tasks/migrate_from_json.rake` — the config.json -> Postgres import
-  (users and streams so far; channels and relay destinations not yet
-  added).
+  (users, streams, restream destinations, channels, and the homepage
+  setting).
 
 Not yet ported: the audio-monitor relay's configuration, most of admin
-settings (only the one field `Channel` needs exists). Those are later
-slices of this same phase.
+settings (only the two fields `Channel`/the internal API need exist).
+Viewing a channel's live state is deliberately out of scope for Rails
+entirely — see the LOGBOOK entry's Decisions.

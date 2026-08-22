@@ -1,6 +1,11 @@
 Rails.application.routes.draw do
   get "up" => "rails/health#show", as: :rails_health_check
 
+  # The Go data plane's read-only view of stream data. Outside /api on
+  # purpose, same as the Node backend's /internal/*: the shared secret in
+  # the URL is this endpoint's only gate, not a session.
+  get "internal/:token/streams", to: "internal/streams#index"
+
   namespace :api do
     post "auth/login", to: "auth#login"
     delete "auth/logout", to: "auth#logout"

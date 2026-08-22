@@ -8,12 +8,15 @@ the WHEP/HLS media proxy, ported from `server/src/routes/hooks.js` and
 the originals.
 
 The control-plane half (admin/CRUD/auth/users) is not here — that is the
-upcoming Rails service. Until it exists, this service reads stream
-configuration from the same JSON file the Node backend already writes (see
-`internal/streamstore.JSONBridge`), polled every 2s. That bridge is deleted
-once the Rails internal API is live; nothing in `internal/authhook` or
-`internal/mediaproxy` needs to change either time, since both depend only on
-the `streamstore.Store` interface.
+Rails service (`../rails-service`), and this is now genuinely wired to it:
+`internal/streamstore.RailsBridge` polls `rails-service`'s
+`Internal::StreamsController` every 2s and refreshes an in-memory `Store`.
+`internal/streamstore.JSONBridge` (reading the same JSON file the Node
+backend still writes) still exists for standalone testing without Rails
+running, but is no longer what the dev stack uses by default. Neither
+`internal/authhook` nor `internal/mediaproxy` needed to change for the
+swap — both depend only on the `streamstore.Store` interface, never on
+where the data actually comes from.
 
 No Go toolchain is required locally — everything here runs through Docker.
 
@@ -33,14 +36,24 @@ docker compose -f docker-compose.migration.yml up -d --build
 curl http://localhost:18080/healthz
 ```
 
-Point `STREAM_CONFIG_PATH` (and bind-mount it under `./migration-data`) at a
-real `config.json` to test against real stream data — see the compose file's
-comments.
+By default this brings up `rails` and `postgres` too, and the data plane
+reads live stream data from Rails (`RAILS_INTERNAL_API_URL`/
+`RAILS_INTERNAL_API_TOKEN`, wired in the compose file). To fall back to the
+legacy JSON-file bridge instead, set `STREAM_CONFIG_PATH` (and bind-mount it
+under `./migration-data`) and unset the two `RAILS_INTERNAL_API_*` vars —
+see the compose file's comments.
+
+Startup order note: `depends_on` only waits for the `rails` container to
+start, not for Puma to actually be ready — the data plane's first poll
+often fails once or twice with "connection refused" before Rails finishes
+booting. This is expected; the restart-until-it-connects behavior recovers
+on its own within a few seconds. Worth a real healthcheck later.
 
 ## Layout
 
 - `internal/streamstore` — the `Store` interface both other packages depend
-  on, an in-memory `Memory` implementation, and the interim JSON-file bridge.
+  on, an in-memory `Memory` implementation, the interim JSON-file bridge,
+  and `RailsBridge` (the real integration).
 - `internal/access` — `CanAccess`, ported from `server/src/access.js`.
 - `internal/authhook` — the MediaMTX auth callback, ported from
   `server/src/routes/hooks.js`.

@@ -77,13 +77,28 @@ repo, not its own.
    examples total now (was 102). Verified end to end against the real
    server: channel created with an auto-generated slug, background image
    uploaded and served back through Rails' own static file handling.~~
-10. Not started: relay destinations and channels in
-    `migrate_from_json.rake` (only users and streams migrate so far).
-11. Not started: the rest of admin settings beyond `homepage_channel_id`
-    (`publicViewing`, composition config, ...).
-12. Not started: wiring the Go data plane's `streamstore.Store` to a real
-    Rails internal API client (see phase 1's plan item 7 — the actual
-    "connect the services" step).
+10. ~~`migrate_from_json.rake` now imports relay destinations and channels
+    too (previously only users and streams), plus the homepage-channel
+    setting. Covered by the same idempotent-re-run spec as the rest.~~
+11. ~~`AppSetting.public_viewing` added (previously only
+    `homepage_channel_id`) — the one other field the internal API needs to
+    answer the data plane's "can an anonymous visitor watch the programme"
+    question.~~
+12. ~~**The actual "connect the services" step**: `Internal::StreamsController`
+    (`GET /internal/:token/streams`), a read-only feed of every stream's
+    data-plane-relevant fields plus `publicViewing`, gated by the same
+    shared-secret-in-URL convention the Node backend's own hook uses.
+    `go-service`'s new `RailsBridge` polls it every 2s and refreshes the
+    same `Memory` store `JSONBridge` used to — `cmd/dataplane/main.go` now
+    prefers `RAILS_INTERNAL_API_URL`/`RAILS_INTERNAL_API_TOKEN` over
+    `STREAM_CONFIG_PATH` when both are set. Verified as a real integration,
+    not just both services' own test suites passing independently: created
+    a stream through Rails' admin API, waited for the Go service's poll,
+    published to it over real RTMP through real MediaMTX and watched
+    MediaMTX's own log confirm the publish was accepted; deleted the
+    stream through Rails and confirmed the same key now gets a 401
+    "unknown stream key" directly from the Go hook. Both services' full
+    test suites (133 RSpec, all Go tests) still green together.~~
 13. Not started: React frontend.
 
 ## Decisions
@@ -194,6 +209,36 @@ repo, not its own.
 - **Impact:** `AppSetting.instance` (`first_or_create!`) is the only access
   pattern; adding a second setting later means literally adding a column,
   not redesigning anything.
+
+### 2026-08-22 (connecting the services)
+
+- **Bug, found immediately on first real integration attempt:** every
+  request from `go-service` to Rails came back `403`, with MediaMTX/RTMP
+  publishes hanging with no error. Root cause: Rails' default
+  `ActionDispatch::HostAuthorization` middleware only allows
+  `localhost`/`127.0.0.1`/`.local` Host headers in development, and the Go
+  service calls Rails as `http://rails:3000` — its Docker Compose service
+  name, not localhost. Every internal-API request was being silently
+  blocked before it ever reached the controller.
+- **Fix:** `config.hosts << "rails"` in `config/environments/development.rb`.
+  Flagged as development-only in its own comment; a real deployment needs
+  its actual hostname (or `ActionDispatch::HostAuthorization` configured
+  for whatever reverse proxy fronts it) instead.
+- **Impact:** the fix itself briefly introduced a syntax error (a dropped
+  trailing `end` on `Rails.application.configure do` from an imprecise
+  edit) — caught immediately by a plain `ruby -c` syntax check before even
+  attempting to boot the container, cheaper than debugging it via a failed
+  container start.
+- **Separately, a manual-testing trap worth naming:** this service now has
+  *two* different shared secrets that both "unlock an internal endpoint" —
+  `MEDIAMTX_INTERNAL_PASSWORD` (gates `go-service`'s own
+  `/internal/:token/mediamtx/auth`, called by MediaMTX) and
+  `INTERNAL_API_TOKEN`/`RAILS_INTERNAL_API_TOKEN` (gates Rails'
+  `/internal/:token/streams`, called by `go-service`). Manually curling
+  the wrong endpoint with the wrong one of the two produces a plausible-
+  looking but misleading 404, easy to misread as "the stream doesn't
+  exist" rather than "wrong secret for this endpoint." Worth remembering
+  which secret belongs to which direction before assuming a test result.
 
 ## Links
 

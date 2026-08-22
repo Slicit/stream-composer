@@ -9,8 +9,9 @@
 #   docker compose -f docker-compose.migration.yml up -d --build
 #
 # This does not publish anything to the internet — every port below is for
-# local/dev access only. INTERNAL_SECRET/POSTGRES_PASSWORD are throwaway dev
-# values; never reuse them for a real deployment.
+# local/dev access only. INTERNAL_SECRET/POSTGRES_PASSWORD/
+# INTERNAL_API_TOKEN are throwaway dev values; never reuse them for a real
+# deployment.
 
 name: sc-migration
 
@@ -32,7 +33,7 @@ services:
     build: ./go-service
     container_name: scmig-dataplane
     restart: unless-stopped
-    depends_on: [mediamtx]
+    depends_on: [mediamtx, rails]
     environment:
       PORT: 8080
       MEDIAMTX_API: http://mediamtx:9997
@@ -40,10 +41,14 @@ services:
       MEDIAMTX_HLS: http://mediamtx:8888
       MEDIAMTX_INTERNAL_USER: composer
       MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:-migration-dev-secret}
-      # No control plane exists yet — see internal/streamstore.JSONBridge.
-      # Bind-mount a directory onto /data and point this at a file inside it
-      # to test against real stream data; empty by default so the stack is
-      # runnable with zero setup for a first smoke test.
+      # The real integration: stream data comes from Rails now, not the
+      # JSON file. See internal/streamstore.RailsBridge. Same shared
+      # secret as INTERNAL_API_TOKEN below.
+      RAILS_INTERNAL_API_URL: http://rails:3000
+      RAILS_INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-migration-dev-internal-api-token}
+      # Set this instead (and unset the two above) to fall back to the
+      # legacy JSON-file bridge for standalone testing without Rails —
+      # bind-mount a directory onto /data and point this at a file in it.
       STREAM_CONFIG_PATH: ${STREAM_CONFIG_PATH:-}
     volumes:
       - ./migration-data:/data:ro
@@ -75,6 +80,10 @@ services:
     environment:
       DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_development
       RAILS_ENV: development
+      # Shared with dataplane's RAILS_INTERNAL_API_TOKEN above — gates
+      # Internal::StreamsController, the only thing the Go service is
+      # allowed to read from Rails.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-migration-dev-internal-api-token}
     ports:
       - "13000:3000"
     networks: [scmig-net]

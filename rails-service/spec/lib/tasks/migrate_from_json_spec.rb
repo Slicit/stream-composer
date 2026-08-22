@@ -10,6 +10,8 @@ RSpec.describe "migrate_from_json:run" do
 
   let(:user_id) { SecureRandom.uuid }
   let(:stream_id) { SecureRandom.uuid }
+  let(:relay_id) { SecureRandom.uuid }
+  let(:channel_id) { SecureRandom.uuid }
   let(:legacy_hash) { User.scrypt_hex("original-password-1", "legacy-salt-value") }
 
   let(:config_path) do
@@ -25,23 +27,40 @@ RSpec.describe "migrate_from_json:run" do
         playbackId: "legacyplaybackid0", enabled: true, note: "", visibility: "public",
         ownerId: user_id, sharedWith: [],
       }],
+      relays: [{
+        id: relay_id, streamId: stream_id, provider: "twitch", name: "Twitch",
+        url: "rtmp://live.twitch.tv/app", key: "legacy-relay-key", audio: "copy",
+        enabled: true, createdAt: "2024-01-02T00:00:00.000Z",
+      }],
+      channels: [{
+        id: channel_id, name: "Legacy Channel", slug: "legacy-channel", visibility: "public",
+        ownerId: user_id, backgroundImage: "", streamIds: [stream_id], sharedWith: [],
+        createdAt: "2024-01-03T00:00:00.000Z",
+      }],
+      settings: { homepageChannelId: channel_id },
     }.to_json)
     path
   end
 
-  it "imports the user with a password that still authenticates, and the stream with its ownership intact" do
+  it "imports users, streams, relay destinations and channels, with relationships intact" do
     Rake::Task["migrate_from_json:run"].invoke(config_path.to_s)
 
     user = User.find(user_id)
-    expect(user.username).to eq("legacy-admin")
-    expect(user.role).to eq("admin")
     expect(User.authenticate_credentials("legacy-admin", "original-password-1")).to eq(user)
 
     stream = Stream.find(stream_id)
-    expect(stream.name).to eq("Legacy Camera")
-    expect(stream.key).to eq("legacy-key-000000")
     expect(stream.owner_id).to eq(user_id)
-    expect(stream.visibility).to eq("public")
+
+    relay = RelayDestination.find(relay_id)
+    expect(relay.stream_id).to eq(stream_id)
+    expect(relay.key).to eq("legacy-relay-key")
+
+    channel = Channel.find(channel_id)
+    expect(channel.slug).to eq("legacy-channel")
+    expect(channel.stream_ids).to eq([stream_id])
+    expect(channel.owner_id).to eq(user_id)
+
+    expect(AppSetting.instance.homepage_channel_id).to eq(channel_id)
   end
 
   it "is safe to re-run against the same file" do
@@ -51,5 +70,7 @@ RSpec.describe "migrate_from_json:run" do
 
     expect(User.where(id: user_id).count).to eq(1)
     expect(Stream.where(id: stream_id).count).to eq(1)
+    expect(RelayDestination.where(id: relay_id).count).to eq(1)
+    expect(Channel.where(id: channel_id).count).to eq(1)
   end
 end

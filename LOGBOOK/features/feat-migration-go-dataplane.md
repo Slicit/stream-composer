@@ -54,13 +54,20 @@ itself on the same host with zero collisions.
 4. Not yet started: compositor/ffmpeg supervision, the restream relay, the
    audio-monitor relay, bandwidth history — later slices of this same Go
    phase, each to land and be tested independently before the next.
-5. Not started: Rails control plane (API-first), the Postgres data model,
-   the `config.json` → Postgres migration script.
+5. ~~Rails control plane (API-first), the Postgres data model, the
+   `config.json` -> Postgres migration script — see
+   [[feat-migration-rails-control-plane]] for that phase's own detail.~~
 6. Not started: React frontend.
-7. Not started: wiring the Go data plane's `streamstore.Store` to a real
-   Rails internal API client, replacing the JSON-file bridge — the point at
-   which "connect the services and validate the integration" (the user's
-   phrase) actually begins.
+7. ~~Wiring the Go data plane's `streamstore.Store` to a real Rails
+   internal API client (`internal/streamstore.RailsBridge`), replacing the
+   JSON-file bridge as the dev stack's default — "connect the services and
+   validate the integration" (the user's phrase). Verified as a live
+   integration, not just two independently-green test suites: a stream
+   created through Rails became publishable over real RTMP within one Go
+   poll cycle, and deleting it made the same key get refused directly by
+   the Go hook. Full detail (including the host-authorization bug this
+   surfaced) is in [[feat-migration-rails-control-plane]]'s Decisions,
+   since fixing it touched Rails' config, not this file's own code.~~
 
 ## Decisions
 
