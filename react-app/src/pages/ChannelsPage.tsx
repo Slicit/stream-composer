@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { AvailableStream, Channel } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -134,7 +135,9 @@ export function ChannelsPage() {
                   <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-base">{c.name}</CardTitle>
-                      <span className="font-mono text-xs text-muted-foreground">/c/{c.slug}</span>
+                      <Link to={`/c/${c.slug}`} className="font-mono text-xs text-muted-foreground hover:text-foreground hover:underline">
+                        /c/{c.slug}
+                      </Link>
                     </div>
                     <div className="flex items-center gap-2">
                       <Select value={c.visibility} onValueChange={(v) => setVisibility(c.id, v as 'private' | 'public')}>

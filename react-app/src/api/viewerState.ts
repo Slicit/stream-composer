@@ -37,13 +37,25 @@ export interface ViewerStreamEntry {
   problem: PlayabilityProblem | null
   path: string | null
   audioPath: string | null
+  // True for a channel member the current viewer cannot reach — path and
+  // audioPath are both null in that case (channel-scoped state only; the
+  // global GET /api/state never sets this).
+  restricted: boolean
+}
+
+export interface ChannelInfo {
+  name: string
+  slug: string
+  backgroundImage: string
 }
 
 export interface ViewerState {
-  settings: { publicViewing: boolean }
+  settings: { publicViewing: boolean; homepageChannelSlug: string }
   program: { mode: string; ready: boolean; width: number; height: number; gapPx: number }
   layout: ViewerLayout | null
   onAir: OnAirEntry[]
   streams: ViewerStreamEntry[]
   serverTime: string
+  // Present only on a channel-scoped state (GET /api/channels/:slug/state).
+  channel?: ChannelInfo
 }

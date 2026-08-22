@@ -27,6 +27,14 @@ export default defineConfig({
         target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
         changeOrigin: true,
       },
+      // A leading ^ makes this key a regex match rather than a plain
+      // prefix — needed here because /api/channels/:slug/state and
+      // /api/channels/mine both start with /api/channels/ but must go to
+      // different origins (the data plane vs. Rails).
+      '^/api/channels/[^/]+/state$': {
+        target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
+        changeOrigin: true,
+      },
       '/mtx': {
         target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',
         changeOrigin: true,

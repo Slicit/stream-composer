@@ -13,7 +13,7 @@ describe('useViewerState', () => {
 
   it('loads the state from GET /api/state', async () => {
     const state = {
-      settings: { publicViewing: false },
+      settings: { publicViewing: false, homepageChannelSlug: '' },
       program: { mode: 'web', ready: false, width: 1920, height: 1080, gapPx: 4 },
       layout: null,
       onAir: [],

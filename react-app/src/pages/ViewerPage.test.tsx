@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { ViewerPage } from './ViewerPage'
 
@@ -16,7 +17,7 @@ describe('ViewerPage', () => {
       'fetch',
       vi.fn(() =>
         jsonResponse({
-          settings: { publicViewing: false },
+          settings: { publicViewing: false, homepageChannelSlug: '' },
           program: { mode: 'web', ready: false, width: 1920, height: 1080, gapPx: 4 },
           layout: null,
           onAir: [],
@@ -35,7 +36,7 @@ describe('ViewerPage', () => {
       'fetch',
       vi.fn(() =>
         jsonResponse({
-          settings: { publicViewing: false },
+          settings: { publicViewing: false, homepageChannelSlug: '' },
           program: { mode: 'web', ready: true, width: 1920, height: 1080, gapPx: 4 },
           layout: { name: 'auto', cols: 1, rows: 1, cells: [{ x: 0, y: 0, w: 1920, h: 1080 }], width: 1920, height: 1080 },
           onAir: [{ key: 'pid-1', name: 'Cam One' }],
@@ -48,6 +49,7 @@ describe('ViewerPage', () => {
               problem: { code: 'b-frames', summary: 'This encoder is producing B-frames.', fix: 'Set Tune to zerolatency.' },
               path: 's/pid-1',
               audioPath: null,
+              restricted: false,
             },
           ],
           serverTime: '2026-01-01T00:00:00Z',
@@ -60,5 +62,31 @@ describe('ViewerPage', () => {
     expect(screen.getByText(/This encoder is producing B-frames/)).toBeInTheDocument()
     // A problem tile must never mount a <video> (no WHEP/RTCPeerConnection attempt).
     expect(document.querySelector('video')).toBeNull()
+  })
+
+  it('redirects "/" to the configured homepage channel', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        jsonResponse({
+          settings: { publicViewing: false, homepageChannelSlug: 'community-room' },
+          program: { mode: 'web', ready: false, width: 1920, height: 1080, gapPx: 4 },
+          layout: null,
+          onAir: [],
+          streams: [],
+          serverTime: '2026-01-01T00:00:00Z',
+        }),
+      ),
+    )
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<ViewerPage />} />
+          <Route path="/c/:slug" element={<div>Channel page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText('Channel page')).toBeInTheDocument())
   })
 })

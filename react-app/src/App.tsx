@@ -9,6 +9,7 @@ import { AdminStreamsPage } from './pages/admin/AdminStreamsPage'
 import { AdminRelaysPage } from './pages/admin/AdminRelaysPage'
 import { AdminChannelsPage } from './pages/admin/AdminChannelsPage'
 import { ViewerPage } from './pages/ViewerPage'
+import { ChannelViewerPage } from './pages/ChannelViewerPage'
 import { StreamerPage } from './pages/StreamerPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 
@@ -19,6 +20,7 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<ViewerPage />} />
+        <Route path="/c/:slug" element={<ChannelViewerPage />} />
         <Route
           path="/admin"
           element={
