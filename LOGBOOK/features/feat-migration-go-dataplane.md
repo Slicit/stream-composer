@@ -171,6 +171,50 @@ this Go data-plane phase.
    request with the admin's cookie (granted — the request reached
    MediaMTX itself, which only complained about the deliberately
    malformed test SDP body, not access).
+
+10. ~~Channel viewing (item 4/5 of the follow-on plan): `GET /api/
+    channels/{slug}/state`, the channel-scoped equivalent of `GET /api/
+    state`. Rails' internal API gained `channels` (configuration only —
+    name/slug/membership/access; viewing a channel's live state is
+    entirely a data-plane concern per `Channel`'s own doc comment) and
+    `settings.homepageChannelSlug`. `streamstore` gained a `Channel` type
+    threaded through `Memory`/`JSONBridge`/`RailsBridge` identically to
+    streams/relays. `access.CanAccessChannel` is `CanAccess`'s identical
+    twin for a channel (both now share one internal `canAccess()` rule).
+    Two independent checks: the channel gate (404 for the whole thing if
+    denied, same opaque posture as an unknown stream) and, per member,
+    whether *that* viewer can see *that* stream — an inaccessible member
+    is marked `restricted` with no path/audioPath at all, but still
+    occupies its grid cell live (a restricted tile is a client-side
+    placeholder, not a server-side absence, matching compositor.js's
+    original web-mode design). `viewerstate.State`/`StreamEntry` gained
+    the fields both endpoints share (`Restricted`, an optional `Channel`
+    block, `Settings.HomepageChannelSlug`) rather than a parallel type.
+
+    React: new `/c/:slug` route (`ChannelViewerPage`), a `useChannelState`
+    hook, and a shared `ComposedGrid` component (extracted from
+    `ViewerPage`) with a third tile kind — a "This stream is private"
+    placeholder — alongside the existing live-tile and playability-problem
+    cases. `"/"` now redirects to the configured homepage channel, reusing
+    `GET /api/state`'s own `homepageChannelSlug` rather than a second
+    request — resolves the frontend phase's own "how does the homepage
+    channel work" open question.
+
+    Building this surfaced a real routing bug: `vite.config.ts` only
+    special-cased the literal `/api/state` path to the data plane, so
+    `/api/channels/:slug/state` fell through to the general `/api/*` rule
+    (Rails, which has no such route) — a 404 from the wrong service
+    entirely, not from `channelstate.Build`'s own access gate. Fixed with
+    a regex proxy key scoped to that one path shape.
+
+    Verified live end to end in a real browser, not just unit tests: made
+    a channel public with one still-private member stream and a real
+    published source — anonymous viewing showed the member on-air but
+    restricted (no video, the placeholder), while the owner's real session
+    saw it live and actually playing (640x480, decoded frames) with
+    working audio. Confirmed `/` actually redirects to `/c/:slug` once a
+    homepage channel is configured.~~
+
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~
