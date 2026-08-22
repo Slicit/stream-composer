@@ -46,8 +46,19 @@ function listUsers() {
   return store.get().users.map(publicUser);
 }
 
+const ROLES = ['admin', 'viewer', 'streamer'];
+
 function publicUser(u) {
-  return { id: u.id, username: u.username, role: u.role, createdAt: u.createdAt, lastLoginAt: u.lastLoginAt || null };
+  return {
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    // Meaningless outside role "streamer", but harmless to include — it is
+    // only ever consulted (streamer.js) after the role check has already run.
+    streamQuota: u.streamQuota || 0,
+    createdAt: u.createdAt,
+    lastLoginAt: u.lastLoginAt || null,
+  };
 }
 
 function findByUsername(username) {
@@ -59,7 +70,13 @@ function findById(id) {
   return store.get().users.find((u) => u.id === id);
 }
 
-function createUser({ username, password, role = 'viewer' }) {
+function cleanStreamQuota(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(1000, Math.round(n));
+}
+
+function createUser({ username, password, role = 'viewer', streamQuota = 0 }) {
   const name = String(username || '').trim();
   if (!/^[a-zA-Z0-9._-]{2,32}$/.test(name)) {
     throw Object.assign(new Error('Username must be 2-32 characters: letters, digits, dot, dash or underscore.'), { status: 400 });
@@ -71,21 +88,26 @@ function createUser({ username, password, role = 'viewer' }) {
   if (issues.length) {
     throw Object.assign(new Error(`Password ${issues.join(' and ')}.`), { status: 400 });
   }
-  if (!['admin', 'viewer'].includes(role)) {
-    throw Object.assign(new Error('Role must be admin or viewer.'), { status: 400 });
+  if (!ROLES.includes(role)) {
+    throw Object.assign(new Error('Role must be admin, viewer or streamer.'), { status: 400 });
   }
   const { salt, hash } = hashPassword(password);
   const user = {
     id: crypto.randomUUID(),
     username: name,
     role,
+    // How many streams this account may register through self-service
+    // (routes/streamer.js). Zero by default — a streamer account is only
+    // useful once an admin explicitly grants it a quota, not the moment
+    // it is created.
+    streamQuota: cleanStreamQuota(streamQuota),
     salt,
     hash,
     createdAt: new Date().toISOString(),
     lastLoginAt: null,
   };
   store.update((d) => d.users.push(user));
-  log.info('user created', { username: name, role });
+  log.info('user created', { username: name, role, streamQuota: user.streamQuota });
   return publicUser(user);
 }
 
@@ -105,7 +127,7 @@ function setPassword(id, password) {
 }
 
 function setRole(id, role) {
-  if (!['admin', 'viewer'].includes(role)) throw Object.assign(new Error('Role must be admin or viewer.'), { status: 400 });
+  if (!ROLES.includes(role)) throw Object.assign(new Error('Role must be admin, viewer or streamer.'), { status: 400 });
   const user = findById(id);
   if (!user) throw Object.assign(new Error('No such user.'), { status: 404 });
   const admins = store.get().users.filter((u) => u.role === 'admin');
@@ -114,6 +136,16 @@ function setRole(id, role) {
   }
   store.update(() => {
     user.role = role;
+  });
+  return publicUser(user);
+}
+
+/** How many streams a streamer account may register through self-service. */
+function setStreamQuota(id, quota) {
+  const user = findById(id);
+  if (!user) throw Object.assign(new Error('No such user.'), { status: 404 });
+  store.update(() => {
+    user.streamQuota = cleanStreamQuota(quota);
   });
   return publicUser(user);
 }
@@ -268,6 +300,13 @@ function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Administrator access is required.' });
 }
 
+/** routes/streamer.js: self-service stream/restream management. */
+function requireStreamerOrAdmin(req, res, next) {
+  if (req.user && (req.user.role === 'streamer' || req.user.role === 'admin')) return next();
+  if (!req.user) return requireUser(req, res, next);
+  return res.status(403).json({ error: 'Streamer access is required.' });
+}
+
 /** Viewers may be allowed through without a session when public viewing is on. */
 function requireViewAccess(req, res, next) {
   if (store.get().settings.publicViewing) return next();
@@ -275,6 +314,7 @@ function requireViewAccess(req, res, next) {
 }
 
 module.exports = {
+  ROLES,
   COOKIE,
   hashPassword,
   verifyPassword,
@@ -286,6 +326,7 @@ module.exports = {
   createUser,
   setPassword,
   setRole,
+  setStreamQuota,
   deleteUser,
   authenticate,
   ensureBootstrapAdmin,
@@ -296,5 +337,6 @@ module.exports = {
   attachUser,
   requireUser,
   requireAdmin,
+  requireStreamerOrAdmin,
   requireViewAccess,
 };

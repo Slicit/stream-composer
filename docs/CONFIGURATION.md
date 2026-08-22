@@ -219,25 +219,25 @@ configuration — useful for a bug report, or for reproducing the pipeline by ha
 
 ### The viewer's own settings
 
-Two things are chosen by each viewer in their own browser rather than by an
-administrator, and remembered per user in `localStorage`:
+The picture is the whole page — every control (play/pause, stats, the audio
+picker, mute, volume, full screen) lives in the player overlay, which appears
+on hover. The one thing each viewer chooses for themselves is **which source
+to listen to** — everything starts muted, by design.
 
-- **Cinema mode** — the default. The picture takes nearly the whole window and
-  everything but the audio picker is hidden. The **Cinema** button in the header
-  turns it off, and that choice sticks for that account on that browser. Two
-  people sharing a machine keep separate preferences; clearing site data resets
-  to cinema.
-- **Which source to listen to** — everything starts muted, by design.
-
-![Cinema mode: the composed grid filling the window, with a single row of audio controls beneath it](screenshots/viewer-cinema.png)
+![The composed grid filling the window, with the audio picker in the player overlay](screenshots/viewer-cinema.png)
 
 ### Users
 
-![The Users tab: three accounts with role selectors, last sign-in, and password and delete actions](screenshots/admin-users.png)
+![The Users tab: accounts with role selectors, last sign-in, and password and delete actions](screenshots/admin-users.png)
 
-Two roles:
+Three roles:
 
 - **Viewer** — the player page only.
+- **Streamer** — the player page, plus self-service stream and restream
+  management at `/streamer` (see [ARCHITECTURE.md](ARCHITECTURE.md#streamer-role)):
+  register up to a quota an administrator sets, manage each stream's key and
+  private/public visibility, and forward their own streams to other
+  platforms. Created by an administrator, same as any other account.
 - **Administrator** — everything.
 
 The last administrator cannot be demoted or deleted.

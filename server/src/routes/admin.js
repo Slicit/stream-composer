@@ -172,10 +172,11 @@ router.post('/users', (req, res) => {
 
 router.patch('/users/:id', (req, res) => {
   try {
-    const { role, password } = req.body || {};
+    const { role, password, streamQuota } = req.body || {};
     let user = null;
     if (role) user = auth.setRole(req.params.id, role);
     if (password) user = auth.setPassword(req.params.id, password);
+    if (streamQuota !== undefined) user = auth.setStreamQuota(req.params.id, streamQuota);
     if (!user) throw Object.assign(new Error('Nothing to change.'), { status: 400 });
     res.json({ user });
   } catch (err) {

@@ -359,13 +359,25 @@
           </label>
           <label class="field" style="flex:0 1 150px; margin:0;">
             <span>Role</span>
-            <select name="role"><option value="viewer">Viewer</option><option value="admin">Administrator</option></select>
+            <select name="role" id="user-form-role">
+              <option value="viewer">Viewer</option>
+              <option value="streamer">Streamer</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </label>
+          <label class="field" style="flex:0 1 120px; margin:0;" id="user-form-quota-field">
+            <span>Stream quota</span>
+            <input type="number" name="streamQuota" min="0" max="1000" value="0">
           </label>
           <button class="primary" type="submit">Create</button>
         </form>
       </div>
       <div class="card">
         <div class="card-head"><h2>Users</h2></div>
+        <p class="hint" style="margin:0 0 .8rem;">
+          A streamer registers and manages their own streams (key, private/public) and restream destinations
+          from <a href="/streamer">/streamer</a>, up to the quota set here.
+        </p>
         <div id="users-table"></div>
       </div>
     </section>

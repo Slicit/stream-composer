@@ -924,7 +924,7 @@ function renderUsers() {
   const box = $('#users-table');
   box.replaceChildren(
     h('table', {}, [
-      h('thead', {}, [h('tr', {}, [h('th', { text: 'Username' }), h('th', { text: 'Role' }), h('th', { text: 'Last signed in' }), h('th', {})])]),
+      h('thead', {}, [h('tr', {}, [h('th', { text: 'Username' }), h('th', { text: 'Role' }), h('th', { text: 'Stream quota' }), h('th', { text: 'Last signed in' }), h('th', {})])]),
       h('tbody', {}, admin.users.map((u) =>
         h('tr', {}, [
           h('td', { style: 'font-weight:600', text: u.username }),
@@ -942,8 +942,25 @@ function renderUsers() {
               },
             }, [
               h('option', { value: 'viewer', selected: u.role === 'viewer', text: 'Viewer' }),
+              h('option', { value: 'streamer', selected: u.role === 'streamer', text: 'Streamer' }),
               h('option', { value: 'admin', selected: u.role === 'admin', text: 'Administrator' }),
             ]),
+          ]),
+          h('td', {}, [
+            u.role === 'streamer'
+              ? h('input', {
+                type: 'number', min: 0, max: 1000, value: u.streamQuota, style: 'width:5rem;',
+                onchange: async (e) => {
+                  try {
+                    await api(`/api/admin/users/${u.id}`, { method: 'PATCH', body: { streamQuota: e.target.value } });
+                    toast('Quota updated.', 'good');
+                    loadUsers();
+                  } catch (_) {
+                    loadUsers();
+                  }
+                },
+              })
+              : h('span', { style: 'color:var(--ink-muted)', text: '—' }),
           ]),
           h('td', { text: u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never' }),
           h('td', {}, [
@@ -982,6 +999,13 @@ async function loadUsers() {
   admin.users = data.users;
   renderUsers();
 }
+
+// The quota only means anything for a streamer — no point showing it otherwise.
+function syncUserFormQuotaField() {
+  $('#user-form-quota-field').style.display = $('#user-form-role').value === 'streamer' ? '' : 'none';
+}
+$('#user-form-role').addEventListener('change', syncUserFormQuotaField);
+syncUserFormQuotaField();
 
 $('#user-form').addEventListener('submit', async (event) => {
   event.preventDefault();

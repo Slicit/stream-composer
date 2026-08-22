@@ -106,6 +106,12 @@ app.use('/api/admin', auth.requireAdmin, require('./routes/admin'));
 
 app.use('/api', require('./routes/channels'));
 
+// -------------------------------------------------------------- streamer API
+// Same reasoning again: self-service stream/restream management requires
+// being a streamer or admin specifically, not the blanket publicViewing rule.
+
+app.use('/api', require('./routes/streamer'));
+
 // ---------------------------------------------------------------- viewer API
 
 app.use('/api', auth.requireViewAccess, require('./routes/api'));
@@ -149,6 +155,11 @@ app.get('/admin', auth.requireUser, (req, res) => {
 });
 
 app.get('/channels', auth.requireUser, (_req, res) => res.sendFile(path.join(publicDir, 'channels.html')));
+
+app.get('/streamer', auth.requireUser, (req, res) => {
+  if (req.user.role !== 'streamer' && req.user.role !== 'admin') return res.redirect('/');
+  return res.sendFile(path.join(publicDir, 'streamer.html'));
+});
 
 // A configured homepage channel takes over "/" via redirect, so it reuses
 // every bit of /c/:slug's auth gate and rendering rather than duplicating

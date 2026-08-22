@@ -124,11 +124,20 @@ function mergeDefaults(loaded) {
     if (!s.playbackId) s.playbackId = crypto.randomBytes(12).toString('hex');
     if (s.visibility !== 'public' && s.visibility !== 'private') s.visibility = 'private';
     if (!Array.isArray(s.sharedWith)) s.sharedWith = [];
+    // Absent before self-service streamers existed: every pre-existing
+    // stream is admin-managed, owned by nobody in particular.
+    if (s.ownerId === undefined) s.ownerId = null;
   }
   for (const c of out.channels) {
     if (c.visibility !== 'public' && c.visibility !== 'private') c.visibility = 'private';
     if (!Array.isArray(c.sharedWith)) c.sharedWith = [];
     if (!Array.isArray(c.streamIds)) c.streamIds = [];
+  }
+  // Absent before the "streamer" role existed. Zero, not some default
+  // allowance — the same "explicit grant, not a surprise capability"
+  // reasoning as a stream's own visibility default.
+  for (const u of out.users) {
+    if (typeof u.streamQuota !== 'number' || u.streamQuota < 0) u.streamQuota = 0;
   }
   return out;
 }

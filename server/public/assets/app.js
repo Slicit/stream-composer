@@ -2,7 +2,7 @@
 /* eslint-env browser */
 
 import { WhepClient, canReceiveH264 } from './whep.js';
-import { $, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, formatDuration, copyToClipboard, pluralize } from './ui.js';
+import { $, h, api, toast, icon, statusChip, pluralize } from './ui.js';
 
 const WEBRTC = '/mtx/webrtc';
 const HLS = '/mtx/hls';
@@ -23,14 +23,10 @@ const app = {
   program: null, // WhepClient for the composed programme
   audio: null, // WhepClient for the selected source's audio
   audioKey: null, // null = everything muted (the default)
-  previews: new Map(), // streamKey -> WhepClient
   tiles: new Map(), // web composition: playbackId -> { client, video, wrap }
   tileSignature: '', // the grid we last built, so polling does not rebuild it
-  mode: 'webrtc',
-  hls: null,
   stats: null,
   showStats: false,
-  viewMode: 'normal',
   levelRaf: null,
   // Whether restricted (private, inaccessible) tiles are excluded from a
   // channel's grid entirely, rather than shown as a placeholder. Per channel,
@@ -87,7 +83,6 @@ function syncPlayIcon() {
 function startProgram() {
   stopProgram();
   if (composingHere()) return startWebGrid();
-  if (app.mode === 'hls') return startHls();
 
   const client = new WhepClient(`${WEBRTC}/${app.state.program.path}/whep`, { video: true, audio: false });
   app.program = client;
@@ -124,10 +119,6 @@ function stopProgram() {
     app.program = null;
   }
   stopWebGrid();
-  if (app.hls) {
-    app.hls.destroy();
-    app.hls = null;
-  }
   const video = programVideo();
   video.srcObject = null;
   video.removeAttribute('src');
@@ -434,41 +425,6 @@ function loadScript(src) {
   });
 }
 
-async function startHls() {
-  const video = programVideo();
-  const url = `${HLS}/${app.state.program.path}/index.m3u8`;
-  setPlayerMessage('Starting HLS playback', null, true);
-
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
-    video.play().catch(() => {});
-    setPlayerMessage(null);
-    return;
-  }
-  try {
-    await loadScript('/vendor/hls.js');
-  } catch (_) {
-    setPlayerMessage('HLS is unavailable', 'This browser needs hls.js, which could not be loaded. Use WebRTC instead.');
-    return;
-  }
-  const Hls = window.Hls;
-  if (!Hls || !Hls.isSupported()) {
-    setPlayerMessage('HLS is unsupported', 'This browser cannot play HLS. Use WebRTC instead.');
-    return;
-  }
-  const hls = new Hls({ lowLatencyMode: true, backBufferLength: 10, liveSyncDurationCount: 1 });
-  app.hls = hls;
-  hls.on(Hls.Events.MANIFEST_PARSED, () => {
-    setPlayerMessage(null);
-    video.play().catch(() => {});
-  });
-  hls.on(Hls.Events.ERROR, (_evt, data) => {
-    if (data.fatal) setPlayerMessage('HLS playback stopped', data.details);
-  });
-  hls.loadSource(url);
-  hls.attachMedia(video);
-}
-
 // -------------------------------------------------------------------- audio
 
 /**
@@ -493,7 +449,7 @@ function selectAudio(key) {
       app.audio = client;
       client.addEventListener('track', () => {
         out.srcObject = client.stream;
-        out.volume = Number($('#volume').value) / 100;
+        out.volume = Number($('#volume-overlay').value) / 100;
         out.play().catch(() => toast('Click anywhere on the page to allow audio playback.', 'info'));
         startLevelMeter(client.stream, key);
       });
@@ -522,9 +478,7 @@ function startLevelMeter(stream, key) {
     // width) and the overlay's compact chip (vertical, fills by height).
     // Setting both properties on every match is harmless — each one's CSS
     // fixes the axis that does not apply, so only the relevant one moves.
-    const bars = document.querySelectorAll(
-      `[data-key="${CSS.escape(key)}"] .level-bar > span, [data-key="${CSS.escape(key)}"] .level-bar-v > span`,
-    );
+    const bars = document.querySelectorAll(`[data-key="${CSS.escape(key)}"] .level-bar-v > span`);
     const tick = () => {
       if (!analyser || app.audioKey !== key) return;
       analyser.getByteTimeDomainData(buffer);
@@ -532,7 +486,6 @@ function startLevelMeter(stream, key) {
       for (let i = 0; i < buffer.length; i++) peak = Math.max(peak, Math.abs(buffer[i] - 128));
       const percent = Math.min(100, Math.round((peak / 128) * 140));
       bars.forEach((bar) => {
-        bar.style.width = `${percent}%`;
         bar.style.height = `${percent}%`;
       });
       app.levelRaf = requestAnimationFrame(tick);
@@ -547,48 +500,17 @@ function stopLevelMeter() {
   if (app.levelRaf) cancelAnimationFrame(app.levelRaf);
   app.levelRaf = null;
   analyser = null;
-  document.querySelectorAll('.level-bar > span').forEach((el) => {
-    el.style.width = '0';
-  });
   document.querySelectorAll('.level-bar-v > span').forEach((el) => {
     el.style.height = '0';
   });
 }
 
 function renderAudioList() {
-  const list = $('#audio-list');
   const streams = (app.state.streams || []).filter((s) => s.live);
-  const options = [
-    h('label', { class: `audio-option${app.audioKey === null ? ' is-active' : ''}`, dataset: { key: '' } }, [
-      h('input', { type: 'radio', name: 'audio', checked: app.audioKey === null, onchange: () => selectAudio(null) }),
-      h('span', { class: 'name', text: 'Muted' }),
-      h('span', { class: 'meta', text: 'default' }),
-    ]),
-  ];
-
-  for (const s of streams) {
-    const active = app.audioKey === s.key;
-    options.push(
-      h('label', { class: `audio-option${active ? ' is-active' : ''}`, dataset: { key: s.key } }, [
-        h('input', { type: 'radio', name: 'audio', checked: active, disabled: !s.hasAudio, onchange: () => selectAudio(s.key) }),
-        h('span', { class: 'name', text: s.name }),
-        s.hasAudio ? h('span', { class: 'level-bar' }, [h('span')]) : h('span', { class: 'meta', text: 'no audio' }),
-      ]),
-    );
-  }
-
-  if (streams.length === 0) {
-    options.push(h('div', { class: 'empty', style: 'padding:1rem', text: 'No sources are live.' }));
-  }
-  list.replaceChildren(...options);
   renderAudioChips(streams);
 }
 
-/**
- * The same picker, compact, inside the player overlay — the sidebar list
- * this mirrors is out of reach in full screen. No "Muted" chip: the mute
- * button right before this in the overlay already covers going silent.
- */
+/** The audio-source picker, lives in the player overlay so it stays reachable in full screen. */
 function renderAudioChips(streams) {
   const box = $('#audio-chips');
   if (!box) return;
@@ -620,80 +542,6 @@ function renderAudioChips(streams) {
       ]);
     }),
   );
-}
-
-// ------------------------------------------------------------------ sources
-
-function togglePreview(key, cardVideo, button) {
-  const existing = app.previews.get(key);
-  if (existing) {
-    existing.stop();
-    app.previews.delete(key);
-    cardVideo.srcObject = null;
-    button.textContent = 'Preview';
-    return;
-  }
-  const stream = (app.state.streams || []).find((s) => s.key === key);
-  if (!stream) return;
-  const client = new WhepClient(`${WEBRTC}/${stream.path}/whep`, { video: true, audio: false });
-  app.previews.set(key, client);
-  client.addEventListener('track', () => {
-    cardVideo.srcObject = client.stream;
-    cardVideo.play().catch(() => {});
-  });
-  client.start();
-  button.textContent = 'Stop';
-}
-
-function renderSources() {
-  const container = $('#sources');
-  const streams = app.state.streams || [];
-  const onAir = (app.state.onAir || []).map((s) => s.key);
-
-  if (!app.state.settings.showIndividualStreams) {
-    $('#sources-card').style.display = 'none';
-    return;
-  }
-  $('#sources-card').style.display = '';
-  $('#sources-count').textContent = `${streams.filter((s) => s.live).length} live of ${streams.length}`;
-
-  if (streams.length === 0) {
-    container.replaceChildren(h('div', { class: 'empty', text: 'No stream keys have been created yet.' }));
-    return;
-  }
-
-  const cards = streams.map((s) => {
-    const cellIndex = onAir.indexOf(s.key);
-    const video = h('video', { playsinline: true, muted: true, autoplay: true, style: s.live ? '' : 'display:none' });
-    const previewBtn = h('button', {
-      class: 'ghost',
-      style: 'font-size:.75rem; padding:.25rem .5rem',
-      disabled: !s.live,
-      onclick: (e) => togglePreview(s.key, video, e.currentTarget),
-      text: app.previews.has(s.key) ? 'Stop' : 'Preview',
-    });
-
-    // Re-attach a live preview after a re-render.
-    const existing = app.previews.get(s.key);
-    if (existing && existing.stream) video.srcObject = existing.stream;
-
-    return h('article', { class: `source${app.audioKey === s.key ? ' is-selected' : ''}` }, [
-      h('div', { class: 'thumb' }, [
-        video,
-        !app.previews.has(s.key) ? h('span', { class: 'placeholder', text: s.live ? 'Preview off' : 'Offline' }) : null,
-        cellIndex >= 0 ? h('span', { class: 'cell-index', text: `cell ${cellIndex + 1}` }) : null,
-      ]),
-      h('div', { class: 'body' }, [
-        h('span', { class: 'name', title: s.name, text: s.name }),
-        s.problem
-          ? h('span', { class: 'warn-chip', title: `${s.problem.summary} ${s.problem.fix || ''}`.trim(), text: 'not playable' })
-          : statusChip(s.live ? 'live' : 'idle', s.live ? 'Live' : 'Off'),
-        previewBtn,
-      ]),
-    ]);
-  });
-
-  container.replaceChildren(...cards);
 }
 
 // -------------------------------------------------------------------- chrome
@@ -740,49 +588,6 @@ function renderProgramStatus() {
 
   const badge = $('#live-badge');
   badge.replaceChildren(kind === 'live' ? statusChip('live', 'Live') : statusChip('idle', label));
-}
-
-function renderTiles() {
-  const s = app.state;
-  const web = composingHere();
-  const stats = (web ? webGridStats() : app.stats) || {};
-  const onAir = (s.onAir || []).length;
-  const kbps = stats.kbps || (web ? 0 : s.program.liveBitrateKbps) || 0;
-
-  const tiles = [
-    { label: 'Sources on air', value: String(onAir), sub: `${(s.streams || []).length} configured` },
-    {
-      label: web ? 'Composed' : 'Output',
-      value: web ? 'in your browser' : `${s.program.width}×${s.program.height}`,
-      sub: web ? 'nothing re-encoded' : `${s.program.fps} fps · ${s.program.encoder || '—'}`,
-    },
-    {
-      label: 'Received',
-      value: formatBitrate(kbps),
-      unit: bitrateUnit(kbps),
-      sub: stats.codec
-        ? `${stats.codec.toUpperCase()}${web ? ` · ${pluralize(onAir, 'stream')}` : ''}`
-        : web
-          ? 'across every source'
-          : 'target ' + formatBitrate(s.program.bitrateKbps) + ' ' + bitrateUnit(s.program.bitrateKbps),
-    },
-    {
-      label: 'Round trip',
-      value: stats.rttMs != null ? String(stats.rttMs) : '—',
-      unit: stats.rttMs != null ? 'ms' : '',
-      sub: stats.jitterMs != null ? `jitter ${stats.jitterMs} ms` : '',
-    },
-  ];
-
-  $('#tiles').replaceChildren(
-    ...tiles.map((t) =>
-      h('div', { class: 'stat' }, [
-        h('div', { class: 'label', text: t.label }),
-        h('div', { class: 'value' }, [t.value, t.unit ? h('span', { class: 'unit', text: t.unit }) : null]),
-        t.sub ? h('div', { class: 'sub', text: t.sub }) : null,
-      ]),
-    ),
-  );
 }
 
 /**
@@ -839,57 +644,12 @@ function renderTileStats() {
   }
 }
 
-function renderProgramInfo() {
-  const s = app.state;
-  const dl = $('#program-info');
-  // HLS packages the programme; in web mode there is no programme to package.
-  $('#playback-picker').style.display = composingHere() ? 'none' : '';
-  $('#playback-web-note').style.display = composingHere() ? '' : 'none';
-  const rows = composingHere()
-    ? [
-      ['Composed', 'in your browser'],
-      ['Arrangement', `${s.program.width}×${s.program.height}`],
-      ['Server encoding', 'none'],
-      ['Streams to you', String((s.onAir || []).length)],
-    ]
-    : [
-      ['Resolution', `${s.program.width}×${s.program.height}`],
-      ['Frame rate', `${s.program.fps} fps`],
-      ['Target bitrate', `${formatBitrate(s.program.bitrateKbps)} ${bitrateUnit(s.program.bitrateKbps)}`],
-      ['Encoder', s.program.encoder || 'idle'],
-      ['Viewers', String(s.program.readers ?? 0)],
-    ];
-  dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })]));
-}
-
-function renderLayoutPreview() {
-  const box = $('#layout-preview');
-  const layout = app.state.layout;
-  const card = $('#layout-card');
-  if (!layout || !layout.cells || layout.cells.length === 0) {
-    card.style.display = '';
-    $('#layout-name').textContent = 'idle';
-    box.replaceChildren(h('div', { class: 'empty', style: 'position:absolute; inset:0; display:grid; place-content:center;', text: 'Nothing on air' }));
-    return;
-  }
-  $('#layout-name').textContent = `${layout.name} · ${layout.cols}×${layout.rows}`;
-  const names = (app.state.onAir || []).map((s) => s.name);
-  box.replaceChildren(
-    ...layout.cells.map((c, i) =>
-      h('div', {
-        class: 'cell',
-        style: `left:${(c.x / layout.width) * 100}%; top:${(c.y / layout.height) * 100}%; width:${(c.w / layout.width) * 100}%; height:${(c.h / layout.height) * 100}%;`,
-        text: names[i] || String(i + 1),
-      }),
-    ),
-  );
-}
-
 function renderUserArea() {
   const area = $('#user-area');
   const user = app.state.user;
   const children = [];
   if (user && user.role === 'admin') children.push(h('a', { class: 'btn', href: '/admin', text: 'Admin' }));
+  if (user && (user.role === 'streamer' || user.role === 'admin')) children.push(h('a', { class: 'btn', href: '/streamer', text: 'My streams' }));
   if (user) {
     children.push(h('a', { class: 'btn', href: '/channels', text: 'My channels' }));
     children.push(h('span', { style: 'font-size:.82rem; color:var(--ink-muted)', text: user.username }));
@@ -909,75 +669,6 @@ function renderUserArea() {
   area.replaceChildren(...children);
 }
 
-// ---------------------------------------------------------------- view mode
-//
-// Cinema mode: the picture takes nearly the whole window and everything that
-// is not the picture either shrinks or goes away. The audio picker stays —
-// the programme is silent by design, so removing it would leave a viewer with
-// no way to hear anything.
-//
-// Remembered per user, because two people sharing a machine rarely want the
-// same thing, and applied before the first paint so it does not flash.
-
-const VIEW_KEY = 'streamComposer.viewMode';
-// Cinema is what most people want most of the time: they came to watch. The
-// detail panels are one click away, and the choice is remembered per user.
-const DEFAULT_VIEW_MODE = 'cinema';
-
-function viewModeKey(user) {
-  return `${VIEW_KEY}.${(user && user.username) || 'guest'}`;
-}
-
-function readStored(key) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch (_) {
-    return null; // private mode, or storage disabled — not worth failing over
-  }
-}
-
-function writeStored(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch (_) {
-    /* the preference simply will not persist */
-  }
-}
-
-function applyViewMode(mode) {
-  app.viewMode = mode === 'cinema' ? 'cinema' : 'normal';
-  document.body.classList.toggle('is-cinema', app.viewMode === 'cinema');
-  const btn = $('#btn-cinema');
-  if (btn) {
-    btn.classList.toggle('primary', app.viewMode === 'cinema');
-    btn.setAttribute('aria-pressed', String(app.viewMode === 'cinema'));
-  }
-}
-
-/**
- * Before we know who is watching, use whatever was chosen last on this
- * browser. It is only a guess to avoid a flash of the wrong layout — the real
- * preference is applied as soon as the first poll says who this is.
- */
-function applyRememberedViewMode() {
-  applyViewMode(readStored(`${VIEW_KEY}.last`) || DEFAULT_VIEW_MODE);
-}
-
-/**
- * Once the user is known, their own choice wins — and someone who has never
- * chosen gets the default rather than inheriting the previous person's.
- */
-function adoptUserViewMode(user) {
-  applyViewMode(readStored(viewModeKey(user)) || DEFAULT_VIEW_MODE);
-}
-
-function toggleViewMode() {
-  const next = app.viewMode === 'cinema' ? 'normal' : 'cinema';
-  applyViewMode(next);
-  writeStored(viewModeKey(app.state && app.state.user), next);
-  writeStored(`${VIEW_KEY}.last`, next);
-}
-
 // --------------------------------------------------------------------- poll
 
 let lastSignature = '';
@@ -992,7 +683,6 @@ async function refresh() {
   }
   const first = !app.state;
   app.state = next;
-  if (first) adoptUserViewMode(next.user);
 
   document.title = `${next.settings.siteName} — live`;
   $('#site-name').textContent = next.settings.siteName;
@@ -1001,14 +691,10 @@ async function refresh() {
 
   renderUserArea();
   renderProgramStatus();
-  renderTiles();
-  renderProgramInfo();
-  renderLayoutPreview();
 
   const signature = JSON.stringify(next.streams.map((s) => [s.key, s.name, s.live, s.hasAudio]));
   if (signature !== lastSignature) {
     lastSignature = signature;
-    renderSources();
     renderAudioList();
     // If the source we were listening to went away, fall back to muted.
     if (app.audioKey && !next.streams.some((s) => s.key === app.audioKey && s.live)) selectAudio(null);
@@ -1054,8 +740,6 @@ function wireControls() {
     renderTileStats();
   });
 
-  $('#btn-cinema').addEventListener('click', toggleViewMode);
-
   $('#btn-fullscreen').addEventListener('click', () => {
     const shell = $('#player-shell');
     if (document.fullscreenElement) document.exitFullscreen();
@@ -1064,41 +748,26 @@ function wireControls() {
 
   $('#btn-mute').appendChild(icon('volume'));
 
-  // Two sliders, one volume: the sidebar's and the one surfaced in the player
-  // overlay so it stays reachable in full screen, where the sidebar is not
-  // part of the fullscreen element and disappears from view.
-  const volumeInputs = [$('#volume'), $('#volume-overlay')];
-  let volumeBeforeMute = Number($('#volume').value) || 80;
+  const volumeInput = $('#volume-overlay');
+  let volumeBeforeMute = Number(volumeInput.value) || 80;
 
   function applyVolume(value) {
     const clamped = Math.max(0, Math.min(100, Number(value) || 0));
-    for (const input of volumeInputs) input.value = clamped;
+    volumeInput.value = clamped;
     $('#audio-out').volume = clamped / 100;
     $('#btn-mute').replaceChildren(icon(clamped === 0 ? 'mute' : 'volume'));
     if (clamped > 0) volumeBeforeMute = clamped;
   }
 
-  for (const input of volumeInputs) {
-    input.addEventListener('input', (e) => applyVolume(e.target.value));
-  }
+  volumeInput.addEventListener('input', (e) => applyVolume(e.target.value));
 
   $('#btn-mute').addEventListener('click', () => {
-    applyVolume(Number($('#volume').value) > 0 ? 0 : volumeBeforeMute);
+    applyVolume(Number(volumeInput.value) > 0 ? 0 : volumeBeforeMute);
   });
 
   // The <audio> element's own default (1.0) otherwise wins until the first
   // slider touch, ignoring what the sliders show from the very first paint.
   applyVolume(volumeBeforeMute);
-
-  const setMode = (mode) => {
-    if (app.mode === mode) return;
-    app.mode = mode;
-    $('#btn-mode-webrtc').classList.toggle('primary', mode === 'webrtc');
-    $('#btn-mode-hls').classList.toggle('primary', mode === 'hls');
-    startProgram();
-  };
-  $('#btn-mode-webrtc').addEventListener('click', () => setMode('webrtc'));
-  $('#btn-mode-hls').addEventListener('click', () => setMode('hls'));
 
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea, select')) return;
@@ -1114,17 +783,9 @@ function wireControls() {
   window.addEventListener('beforeunload', () => {
     stopProgram();
     if (app.audio) app.audio.stop();
-    app.previews.forEach((c) => c.stop());
-  });
-
-  document.addEventListener('visibilitychange', () => {
-    // Pause previews when the tab is hidden; the programme keeps running so
-    // coming back is instant.
-    if (document.hidden) app.previews.forEach((c) => c.stop());
   });
 }
 
-applyRememberedViewMode();
 wireControls();
 refresh().then(() => {
   setInterval(refresh, 3000);

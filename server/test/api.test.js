@@ -1315,3 +1315,142 @@ test('deleting a stream drops it from any channel that included it', async () =>
   assert.deepStrictEqual(channels.find(channel.id).streamIds, []);
   channels.remove(channel.id);
 });
+
+// ---------------------------------------------------------------- streamer
+
+let streamerACookie = '';
+let streamerBCookie = '';
+let plainViewerCookie = '';
+let streamerAId = null;
+
+test('setup: two streamers with a quota of one, and a plain viewer', async () => {
+  const a = await call('/api/admin/users', { method: 'POST', body: { username: 'streamer-a', password: 'streamer-a-pw-1', role: 'streamer', streamQuota: 1 } });
+  assert.strictEqual(a.status, 201);
+  const { user: userA } = await a.json();
+  assert.strictEqual(userA.streamQuota, 1);
+  streamerAId = userA.id;
+
+  await call('/api/admin/users', { method: 'POST', body: { username: 'streamer-b', password: 'streamer-b-pw-1', role: 'streamer', streamQuota: 1 } });
+  await call('/api/admin/users', { method: 'POST', body: { username: 'plain-viewer', password: 'plain-viewer-pw-1', role: 'viewer' } });
+
+  streamerACookie = await loginAs('streamer-a', 'streamer-a-pw-1');
+  streamerBCookie = await loginAs('streamer-b', 'streamer-b-pw-1');
+  plainViewerCookie = await loginAs('plain-viewer', 'plain-viewer-pw-1');
+});
+
+test('SECURITY: a plain viewer is refused by /api/streams/mine and /api/relays/mine', async () => {
+  const s = await callAs(plainViewerCookie, '/api/streams/mine', { headers: { accept: 'application/json' } });
+  assert.strictEqual(s.status, 403);
+  const r = await callAs(plainViewerCookie, '/api/relays/mine', { headers: { accept: 'application/json' } });
+  assert.strictEqual(r.status, 403);
+});
+
+test('SECURITY: an anonymous request to /api/streams/mine is a 401, not a redirect', async () => {
+  const res = await fetch(`${base}/api/streams/mine`, { headers: { accept: 'application/json' }, redirect: 'manual' });
+  assert.strictEqual(res.status, 401);
+});
+
+/**
+ * routes/streamer.js's own guard must never leak past its /streams/mine and
+ * /relays/mine prefixes — a blanket router.use() mounted at /api would
+ * otherwise intercept every /api/* request that reaches it, silently
+ * blocking a plain viewer's /api/state and an admin's /api/admin/* before
+ * they ever reach their real handlers. This regression shipped once already
+ * this session; keep it caught.
+ */
+test('SECURITY: the streamer guard does not leak onto /api/state or /api/admin/*', async () => {
+  const state = await callAs(plainViewerCookie, '/api/state', { headers: { accept: 'application/json' } });
+  assert.strictEqual(state.status, 200, 'a plain viewer can still watch');
+
+  // The streamer guard never consults publicViewing at all — if it had
+  // leaked onto /api/state, an anonymous request would 401 regardless of
+  // this setting. Turning it on isolates that: reaching /api/state now
+  // proves the *real* requireViewAccess gate decided this, not a leaked
+  // requireStreamerOrAdmin ahead of it.
+  await call('/api/admin/settings', { method: 'PUT', body: { publicViewing: true } });
+  const anonState = await fetch(`${base}/api/state`, { headers: { accept: 'application/json' } });
+  assert.strictEqual(anonState.status, 200, 'publicViewing being on is enough — nothing upstream of it is still blocking');
+  await call('/api/admin/settings', { method: 'PUT', body: { publicViewing: false } });
+
+  const adminUsers = await call('/api/admin/users', { headers: { accept: 'application/json' } });
+  assert.strictEqual(adminUsers.status, 200, 'admin still reaches its own API');
+});
+
+test('a streamer can create up to their quota and is refused past it; an admin bypasses the same quota', async () => {
+  const first = await callAs(streamerACookie, '/api/streams/mine', { method: 'POST', body: { name: 'A cam 1' } });
+  assert.strictEqual(first.status, 201);
+  const { stream: firstStream } = await first.json();
+  assert.strictEqual(firstStream.ownerId, streamerAId);
+
+  const second = await callAs(streamerACookie, '/api/streams/mine', { method: 'POST', body: { name: 'A cam 2' } });
+  assert.strictEqual(second.status, 403, 'quota of 1 is already used');
+
+  const asAdmin = await call('/api/streams/mine', { method: 'POST', body: { name: 'Admin self-service cam' } });
+  assert.strictEqual(asAdmin.status, 201, 'an admin is never quota-limited, even through the self-service endpoint');
+  const { stream: adminStream } = await asAdmin.json();
+  await call(`/api/streams/mine/${adminStream.id}`, { method: 'DELETE' });
+});
+
+test('SECURITY: a streamer cannot see, edit or delete another streamer\'s stream', async () => {
+  const listAsB = await callAs(streamerBCookie, '/api/streams/mine');
+  const { streams: bStreams } = await listAsB.json();
+  const aStream = (await (await callAs(streamerACookie, '/api/streams/mine')).json()).streams[0];
+  assert.ok(!bStreams.some((s) => s.id === aStream.id), 'B does not see A\'s stream in their own list');
+
+  const editAttempt = await callAs(streamerBCookie, `/api/streams/mine/${aStream.id}`, { method: 'PATCH', body: { name: 'Hijacked' } });
+  assert.strictEqual(editAttempt.status, 403);
+
+  const deleteAttempt = await callAs(streamerBCookie, `/api/streams/mine/${aStream.id}`, { method: 'DELETE' });
+  assert.strictEqual(deleteAttempt.status, 403);
+
+  const rotateAttempt = await callAs(streamerBCookie, `/api/streams/mine/${aStream.id}/rotate-key`, { method: 'POST' });
+  assert.strictEqual(rotateAttempt.status, 403);
+});
+
+test('a streamer manages restream destinations only for their own streams', async () => {
+  const aStream = (await (await callAs(streamerACookie, '/api/streams/mine')).json()).streams[0];
+
+  const created = await callAs(streamerACookie, '/api/relays/mine', {
+    method: 'POST',
+    body: { streamId: aStream.id, provider: 'custom', url: 'rtmp://example.test/live', key: 'a-relay-key' },
+  });
+  assert.strictEqual(created.status, 201);
+  const { relay } = await created.json();
+
+  // B cannot forward A's stream at all…
+  const bCreateOnAStream = await callAs(streamerBCookie, '/api/relays/mine', {
+    method: 'POST',
+    body: { streamId: aStream.id, provider: 'custom', url: 'rtmp://example.test/other', key: 'b-relay-key' },
+  });
+  assert.strictEqual(bCreateOnAStream.status, 403);
+
+  // …nor touch the destination A already created.
+  const bEdit = await callAs(streamerBCookie, `/api/relays/mine/${relay.id}`, { method: 'PATCH', body: { enabled: false } });
+  assert.strictEqual(bEdit.status, 403);
+  const bDelete = await callAs(streamerBCookie, `/api/relays/mine/${relay.id}`, { method: 'DELETE' });
+  assert.strictEqual(bDelete.status, 403);
+  const bKey = await callAs(streamerBCookie, `/api/relays/mine/${relay.id}/key`);
+  assert.strictEqual(bKey.status, 403);
+
+  const listAsA = await callAs(streamerACookie, '/api/relays/mine');
+  const { relays: aRelays } = await listAsA.json();
+  assert.ok(aRelays.some((r) => r.id === relay.id));
+
+  await callAs(streamerACookie, `/api/relays/mine/${relay.id}`, { method: 'DELETE' });
+});
+
+test('the /streamer page: redirected for a plain viewer, served for a streamer or admin', async () => {
+  const asViewer = await fetch(`${base}/streamer`, { headers: { cookie: plainViewerCookie, accept: 'text/html' }, redirect: 'manual' });
+  assert.strictEqual(asViewer.status, 302);
+  assert.strictEqual(asViewer.headers.get('location'), '/');
+
+  const asStreamer = await fetch(`${base}/streamer`, { headers: { cookie: streamerACookie, accept: 'text/html' }, redirect: 'manual' });
+  assert.strictEqual(asStreamer.status, 200);
+
+  const asAdmin = await fetch(`${base}/streamer`, { headers: { cookie, accept: 'text/html' }, redirect: 'manual' });
+  assert.strictEqual(asAdmin.status, 200);
+
+  const anon = await fetch(`${base}/streamer`, { headers: { accept: 'text/html' }, redirect: 'manual' });
+  assert.strictEqual(anon.status, 302);
+  assert.match(anon.headers.get('location'), /^\/login/);
+});

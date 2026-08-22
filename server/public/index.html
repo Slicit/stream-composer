@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/assets/style.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='5' fill='%233987e5'/%3E%3Crect x='3' y='4' width='6' height='5' rx='1' fill='white'/%3E%3Crect x='11' y='4' width='6' height='5' rx='1' fill='white' opacity='.7'/%3E%3Crect x='3' y='11' width='14' height='5' rx='1' fill='white' opacity='.85'/%3E%3C/svg%3E">
 </head>
-<body>
+<body class="is-player">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" id="brand-mark"></span>
@@ -16,97 +16,34 @@
     </div>
     <span id="program-status" class="status is-idle"><span class="dot"></span>Connecting</span>
     <span class="spacer"></span>
-    <button id="btn-cinema" class="ghost" type="button" aria-pressed="false"
-            title="Cinema mode — a bigger picture and less around it">Cinema</button>
     <div class="row" id="user-area"></div>
   </header>
 
   <main class="wrap">
-    <div id="stage" style="display:grid; gap:1rem; grid-template-columns:minmax(0,1fr) 320px; align-items:start;">
-      <section style="min-width:0; display:flex; flex-direction:column; gap:1rem;">
-        <div class="player-shell" id="player-shell">
-          <video id="program-video" playsinline autoplay muted></video>
-          <div class="player-stats" id="player-stats"></div>
-          <div class="badge-live" id="live-badge"></div>
-          <div class="player-message" id="player-message">
-            <div class="spinner"></div>
-            <div class="big">Connecting to the programme feed</div>
-          </div>
-          <div class="player-overlay">
-            <button class="icon" id="btn-play" title="Play or pause" aria-label="Play or pause"></button>
-            <button class="icon" id="btn-stats" title="Show connection statistics" aria-label="Show connection statistics"></button>
-            <div class="audio-chips" id="audio-chips"></div>
-            <span class="spacer"></span>
-            <span class="mono" id="overlay-readout" style="color:var(--ink-2); font-size:.75rem;"></span>
-            <button class="icon" id="btn-mute" title="Mute or unmute the audio monitor" aria-label="Mute or unmute the audio monitor"></button>
-            <input type="range" id="volume-overlay" class="volume-overlay" min="0" max="100" value="80"
-                   title="Audio monitor volume" aria-label="Audio monitor volume">
-            <button class="icon" id="btn-fullscreen" title="Full screen" aria-label="Full screen"></button>
-          </div>
-        </div>
-
-        <div class="stats" id="tiles"></div>
-
-        <section class="card" id="sources-card">
-          <div class="card-head">
-            <h2>Sources</h2>
-            <span class="mono" id="sources-count" style="color:var(--ink-muted); font-size:.78rem;"></span>
-          </div>
-          <div class="sources" id="sources"></div>
-        </section>
-      </section>
-
-      <aside id="side" style="min-width:0; display:flex; flex-direction:column; gap:1rem;">
-        <section class="card" id="audio-card">
-          <div class="card-head">
-            <h2>Audio monitor</h2>
-          </div>
-          <p class="audio-blurb" style="font-size:.78rem; color:var(--ink-muted); margin-bottom:.7rem;">
-            The programme carries no audio. Pick one source to listen to — everything starts muted.
-          </p>
-          <div class="audio-list" id="audio-list"></div>
-          <div class="volume-row" style="margin-top:.85rem;">
-            <label class="field" style="margin:0;">
-              <span>Volume</span>
-              <input type="range" id="volume" min="0" max="100" value="80">
-            </label>
-          </div>
-          <audio id="audio-out" autoplay></audio>
-        </section>
-
-        <section class="card">
-          <div class="card-head"><h2>Programme</h2></div>
-          <dl class="dl" id="program-info"></dl>
-          <hr class="divider">
-          <div id="playback-picker">
-            <div class="section-title">Playback</div>
-            <div class="row">
-              <button id="btn-mode-webrtc" class="primary">WebRTC</button>
-              <button id="btn-mode-hls">HLS</button>
-            </div>
-            <p style="font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
-              WebRTC is sub-second. HLS adds a few seconds of delay but traverses awkward networks.
-            </p>
-          </div>
-          <p id="playback-web-note" style="display:none; font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
-            Each source arrives separately over WebRTC and is arranged here, in
-            your browser. Nothing is re-encoded on the server.
-          </p>
-        </section>
-
-        <section class="card" id="layout-card">
-          <div class="card-head"><h2>Layout</h2><span class="mono" id="layout-name" style="color:var(--ink-muted); font-size:.78rem;"></span></div>
-          <div class="layout-preview" id="layout-preview"></div>
-        </section>
-      </aside>
+    <div class="player-shell" id="player-shell">
+      <video id="program-video" playsinline autoplay muted></video>
+      <div class="player-stats" id="player-stats"></div>
+      <div class="badge-live" id="live-badge"></div>
+      <div class="player-message" id="player-message">
+        <div class="spinner"></div>
+        <div class="big">Connecting to the programme feed</div>
+      </div>
+      <div class="player-overlay">
+        <button class="icon" id="btn-play" title="Play or pause" aria-label="Play or pause"></button>
+        <button class="icon" id="btn-stats" title="Show connection statistics" aria-label="Show connection statistics"></button>
+        <div class="audio-chips" id="audio-chips"></div>
+        <span class="spacer"></span>
+        <span class="mono" id="overlay-readout" style="color:var(--ink-2); font-size:.75rem;"></span>
+        <button class="icon" id="btn-mute" title="Mute or unmute the audio monitor" aria-label="Mute or unmute the audio monitor"></button>
+        <input type="range" id="volume-overlay" class="volume-overlay" min="0" max="100" value="80"
+               title="Audio monitor volume" aria-label="Audio monitor volume">
+        <button class="icon" id="btn-fullscreen" title="Full screen" aria-label="Full screen"></button>
+      </div>
     </div>
+
+    <audio id="audio-out" autoplay style="display:none;"></audio>
   </main>
 
   <script type="module" src="/assets/app.js"></script>
-  <style>
-    @media (max-width: 1040px) {
-      #stage { grid-template-columns: minmax(0, 1fr) !important; }
-    }
-  </style>
 </body>
 </html>

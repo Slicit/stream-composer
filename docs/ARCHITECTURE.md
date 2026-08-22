@@ -235,6 +235,50 @@ homepageChannelId`, when set, makes `GET /` 302 to `GET /c/<slug>` — same
 auth gate, same everything, as visiting that channel directly. No homepage
 configured leaves `/` exactly as it has always behaved.
 
+## Streamer role
+
+A third role alongside `admin`/`viewer`. Created by an administrator like any
+other account; a streamer cannot self-register. Two fields make it work:
+
+- **`stream.ownerId`** — mirrors `channel.ownerId` exactly (see "Channels"
+  above), default `null`. Existing streams stay admin-managed on upgrade;
+  nothing becomes streamer-owned by accident.
+- **`user.streamQuota`** — how many streams that account may create, default
+  `0`. An administrator must explicitly grant capacity — the same "explicit
+  grant, not surprise capability" reasoning already used for a stream's
+  `visibility` defaulting to private.
+
+**Self-service is `/streams/mine` and `/relays/mine`** (`routes/streamer.js`),
+gated by `auth.requireStreamerOrAdmin` and scoped to what the caller owns via
+`access.requireOwner(resource, user)` — the same ownership check
+`routes/channels.js`'s `/channels/mine` already established, now shared by
+both. A streamer manages their own stream's name, nickname, visibility and
+enabled state, rotates its key, and creates/edits/deletes restream
+destinations whose source is one of their own streams. Deliberately absent:
+editing `sharedWith` (would need a full user picker, which a non-admin has no
+business seeing), setting an arbitrary key (rotate only), and reassigning
+`ownerId` (admin-only, via `/api/admin/streams`). Quota is enforced only at
+stream-creation time; an admin calling this same self-service endpoint is
+never quota-limited, exactly as at `/api/admin/streams`.
+
+**Mounting an owner-scoped router is a routing hazard, not just an auth
+one.** The first version of `routes/streamer.js` applied
+`auth.requireStreamerOrAdmin` as a single `router.use()` at the top of a
+router mounted at `app.use('/api', ...)`. Because that `use()` carried no
+path of its own, it ran for *every* request reaching that router — including
+`/api/state` and `/api/admin/*`, which this file defines no routes for at
+all — before Express ever got to try another router for them. A plain viewer
+lost `/api/state` (403) and public viewing broke for anonymous visitors
+(401), both from a file that was only ever supposed to gate two prefixes.
+The fix, and the pattern to keep following: give the guard its own
+prefix-scoped sub-router (`/streams/mine`, `/relays/mine`), each mounted with
+`router.use('/streams/mine', streamsMine)` — exactly how `routes/channels.js`
+already scopes its own `/channels/mine` guard. A blanket `router.use(guard)`
+is only as safe as the path it is mounted on; a broad mount point needs an
+equally scoped guard, not a broad one. `server/test/api.test.js` now asserts
+this directly — `/api/state` and `/api/admin/*` stay reachable regardless of
+what `routes/streamer.js` does — so a regression here fails loudly again.
+
 ## Security model
 
 **Nothing reaches MediaMTX from the internet except media.** Published ports:

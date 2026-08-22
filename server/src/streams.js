@@ -85,7 +85,7 @@ function findByKey(key) {
   return store.get().streams.find((s) => s.key === key);
 }
 
-function create({ name, key, enabled = true, note = '', nickname = '', visibility = 'private', sharedWith = [] }) {
+function create({ name, key, enabled = true, note = '', nickname = '', visibility = 'private', sharedWith = [], ownerId = null }) {
   const label = String(name || '').trim();
   if (!label || label.length > 48) {
     throw Object.assign(new Error('Give the stream a name of 1-48 characters.'), { status: 400 });
@@ -100,6 +100,9 @@ function create({ name, key, enabled = true, note = '', nickname = '', visibilit
   if (!VISIBILITIES.includes(visibility)) {
     throw Object.assign(new Error('Visibility must be "private" or "public".'), { status: 400 });
   }
+  if (ownerId && !auth.findById(ownerId)) {
+    throw Object.assign(new Error('That owner does not exist.'), { status: 400 });
+  }
   const stream = {
     id: crypto.randomUUID(),
     name: label,
@@ -112,10 +115,14 @@ function create({ name, key, enabled = true, note = '', nickname = '', visibilit
     // accidentally exposed by whatever the default used to be.
     visibility,
     sharedWith: cleanSharedWith(sharedWith),
+    // Null for every admin-managed stream created before self-service
+    // streamers existed, and for any admin-created stream since — only
+    // routes/streamer.js sets this, to the creating streamer's own id.
+    ownerId: ownerId || null,
     createdAt: new Date().toISOString(),
   };
   store.update((d) => d.streams.push(stream));
-  log.info('stream created', { name: label, key: finalKey, visibility });
+  log.info('stream created', { name: label, key: finalKey, visibility, ownerId: stream.ownerId });
   return { ...stream };
 }
 
@@ -139,6 +146,11 @@ function update(id, patch) {
     changes.visibility = patch.visibility;
   }
   if (patch.sharedWith !== undefined) changes.sharedWith = cleanSharedWith(patch.sharedWith);
+  if (patch.ownerId !== undefined) {
+    const next = patch.ownerId || null;
+    if (next && !auth.findById(next)) throw Object.assign(new Error('That owner does not exist.'), { status: 400 });
+    changes.ownerId = next;
+  }
   if (patch.key !== undefined) {
     const next = String(patch.key).trim();
     if (!isValidKey(next)) throw Object.assign(new Error('A stream key may only contain letters, digits, dashes and underscores (6-64 characters).'), { status: 400 });

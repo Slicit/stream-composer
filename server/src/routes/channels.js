@@ -24,14 +24,6 @@ function fail(res, err) {
   res.status(status).json({ error: err.message || 'Something went wrong.' });
 }
 
-function ownedOrAdmin(channel, user) {
-  if (!channel) throw Object.assign(new Error('No such channel.'), { status: 404 });
-  if (channel.ownerId !== user.id && user.role !== 'admin') {
-    throw Object.assign(new Error('You do not own this channel.'), { status: 403 });
-  }
-  return channel;
-}
-
 // -------------------------------------------------------------- viewing
 
 router.get('/channels/:slug/state', channels.requireChannelAccess, async (req, res) => {
@@ -137,7 +129,7 @@ mine.post('/', (req, res) => {
 
 mine.patch('/:id', (req, res) => {
   try {
-    ownedOrAdmin(channels.find(req.params.id), req.user);
+    access.requireOwner(channels.find(req.params.id), req.user);
     res.json({ channel: channels.update(req.params.id, req.body || {}) });
   } catch (err) {
     fail(res, err);
@@ -146,7 +138,7 @@ mine.patch('/:id', (req, res) => {
 
 mine.delete('/:id', (req, res) => {
   try {
-    ownedOrAdmin(channels.find(req.params.id), req.user);
+    access.requireOwner(channels.find(req.params.id), req.user);
     channels.remove(req.params.id);
     res.json({ ok: true });
   } catch (err) {
@@ -157,7 +149,7 @@ mine.delete('/:id', (req, res) => {
 // No express.json() on this one — the body is the image itself, not JSON.
 mine.put('/:id/background', express.raw({ type: 'image/*', limit: '5mb' }), (req, res) => {
   try {
-    ownedOrAdmin(channels.find(req.params.id), req.user);
+    access.requireOwner(channels.find(req.params.id), req.user);
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       throw Object.assign(new Error('Send the image as the raw request body with an image Content-Type (png, jpeg, webp or gif).'), { status: 400 });
     }

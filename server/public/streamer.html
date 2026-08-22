@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>My streams — Stream Composer</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='5' fill='%233987e5'/%3E%3Crect x='3' y='4' width='6' height='5' rx='1' fill='white'/%3E%3Crect x='11' y='4' width='6' height='5' rx='1' fill='white' opacity='.7'/%3E%3Crect x='3' y='11' width='14' height='5' rx='1' fill='white' opacity='.85'/%3E%3C/svg%3E">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" id="brand-mark"></span>
+      <span>Stream Composer</span>
+      <span style="color:var(--ink-muted); font-weight:500;">/ my streams</span>
+    </div>
+    <span class="spacer"></span>
+    <div class="row" id="user-area">
+      <a class="btn" href="/">Viewer</a>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-panel="streams">Streams</button>
+      <button class="tab" data-panel="restream">Restream</button>
+    </nav>
+
+    <section class="panel is-active" id="panel-streams">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Add a stream</h2><span class="spacer"></span><span class="hint" id="quota-readout"></span></div>
+        <form id="stream-form" class="row" style="align-items:flex-end;">
+          <label class="field" style="flex:1 1 220px; margin:0;">
+            <span>Name</span>
+            <input name="name" placeholder="Camera 1" required maxlength="48">
+          </label>
+          <label class="field" style="flex:1 1 200px; margin:0;">
+            <span>Nickname <span style="color:var(--ink-muted); font-weight:400;">(on air)</span></span>
+            <input name="nickname" placeholder="shown on the stream" maxlength="32">
+          </label>
+          <label class="field" style="flex:0 1 140px; margin:0;">
+            <span>Visibility</span>
+            <select name="visibility">
+              <option value="private" selected>Private</option>
+              <option value="public">Public</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">Create</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Your streams</h2>
+          <span class="spacer"></span>
+          <button id="streams-refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="streams-table"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-restream">
+      <div class="card" style="margin-bottom:1rem;">
+        <div class="card-head"><h2>Forward one of your streams somewhere else</h2></div>
+        <p class="hint" style="margin:0 0 1rem;">
+          Sends one of your streams on to another platform exactly as it arrived — no re-encoding.
+          A source can go to as many destinations as you like, each switched on and off on its own.
+        </p>
+        <form id="relay-form">
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:1 1 220px;">
+              <span>Source</span>
+              <select name="streamId" id="relay-source" required></select>
+              <span class="hint">Which of your streams to forward.</span>
+            </label>
+            <label class="field" style="flex:1 1 220px;">
+              <span>Where to</span>
+              <select name="provider" id="relay-provider"></select>
+              <span class="hint" id="relay-provider-hint"></span>
+            </label>
+          </div>
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:2 1 320px;">
+              <span id="relay-url-label">Server URL</span>
+              <input name="url" id="relay-url" class="mono" placeholder="rtmp://" autocomplete="off" spellcheck="false">
+              <span class="hint" id="relay-url-hint"></span>
+            </label>
+            <label class="field" style="flex:2 1 280px;">
+              <span id="relay-key-label">Stream key</span>
+              <input name="key" id="relay-key" type="password" autocomplete="off" spellcheck="false">
+              <span class="hint" id="relay-key-hint"></span>
+            </label>
+          </div>
+          <div class="row" style="gap:.75rem; align-items:flex-start;">
+            <label class="field" style="flex:1 1 220px;">
+              <span>Name <span style="color:var(--ink-muted); font-weight:400;">(optional)</span></span>
+              <input name="name" maxlength="48" placeholder="e.g. Main channel">
+            </label>
+            <label class="field" style="flex:1 1 220px;">
+              <span>Audio</span>
+              <select name="audio">
+                <option value="copy">Pass through untouched</option>
+                <option value="aac">Re-encode to AAC</option>
+              </select>
+              <span class="hint">RTMP can only carry AAC. Re-encode only if the destination rejects the audio.</span>
+            </label>
+          </div>
+          <button class="primary" type="submit">Add destination</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Destinations</h2>
+          <span class="spacer"></span>
+          <span id="relay-summary" style="font-size:.78rem; color:var(--ink-muted);"></span>
+          <button id="relays-refresh" class="ghost">Refresh</button>
+        </div>
+        <div id="relays-table"></div>
+        <pre id="relay-command-box" class="log-view" style="display:none; margin-top:.85rem;"></pre>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="obs-dialog" style="background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:14px; padding:0; max-width:min(560px,92vw); width:100%;">
+    <div style="padding:1.1rem 1.2rem;">
+      <div class="card-head"><h2 id="obs-title">OBS setup</h2><span class="spacer"></span><button class="ghost" id="obs-close">Close</button></div>
+      <div id="obs-body"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="/assets/streamer.js"></script>
+</body>
+</html>
