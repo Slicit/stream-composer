@@ -80,6 +80,12 @@ services:
     depends_on: [postgres]
     environment:
       DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_development
+      # Lets `bundle exec rspec` run correctly no matter how it's invoked
+      # (RAILS_ENV defaults to "test" via rails_helper.rb) — see the
+      # comment on config/database.yml's test: section for why this has
+      # to be spelled out explicitly rather than relying on DATABASE_URL's
+      # normal auto-merge.
+      TEST_DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_test
       RAILS_ENV: development
       # Shared with dataplane's RAILS_INTERNAL_API_TOKEN above — gates
       # Internal::StreamsController, the only thing the Go service is

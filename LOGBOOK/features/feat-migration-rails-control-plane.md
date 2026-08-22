@@ -240,6 +240,47 @@ repo, not its own.
   exist" rather than "wrong secret for this endpoint." Worth remembering
   which secret belongs to which direction before assuming a test result.
 
+### 2026-08-22 (RSpec suite silently running under the wrong Rails env)
+
+- **Bug:** every RSpec request spec started failing with a universal 403,
+  regardless of endpoint — even `POST /api/auth/login` with correct
+  credentials. Root cause: `docker-compose.migration.yml` bakes
+  `RAILS_ENV=development` into the `rails` container (needed for the live
+  service), and that env var leaks into every `docker exec ... bundle exec
+  rspec` invocation. `spec/rails_helper.rb`'s `ENV["RAILS_ENV"] ||= "test"`
+  only applies when unset, so the whole suite silently ran under
+  `development` instead of `test` — which mostly still worked, except
+  `development.rb`'s `config.hosts << "rails"` (added for the Go data
+  plane to reach Rails by its Compose hostname) then blocked every
+  request-spec's default `www.example.com` host via
+  `ActionDispatch::HostAuthorization`, rendered as a 403 with no
+  indication the environment was ever wrong. A secondary symptom
+  (`ActiveRecord::ConnectionNotEstablished` against a local Postgres
+  socket during `db:test:load_schema`) was a real, separate gap: the
+  `test:` section of `database.yml` had no way to reach the `postgres`
+  container at all.
+- **Fix:** `spec/rails_helper.rb` now sets `ENV["RAILS_ENV"] = "test"`
+  unconditionally (not `||=`) — specs must always run under `test`, full
+  stop, regardless of the ambient environment. `config/database.yml`'s
+  `test:` section gained an explicit `url: <%= ENV["TEST_DATABASE_URL"] %>`
+  branch (Rails only auto-merges `DATABASE_URL` into *`Rails.env`'s own*
+  section; `maintain_test_schema!` always targets the `test:` section
+  specifically regardless of which env the process is actually running
+  under, so it needs its own URL spelled out). `docker-compose.migration.
+  yml`'s `rails` service gained `TEST_DATABASE_URL`, pointing at a
+  `scmig_test` database on the same `postgres` container.
+- **Why this matters beyond the immediate fix:** `||=` for `RAILS_ENV` is
+  the Rails-generated default specifically so an unusual, deliberate
+  override is still possible — but in a containerized dev stack where the
+  same image serves both the live app and the test suite, that flexibility
+  is exactly the footgun: nothing overrode it on purpose, the container's
+  own baked default silently won every time, and the resulting failures
+  (403 everywhere) gave no clue that the environment was ever wrong.
+- **Impact:** `bundle exec rspec` now reliably passes (134 examples, 0
+  failures, matching the pre-regression baseline) no matter how it's
+  invoked — with or without an explicit `-e RAILS_ENV=...` override — and
+  the earlier connection-noise on every run is gone too.
+
 ## Links
 
 - Branch: `migration/go-rails-react`
