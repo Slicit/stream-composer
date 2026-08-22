@@ -1,7 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useChannelState } from '@/hooks/useChannelState'
 import { ComposedGrid } from '@/components/ComposedGrid'
-import { AudioPicker } from '@/components/AudioPicker'
 import { Card, CardContent } from '@/components/ui/card'
 
 // A channel's own viewer, at /c/:slug — same grid/audio-picking machinery
@@ -48,7 +47,6 @@ export function ChannelViewerPage() {
     >
       {state.channel && <h1 className="text-2xl font-semibold tracking-tight">{state.channel.name}</h1>}
       <ComposedGrid state={state} />
-      <AudioPicker streams={state.streams} />
     </main>
   )
 }

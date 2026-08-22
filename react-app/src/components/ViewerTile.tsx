@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { WhepClient, type WhepState } from '@/lib/whep'
+import { WhepClient, type WhepState, type WhepStats } from '@/lib/whep'
 
 interface ViewerTileProps {
   path: string // e.g. s/<playbackId>
@@ -7,16 +7,20 @@ interface ViewerTileProps {
   cell: { x: number; y: number; w: number; h: number }
   canvasWidth: number
   canvasHeight: number
+  paused?: boolean
+  showStats?: boolean
+  onStats?: (stats: WhepStats) => void
 }
 
 // One on-air source, one WHEP session, one absolutely-positioned cell —
 // percentages of the composed canvas so the grid scales with the player
 // and stays identical to the encoded arrangement at any size, mirroring
 // server/public/assets/app.js's startWebGrid().
-export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight }: ViewerTileProps) {
+export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused = false, showStats = false, onStats }: ViewerTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [state, setState] = useState<WhepState>('connecting')
   const [message, setMessage] = useState<string | null>(null)
+  const [stats, setStats] = useState<WhepStats | null>(null)
 
   useEffect(() => {
     const client = new WhepClient(`/mtx/webrtc/${path}/whep`, { video: true, audio: false })
@@ -27,19 +31,32 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight }: View
     const offTrack = client.onTrack(() => {
       if (videoRef.current) {
         videoRef.current.srcObject = client.stream
-        videoRef.current.play().catch(() => {
+        videoRef.current.play()?.catch(() => {
           /* autoplay policy — the muted attribute below should satisfy it */
         })
       }
+    })
+    const offStats = client.onStats((detail) => {
+      setStats(detail)
+      onStats?.(detail)
     })
     client.start()
 
     return () => {
       offState()
       offTrack()
+      offStats()
       client.stop()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (paused) video.pause()
+    else video.play()?.catch(() => {})
+  }, [paused])
 
   const style = {
     left: `${(cell.x / canvasWidth) * 100}%`,
@@ -54,6 +71,11 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight }: View
       {state !== 'playing' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-2 text-center text-xs text-white/80">
           {state === 'offline' ? 'Not on air' : state === 'error' ? message || 'Playback error' : 'Connecting…'}
+        </div>
+      )}
+      {showStats && stats && (
+        <div className="pointer-events-none absolute left-1 top-1 rounded bg-black/70 px-1.5 py-1 font-mono text-[10px] leading-tight text-white/80">
+          {stats.width}×{stats.height} · {stats.fps}fps · {stats.kbps}kb/s
         </div>
       )}
       <div className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-xs text-white">{name}</div>

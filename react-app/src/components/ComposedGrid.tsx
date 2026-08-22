@@ -1,7 +1,10 @@
+import { useMemo, useRef, useState } from 'react'
 import { ViewerTile } from '@/components/ViewerTile'
+import { PlayerOverlay } from '@/components/PlayerOverlay'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { ViewerState } from '@/api/viewerState'
+import type { WhepStats } from '@/lib/whep'
 
 interface ComposedGridProps {
   state: ViewerState
@@ -12,10 +15,27 @@ interface ComposedGridProps {
 // viewer — same layout math (from GET /api/state or GET /api/channels/
 // :slug/state), same three tile kinds: a live WhepClient tile, a
 // playability-problem placeholder, and (channel state only) a restricted
-// placeholder for a member the viewer cannot reach.
+// placeholder for a member the viewer cannot reach. The bottom PlayerOverlay
+// (play/pause, stats, audio picker, fullscreen) mirrors the pre-migration
+// app's .player-overlay — see PlayerOverlay.tsx for why it's styled outside
+// the shadcn design system.
 export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start streaming and the grid appears here automatically.' }: ComposedGridProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [paused, setPaused] = useState(false)
+  const [showStats, setShowStats] = useState(false)
+  const [statsByKey, setStatsByKey] = useState<Record<string, WhepStats>>({})
+
   const onAir = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
   const streamsByKey = new Map(state.streams.map((s) => [s.key, s]))
+
+  const aggregate = useMemo(() => {
+    const values = Object.values(statsByKey)
+    return {
+      sources: values.length,
+      fps: values.length ? Math.round(values.reduce((sum, s) => sum + s.fps, 0) / values.length) : 0,
+      kbps: Math.round(values.reduce((sum, s) => sum + s.kbps, 0)),
+    }
+  }, [statsByKey])
 
   if (!state.program.ready || !state.layout || onAir.length === 0) {
     return (
@@ -28,7 +48,11 @@ export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start stre
   const layout = state.layout
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg bg-black" style={{ aspectRatio: `${layout.width} / ${layout.height}` }}>
+    <div
+      ref={containerRef}
+      className="group relative w-full overflow-hidden rounded-lg border bg-black"
+      style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
+    >
       {onAir.map((source, i) => {
         const cell = layout.cells[i]
         if (!cell) return null
@@ -68,8 +92,31 @@ export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start stre
 
         if (!meta?.path) return null
 
-        return <ViewerTile key={source.key} path={meta.path} name={source.name} cell={cell} canvasWidth={layout.width} canvasHeight={layout.height} />
+        return (
+          <ViewerTile
+            key={source.key}
+            path={meta.path}
+            name={source.name}
+            cell={cell}
+            canvasWidth={layout.width}
+            canvasHeight={layout.height}
+            paused={paused}
+            showStats={showStats}
+            onStats={(stats) => setStatsByKey((prev) => ({ ...prev, [source.key]: stats }))}
+          />
+        )
       })}
+      <PlayerOverlay
+        containerRef={containerRef}
+        streams={state.streams}
+        paused={paused}
+        onTogglePause={() => setPaused((p) => !p)}
+        showStats={showStats}
+        onToggleStats={() => setShowStats((s) => !s)}
+        sourceCount={aggregate.sources}
+        fps={aggregate.fps}
+        kbps={aggregate.kbps}
+      />
     </div>
   )
 }
