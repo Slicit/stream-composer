@@ -15,6 +15,7 @@ const encoder = require('../encoder');
 const logger = require('../logger');
 const stats = require('../stats');
 const mediamtx = require('../mediamtx');
+const bandwidthHistory = require('../bandwidthHistory');
 const { LAYOUTS, isValidLayout, computeLayout } = require('../layout');
 
 const router = express.Router();
@@ -419,6 +420,10 @@ router.get('/status', async (_req, res) => {
     node: { version: process.version, memoryMb: Math.round(process.memoryUsage().rss / 1048576), uptimeSec: Math.round(process.uptime()) },
     app: { version: config.version, hostname: os.hostname() },
   });
+});
+
+router.get('/bandwidth-history', (_req, res) => {
+  res.json({ history: bandwidthHistory.get() });
 });
 
 module.exports = router;

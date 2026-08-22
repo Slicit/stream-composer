@@ -2,7 +2,7 @@
 /* eslint-env browser */
 
 import { WhepClient, canReceiveH264 } from './whep.js';
-import { $, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, formatDuration, copyToClipboard } from './ui.js';
+import { $, h, api, toast, icon, statusChip, formatBitrate, bitrateUnit, formatDuration, copyToClipboard, pluralize } from './ui.js';
 
 const WEBRTC = '/mtx/webrtc';
 const HLS = '/mtx/hls';
@@ -592,7 +592,19 @@ function renderAudioList() {
 function renderAudioChips(streams) {
   const box = $('#audio-chips');
   if (!box) return;
+  const mutedChip = h('button', {
+    class: `audio-chip${app.audioKey === null ? ' is-active' : ''}`,
+    type: 'button',
+    dataset: { key: '' },
+    title: 'Mute the audio monitor',
+    onclick: () => selectAudio(null),
+  }, [
+    h('span', { class: 'name', text: 'Muted' }),
+    h('span', { class: 'meta', text: 'default' }),
+  ]);
+
   box.replaceChildren(
+    mutedChip,
     ...streams.map((s) => {
       const active = app.audioKey === s.key;
       return h('button', {
@@ -749,7 +761,7 @@ function renderTiles() {
       value: formatBitrate(kbps),
       unit: bitrateUnit(kbps),
       sub: stats.codec
-        ? `${stats.codec.toUpperCase()}${web ? ` · ${onAir} streams` : ''}`
+        ? `${stats.codec.toUpperCase()}${web ? ` · ${pluralize(onAir, 'stream')}` : ''}`
         : web
           ? 'across every source'
           : 'target ' + formatBitrate(s.program.bitrateKbps) + ' ' + bitrateUnit(s.program.bitrateKbps),
@@ -804,7 +816,7 @@ function renderPlayerStats() {
   $('#overlay-readout').textContent = !s
     ? ''
     : s.sources
-      ? `${s.sources} sources · ${s.fps} fps · ${s.kbps} kb/s`
+      ? `${pluralize(s.sources, 'source')} · ${s.fps} fps · ${s.kbps} kb/s`
       : `${s.width}×${s.height} · ${s.fps} fps · ${s.kbps} kb/s`;
 }
 

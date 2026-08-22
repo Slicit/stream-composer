@@ -427,6 +427,22 @@
           </form>
         </div>
       </div>
+
+      <div class="card" style="margin-top:1rem;">
+        <div class="card-head">
+          <h2>Bandwidth, last 7 days</h2>
+          <span class="spacer"></span>
+          <span class="hint">Hover the chart for exact values</span>
+        </div>
+        <div style="position:relative; height:260px;">
+          <canvas id="bandwidth-chart"></canvas>
+        </div>
+        <p style="font-size:.75rem; color:var(--ink-muted); margin:.6rem 0 0;">
+          Inbound: everything published in over RTMP/SRT. Outbound: everything MediaMTX has read from any
+          path — viewer playback, restream forwarding and the compositor's own reads combined, sampled every
+          15 minutes.
+        </p>
+      </div>
     </section>
 
     <section class="panel" id="panel-logs">

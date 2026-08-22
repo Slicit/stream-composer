@@ -11,6 +11,7 @@ const mediamtx = require('./mediamtx');
 const compositor = require('./compositor');
 const relays = require('./relays');
 const audioRelay = require('./audioRelay');
+const bandwidthHistory = require('./bandwidthHistory');
 const channels = require('./channels');
 const proxy = require('./proxy');
 
@@ -123,6 +124,20 @@ app.get('/vendor/hls.js', (_req, res) => {
   }
 });
 
+// Same reasoning, for the admin Server tab's bandwidth chart. chart.js's
+// package.json does not list the UMD build in its "exports" map (only the
+// ESM/CJS entry points are importable subpaths), so it cannot be
+// require.resolve()'d directly the way hls.js's build can — resolve the
+// package's real entry point instead and find the UMD file next to it.
+app.get('/vendor/chart.js', (_req, res) => {
+  try {
+    const dist = path.dirname(require.resolve('chart.js'));
+    res.type('application/javascript').sendFile(path.join(dist, 'chart.umd.min.js'));
+  } catch (_) {
+    res.status(404).type('text/plain').send('// chart.js is not installed');
+  }
+});
+
 app.get('/login', (req, res) => {
   if (req.user) return res.redirect('/');
   return res.sendFile(path.join(publicDir, 'login.html'));
@@ -202,6 +217,7 @@ async function main() {
     // Likewise the audio monitor's Opus transcode: it follows the sources,
     // not the composed programme.
     audioRelay.startLoop();
+    bandwidthHistory.startLoop();
   });
 
   const shutdown = (signal) => {
@@ -209,6 +225,7 @@ async function main() {
     compositor.stop();
     relays.stop();
     audioRelay.stop();
+    bandwidthHistory.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 8000).unref();
   };

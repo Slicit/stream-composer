@@ -1045,6 +1045,21 @@ test('the server status reports how much is being forwarded', async () => {
   }
 });
 
+test('the bandwidth history endpoint answers with an array, MediaMTX unreachable or not', async () => {
+  const bandwidthHistory = require('../src/bandwidthHistory');
+  // Sampling against the dead MediaMTX this test suite always points at
+  // must not throw, and must not record a bogus point from the attempt.
+  const before = bandwidthHistory.get().length;
+  await bandwidthHistory.sample();
+  assert.strictEqual(bandwidthHistory.get().length, before, 'a failed sample records nothing');
+  assert.doesNotThrow(() => bandwidthHistory.nudge());
+
+  const res = await call('/api/admin/bandwidth-history');
+  assert.strictEqual(res.status, 200);
+  const body = await res.json();
+  assert.ok(Array.isArray(body.history));
+});
+
 // ------------------------------------------------------------------ access
 
 /**

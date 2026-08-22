@@ -665,7 +665,8 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
 .audio-chip:hover { border-color: var(--line-strong, var(--line)); color: var(--ink); }
 .audio-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
 .audio-chip:disabled { opacity: 0.5; cursor: not-allowed; }
-.audio-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.audio-chip .meta { color: var(--ink-muted); font-weight: 400; margin-left: 0.15rem; }
 
 /* ------------------------------------------------------------- tables */
 

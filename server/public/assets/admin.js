@@ -31,6 +31,7 @@ function showPanel(name) {
   if (name === 'logs') loadLogs();
   if (name === 'restream') loadRelays();
   if (name === 'channels') loadChannels();
+  if (name === 'server') loadBandwidthHistory();
 }
 
 $$('.tab').forEach((tab) => tab.addEventListener('click', () => showPanel(tab.dataset.panel)));
@@ -1021,6 +1022,80 @@ function sparkline(values) {
   $('#spark-label').textContent = `peak ${Math.round(Math.max(...values))} kb/s`;
 }
 
+/** chart.js ships as a UMD bundle, so it goes in through a script tag, not import(). */
+function loadScript(src) {
+  if (window.Chart) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error(`could not load ${src}`));
+    document.head.appendChild(el);
+  });
+}
+
+function formatKbps(v) {
+  return `${formatBitrate(v)} ${bitrateUnit(v)}`;
+}
+
+let bandwidthChart = null;
+
+async function renderBandwidthChart(history) {
+  const canvas = $('#bandwidth-chart');
+  if (!canvas) return;
+  try {
+    await loadScript('/vendor/chart.js');
+  } catch (_) {
+    return; // the tab still works without it; there is just no chart
+  }
+  const Chart = window.Chart;
+  if (!Chart) return;
+
+  const labels = history.map((p) =>
+    new Date(p.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+  );
+  const inbound = history.map((p) => p.inboundKbps);
+  const outbound = history.map((p) => p.outboundKbps);
+
+  if (bandwidthChart) {
+    bandwidthChart.data.labels = labels;
+    bandwidthChart.data.datasets[0].data = inbound;
+    bandwidthChart.data.datasets[1].data = outbound;
+    bandwidthChart.update();
+    return;
+  }
+
+  bandwidthChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Inbound', data: inbound, borderColor: '#3987e5', backgroundColor: 'rgba(57,135,229,.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 1.5 },
+        { label: 'Outbound', data: outbound, borderColor: '#0ca30c', backgroundColor: 'rgba(12,163,12,.12)', fill: true, tension: 0.25, pointRadius: 0, borderWidth: 1.5 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { maxTicksLimit: 10, color: '#898781' }, grid: { color: 'rgba(255,255,255,.08)' } },
+        y: { beginAtZero: true, ticks: { color: '#898781', callback: (v) => formatKbps(v) }, grid: { color: 'rgba(255,255,255,.08)' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#c3c2b7' } },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${formatKbps(ctx.parsed.y)}` } },
+      },
+    },
+  });
+}
+
+async function loadBandwidthHistory() {
+  const data = await api('/api/admin/bandwidth-history', { quiet: true }).catch(() => null);
+  if (!data) return;
+  renderBandwidthChart(data.history);
+}
+
 function renderServer() {
   const st = admin.status;
   if (!st) return;
@@ -1211,3 +1286,8 @@ setInterval(loadStreams, 5000);
 setInterval(() => {
   if ($('#panel-restream').classList.contains('is-active')) loadRelays();
 }, 3000);
+// The server samples every fifteen minutes — refreshing far more often than
+// that would just redraw the same chart.
+setInterval(() => {
+  if ($('#panel-server').classList.contains('is-active')) loadBandwidthHistory();
+}, 5 * 60 * 1000);

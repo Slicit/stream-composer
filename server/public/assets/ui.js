@@ -65,6 +65,11 @@ export async function api(path, { method = 'GET', body, quiet = false } = {}) {
 
 // ------------------------------------------------------------- formatters
 
+/** "1 source", "2 sources" — irregular plurals pass their own form as `plural`. */
+export function pluralize(count, word, plural = `${word}s`) {
+  return `${count} ${count === 1 ? word : plural}`;
+}
+
 export function formatBitrate(kbps) {
   if (!kbps || kbps < 1) return '0';
   if (kbps >= 1000) return (kbps / 1000).toFixed(kbps >= 10000 ? 0 : 1);

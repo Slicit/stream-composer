@@ -333,6 +333,21 @@ A stream server holds a handful of users and keys. A database would mean a nativ
 dependency, migrations and a bigger image, in exchange for nothing at this scale.
 Back it up by copying one file — `make backup` does exactly that.
 
+`/data/bandwidth-history.json` is deliberately a second, separate file:
+`server/src/bandwidthHistory.js` samples MediaMTX's own byte counters every
+fifteen minutes, computes inbound/outbound kb/s from the delta since the
+last sample, and keeps seven days of points for the Admin → Server tab's
+bandwidth chart. It does not belong in `config.json` — that file's whole
+shape is "settings", written atomically on every change; a growing
+telemetry log is a different kind of data with a different write pattern
+(append, prune, rewrite whole) and has no business being rewritten every
+time an operator, say, renames a stream. "Outbound" here means every read
+MediaMTX has served from any path — viewer playback, restream forwarding
+and the compositor's own reads combined; MediaMTX does not distinguish
+readers, and separating them would mean tracking bytes per session
+ourselves. The chart says as much rather than implying a precision the
+number does not have.
+
 ## Logging
 
 Two channels under `/data/logs`, both rotated by size:
@@ -370,4 +385,4 @@ console. They cannot drift apart.
 | Alpine + system ffmpeg | ~250 MB image against ~400 MB for Debian, and Alpine's ffmpeg has the filters this needs. |
 | Non-root at runtime | The entrypoint fixes volume ownership, then drops to `node`. |
 | Two compose overlays | Plain HTTP and TLS deployments differ only in published ports and Traefik. `COMPOSE_FILE` in `.env` selects the pair, so `docker compose up -d` always does the right thing. |
-| hls.js vendored, not from a CDN | Installations on networks without outbound internet still work. |
+| hls.js and chart.js vendored, not from a CDN | Installations on networks without outbound internet still work. Both are client-only — the `express` count above is about what the *server* depends on. |
