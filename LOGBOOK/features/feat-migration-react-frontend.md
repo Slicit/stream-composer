@@ -41,7 +41,27 @@ instead of guessed through, per the user's own instruction for this phase.
    bootstrap admin, watched the user table render real data from Postgres
    through Rails through the Vite proxy, created a real user through the
    UI and watched it appear without a page reload.~~
-6. Not started, and not guessed at: everything below "Open questions."
+6. ~~**Design system answered**: shadcn/ui (Radix + Tailwind CSS v3, the
+   classic `shadcn@2.3.0` CLI — the newer `shadcn@4.x` targets Next.js/
+   Tailwind v4 by default and its interactive preset picker did not fit
+   this non-interactive box workflow; `2.3.0` is the well-documented
+   "new-york style + CSS variables" flow everything else assumes).
+   `src/index.css`'s theme tokens are the vanilla app's
+   `server/public/assets/style.css` `:root` palette converted hex -> HSL
+   triple, not a new palette — background, card, primary (accent blue),
+   destructive (critical red), border and muted-foreground all confirmed
+   against a real running instance via computed styles (`rgb(26,26,26)`
+   card, `rgb(56,134,229)` primary button — both within 1 unit of the
+   source hex, i.e. imperceptible). `LoginPage`, `AdminUsersPage`,
+   `NavBar` rebuilt on `Button`/`Input`/`Label`/`Card`/`Table`/`Select`.
+   Radix's `Select` needs `hasPointerCapture`/`scrollIntoView` stubs to
+   run in jsdom at all (`src/setupTests.ts`) — without them every test
+   that opens one throws before asserting anything; a new test exercises
+   an actual Select open/select/close cycle to prove the stubs work, not
+   just that the page renders. 10 Vitest tests (was 9), `tsc -b` and
+   `vite build` both clean, re-verified live in a real browser.~~
+7. Not started, and not guessed at: everything below "Open questions"
+   other than design system (now resolved, see above).
 
 ## Open questions for this phase
 
@@ -57,12 +77,8 @@ these before building further, not infer one from what already exists:
   until React has full parity, or is there a cutover point per surface
   (e.g., admin first, viewer last)? This affects almost every other
   question below.
-- **Design system: reuse `server/public/assets/style.css`, or build a new
-  one?** This phase's placeholder CSS (`src/index.css`) is intentionally
-  minimal and not meant to be the answer — it exists so the login/admin
-  screens are usable, nothing more. The existing stylesheet is extensive
-  and already themed; porting it (as CSS, or as a real component library)
-  is a real option, not just "write new CSS."
+- ~~**Design system**~~ — answered 2026-08-22: shadcn/ui, themed from the
+  vanilla app's own palette. See the Plan and Decisions.
 - **How does the viewer/player page work in React at all?** This is the
   single biggest gap. The vanilla app's `app.js` does WHEP session
   negotiation directly against the Go data plane's media proxy
@@ -96,10 +112,46 @@ these before building further, not infer one from what already exists:
   admin UI, the streamer role's self-service pages
   (`/streams/mine`, `/relays/mine`), the channels self-service page
   (`/channels/mine`, including the background-image upload), admin
-  settings. All straightforward extensions of the `AdminUsersPage`
-  pattern once the design-system question above is answered — deliberately
-  not started ahead of that answer, to avoid building five screens in a
-  style that then has to be redone.
+  settings. Now unblocked — straightforward extensions of the
+  `AdminUsersPage` pattern on the shadcn components already in
+  `src/components/ui/` — but still deliberately not started in this
+  session, to keep this a reviewable slice rather than five more screens
+  at once.
+
+## Decisions
+
+### 2026-08-22 (shadcn theme)
+
+- **Decision:** pinned to `shadcn@2.3.0` (the CLI package's own version,
+  not a component version) rather than the `@latest` (4.19.0 at the time).
+- **Why:** 4.x's `init` defaults to a Next.js template and an interactive,
+  arrow-key preset picker (Nova/Vega/Maia/...) bundling opinionated
+  font/icon choices — there is no scriptable way to say "just Tailwind CSS
+  variables I will set myself," and Ink-style arrow-key prompts cannot be
+  driven by piped stdin the way this box's non-interactive workflow needs.
+  `2.3.0` is the classic flow (style/base-color/CSS-variables prompts,
+  all answerable via `-y -d -f`) virtually every existing shadcn tutorial
+  and this session's own knowledge assumes.
+- **Impact:** Tailwind CSS v3 (not v4) — `2.3.0` detects Tailwind via
+  `tailwind.config.js`, which v4's CSS-only configuration doesn't produce.
+  Not a real limitation for a project this size; revisit only if a
+  concrete v4 feature is needed later.
+
+- **Decision:** the theme is the vanilla app's existing palette, converted,
+  not a new one.
+- **Why:** the user's explicit instruction — "craft a theme that matches
+  application before migration." `server/public/assets/style.css`'s
+  `:root` block already encodes real design decisions (the reserved
+  status-color palette, the specific blue, the neutral-warm grays);
+  redoing that from scratch would be inventing a second product identity
+  mid-migration for no reason.
+- **Impact:** every hex value in the source `:root` was converted to HSL
+  by hand and mapped onto shadcn's token names (`--background` <-
+  `--plane`, `--primary` <- `--accent`, `--destructive` <- `--critical`,
+  etc. — see `src/index.css`'s inline comments for the full mapping).
+  Verified against a live instance, not just by eye: computed
+  `backgroundColor`/`color` on real rendered elements came back within 1
+  RGB unit of the source hex values.
 
 ## Links
 

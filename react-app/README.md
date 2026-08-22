@@ -6,6 +6,16 @@ TypeScript, talking to `rails-service`'s API — nothing here talks to Go or
 MediaMTX directly (see `docs/ARCHITECTURE.md`'s security model: playback is
 proxied, not something a frontend should reach for on its own).
 
+**Design system: shadcn/ui** (Radix primitives, Tailwind CSS v3, the
+classic `shadcn@2.3.0` CLI — the "new-york" style, `components.json`).
+`src/index.css`'s theme tokens are lifted directly from the vanilla app's
+`server/public/assets/style.css` `:root` block, converted from hex to the
+bare `H S% L%` triples shadcn/Tailwind expect — same background, surface,
+ink, accent and status colors, confirmed pixel-for-pixel via computed
+styles in a real browser. The app is dark-only (`color-scheme: dark`, no
+toggle), same as the app it replaces, so there is one `:root` palette, no
+`.light`/`.dark` split.
+
 No Node toolchain is required locally — everything here runs through
 Docker, on the same dev box as the other two services.
 
@@ -30,6 +40,13 @@ proxy putting both behind the same host).
 
 ## Layout
 
+- `src/index.css`, `tailwind.config.js`, `components.json` — the theme.
+  See the note above; change the token values here to re-theme everything,
+  not per-component.
+- `src/components/ui/` — shadcn's generated primitives (`button`, `input`,
+  `label`, `card`, `table`, `select`, `badge`, `separator`). Owned by the
+  project once generated, not a dependency — edit directly rather than
+  fighting the CLI if one needs to diverge from its default.
 - `src/api/client.ts` — a thin fetch wrapper (`credentials: 'include'`,
   JSON in/out, throws `ApiError` with the server's own message).
 - `src/api/types.ts` — TypeScript types matching each Rails model's

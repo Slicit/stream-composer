@@ -17,7 +17,7 @@ export function App() {
           path="/admin"
           element={
             <ProtectedRoute roles={['admin']}>
-              <main className="wrap">
+              <main className="mx-auto w-full max-w-4xl px-4 py-8">
                 <AdminUsersPage />
               </main>
             </ProtectedRoute>

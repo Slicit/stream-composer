@@ -21,11 +21,10 @@ function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   )
 }
 
-// The username cell and the role <select> cell both flatten to the text
-// "admin" for accessible-name purposes when the row's role is admin (the
-// select's own accessible name resolves to its selected option's text),
-// so `getByRole('cell', { name: 'admin' })` is ambiguous. Rows are stable
-// and ordered, so index into them instead.
+// The username cell's text and the row's role-Select trigger can both
+// contain "admin" (the trigger shows the current role as its visible
+// value), so a plain getByText('admin') is ambiguous within a row. Rows
+// are stable and ordered, so index into them instead of querying by text.
 function dataRows() {
   return screen.getAllByRole('row').slice(1) // row 0 is the header
 }
@@ -74,6 +73,32 @@ describe('AdminUsersPage', () => {
     await userEvent.click(within(form).getByRole('button', { name: 'Add user' }))
 
     expect(await screen.findByText('newperson')).toBeInTheDocument()
+  })
+
+  it('changes a role via the Select and PATCHes the server', async () => {
+    let users: User[] = [admin, viewer]
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users' && (!init || init.method === undefined)) return jsonResponse({ users })
+      if (url === '/api/admin/users/viewer-1' && init?.method === 'PATCH') {
+        const body = JSON.parse(init.body as string)
+        users = users.map((u) => (u.id === 'viewer-1' ? { ...u, role: body.role } : u))
+        return jsonResponse({ user: users.find((u) => u.id === 'viewer-1') })
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Role for viewer-1' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'streamer' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/admin/users/viewer-1')
+      expect(call).toBeTruthy()
+    })
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for viewer-1' })).toHaveTextContent('streamer'))
   })
 
   it('disables deleting the account currently signed in with', async () => {

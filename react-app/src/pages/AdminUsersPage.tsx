@@ -2,8 +2,31 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { Role, User } from '../api/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const ROLES: Role[] = ['viewer', 'streamer', 'admin']
+
+function RoleSelect({ value, onChange, label }: { value: Role; onChange: (role: Role) => void; label: string }) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as Role)}>
+      <SelectTrigger aria-label={label} className="w-32">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {ROLES.map((r) => (
+          <SelectItem key={r} value={r}>
+            {r}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 export function AdminUsersPage() {
   const { user: currentUser } = useAuth()
@@ -79,109 +102,106 @@ export function AdminUsersPage() {
   }
 
   return (
-    <section className="card">
-      <h2>Users</h2>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-
-      <form className="row" onSubmit={handleCreate} aria-label="Add a user">
-        <label className="field">
-          <span>Username</span>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-        </label>
-        <label className="field">
-          <span>Password</span>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-        </label>
-        <label className="field">
-          <span>Role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
-        {role === 'streamer' && (
-          <label className="field">
-            <span>Stream quota</span>
-            <input
-              type="number"
-              min={0}
-              max={1000}
-              value={streamQuota}
-              onChange={(e) => setStreamQuota(Number(e.target.value))}
-            />
-          </label>
+    <Card>
+      <CardHeader>
+        <CardTitle>Users</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {error && (
+          <p className="text-sm text-destructive" role="alert">
+            {error}
+          </p>
         )}
-        <button type="submit" className="primary" disabled={creating}>
-          Add user
-        </button>
-      </form>
 
-      {users === null ? (
-        <p>Loading…</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Username</th>
-              <th>Role</th>
-              <th>Stream quota</th>
-              <th>Last signed in</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.username}</td>
-                <td>
-                  <select value={u.role} onChange={(e) => updateRole(u.id, e.target.value as Role)}>
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  {u.role === 'streamer' ? (
-                    <input
-                      type="number"
-                      min={0}
-                      max={1000}
-                      defaultValue={u.streamQuota}
-                      onBlur={(e) => {
-                        const next = Number(e.target.value)
-                        if (next !== u.streamQuota) updateQuota(u.id, next)
-                      }}
-                      aria-label={`Stream quota for ${u.username}`}
-                    />
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</td>
-                <td>
-                  <button
-                    className="ghost danger"
-                    onClick={() => remove(u.id)}
-                    disabled={u.id === currentUser?.id}
-                    title={u.id === currentUser?.id ? 'You cannot delete the account you are signed in with.' : 'Delete'}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+        <form className="flex flex-wrap items-end gap-3" onSubmit={handleCreate} aria-label="Add a user">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-username">Username</Label>
+            <Input id="new-username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-password">Password</Label>
+            <Input id="new-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label>Role</Label>
+            <RoleSelect value={role} onChange={setRole} label="Role for the new user" />
+          </div>
+          {role === 'streamer' && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-quota">Stream quota</Label>
+              <Input
+                id="new-quota"
+                type="number"
+                min={0}
+                max={1000}
+                className="w-24"
+                value={streamQuota}
+                onChange={(e) => setStreamQuota(Number(e.target.value))}
+              />
+            </div>
+          )}
+          <Button type="submit" disabled={creating}>
+            Add user
+          </Button>
+        </form>
+
+        {users === null ? (
+          <p className="text-muted-foreground">Loading…</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Username</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Stream quota</TableHead>
+                <TableHead>Last signed in</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell className="font-medium">{u.username}</TableCell>
+                  <TableCell>
+                    <RoleSelect value={u.role} onChange={(next) => updateRole(u.id, next)} label={`Role for ${u.username}`} />
+                  </TableCell>
+                  <TableCell>
+                    {u.role === 'streamer' ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        className="w-24"
+                        defaultValue={u.streamQuota}
+                        onBlur={(e) => {
+                          const next = Number(e.target.value)
+                          if (next !== u.streamQuota) updateQuota(u.id, next)
+                        }}
+                        aria-label={`Stream quota for ${u.username}`}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => remove(u.id)}
+                      disabled={u.id === currentUser?.id}
+                      title={u.id === currentUser?.id ? 'You cannot delete the account you are signed in with.' : 'Delete'}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   )
 }
