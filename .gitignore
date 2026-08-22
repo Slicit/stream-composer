@@ -4,6 +4,8 @@ npm-debug.log*
 .env.local
 .data/
 .devdata/
+# docker-compose.migration.yml's bind-mounted dev stream config
+migration-data/
 backups/
 *.log
 .DS_Store

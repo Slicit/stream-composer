@@ -1,0 +1,56 @@
+# Migration dev stack — Go data plane, standing next to (never inside) the
+# existing Node service and networks. Everything here is prefixed `scmig-`
+# and lives on its own network/ports so it can run alongside both the
+# existing stream-composer stack and unrelated projects on the same host
+# (e.g. siberian-next) with zero collisions.
+#
+# Usage:
+#   docker compose -f docker-compose.migration.yml up -d --build
+#
+# This does not publish anything to the internet — every port below is for
+# local/dev access only. INTERNAL_SECRET is a throwaway dev value; never
+# reuse it for a real deployment.
+
+name: sc-migration
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.19.1
+    container_name: scmig-mediamtx
+    restart: unless-stopped
+    environment:
+      MTX_AUTHHTTPADDRESS: http://dataplane:8080/internal/${INTERNAL_SECRET:-migration-dev-secret}/mediamtx/auth
+    volumes:
+      - ./config/mediamtx.yml:/mediamtx.yml:ro
+    ports:
+      - "11935:1935"   # RTMP ingest, for smoke-testing a publish with ffmpeg
+      - "19997:9997"   # control API, dev convenience only
+    networks: [scmig-net]
+
+  dataplane:
+    build: ./go-service
+    container_name: scmig-dataplane
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    environment:
+      PORT: 8080
+      MEDIAMTX_API: http://mediamtx:9997
+      MEDIAMTX_WEBRTC: http://mediamtx:8889
+      MEDIAMTX_HLS: http://mediamtx:8888
+      MEDIAMTX_INTERNAL_USER: composer
+      MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:-migration-dev-secret}
+      # No control plane exists yet — see internal/streamstore.JSONBridge.
+      # Bind-mount a directory onto /data and point this at a file inside it
+      # to test against real stream data; empty by default so the stack is
+      # runnable with zero setup for a first smoke test.
+      STREAM_CONFIG_PATH: ${STREAM_CONFIG_PATH:-}
+    volumes:
+      - ./migration-data:/data:ro
+    ports:
+      - "18080:8080"
+    networks: [scmig-net]
+
+networks:
+  scmig-net:
+    name: scmig-net
+    driver: bridge
