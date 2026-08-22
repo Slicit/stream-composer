@@ -15,6 +15,7 @@ Point any number of OBS instances at one server and it composes them into a sing
 ## Conventions
 
 - **No em-dashes.** Use commas, parentheses, or middle dots (`·`).
+- **Design for the human, not the API.** We're building for end users, not for someone who can read the network tab. If a value is only discoverable by inspecting a JSON response (a UUID, an internal id), the UI must resolve it for them, not hand them a text box and the API's own vocabulary. Concrete case: the restream form used to require pasting a stream's raw UUID by hand, found only by opening devtools; fixed with a searchable name-to-id `Combobox` (`react-app/src/components/ui/combobox.tsx`).
 - **Dates: `YYYY-MM-DD`.** Always absolute.
 - **File naming:** lowercase, dash-separated.
 - **Trunk-based:** work lands on `main` directly; there is currently no long-lived `feat-<slug>` branch workflow. LOGBOOK feature files still track status by content, not by branch, so `branch:` frontmatter may name a topic rather than an actual git branch.
