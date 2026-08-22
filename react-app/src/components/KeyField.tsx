@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Check, Copy, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 
 // First 4 characters plus a fixed run of asterisks — enough to tell two
 // keys apart at a glance (8 characters total) without ever rendering the
@@ -28,18 +28,18 @@ export function KeyField({ value, onRotate, label }: KeyFieldProps) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="relative">
-        <Textarea
+        <Input
+          type="text"
           readOnly
-          rows={1}
           value={maskKey(value)}
           aria-label={label}
-          className="h-8 w-24 resize-none overflow-hidden py-1.5 pr-7 font-mono text-xs leading-tight"
+          className="h-8 w-24 truncate whitespace-nowrap pr-7 font-mono text-xs"
         />
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="icon"
-          className="absolute right-0.5 top-1/2 h-6 w-6 -translate-y-1/2 bg-background"
+          className="absolute right-0 top-1/2 h-7 w-7 -translate-y-1/2"
           onClick={handleCopy}
           title="Copy key"
         >
