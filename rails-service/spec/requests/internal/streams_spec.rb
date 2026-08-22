@@ -37,7 +37,7 @@ RSpec.describe "Internal::Streams", type: :request do
       "name" => "Cam",
       "nickname" => "",
     )
-    expect(body["settings"]).to eq({ "publicViewing" => false })
+    expect(body["settings"]).to eq({ "publicViewing" => false, "homepageChannelSlug" => nil })
   end
 
   it "returns every relay destination with its real (unmasked) key" do
@@ -48,9 +48,31 @@ RSpec.describe "Internal::Streams", type: :request do
     expect(entry).to include("streamId" => stream.id, "provider" => "twitch", "key" => "real-key-value", "enabled" => true)
   end
 
+  it "returns every channel's own configuration, not its live state" do
+    channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [stream.id])
+    get "/internal/test-internal-secret/streams", as: :json
+    entry = JSON.parse(response.body)["channels"].find { |c| c["id"] == channel.id }
+    expect(entry).to include(
+      "name" => "Community Room",
+      "slug" => channel.slug,
+      "visibility" => "public",
+      "ownerId" => owner.id,
+      "sharedWith" => [],
+      "streamIds" => [stream.id],
+      "backgroundImage" => nil,
+    )
+  end
+
   it "reflects publicViewing once set" do
     AppSetting.instance.update!(public_viewing: true)
     get "/internal/test-internal-secret/streams", as: :json
     expect(JSON.parse(response.body)["settings"]["publicViewing"]).to be true
+  end
+
+  it "resolves the homepage channel to its slug" do
+    channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [])
+    AppSetting.instance.update!(homepage_channel_id: channel.id)
+    get "/internal/test-internal-secret/streams", as: :json
+    expect(JSON.parse(response.body)["settings"]["homepageChannelSlug"]).to eq(channel.slug)
   end
 end

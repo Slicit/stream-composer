@@ -13,6 +13,7 @@ module Internal
     include InternalTokenAuthenticatable
 
     def index
+      setting = AppSetting.instance
       render json: {
         streams: Stream.all.map do |s|
           { id: s.id, key: s.key, playbackId: s.playback_id, enabled: s.enabled,
@@ -23,7 +24,22 @@ module Internal
           { id: r.id, streamId: r.stream_id, provider: r.provider, name: r.name,
             url: r.url, key: r.key, audio: r.audio, enabled: r.enabled }
         end,
-        settings: { publicViewing: AppSetting.instance.public_viewing },
+        # Channels' own configuration only (name/slug/membership/access) —
+        # viewing a channel's live state is entirely the Go data plane's
+        # concern (layout, live status), same split as streams above.
+        channels: Channel.all.map do |c|
+          { id: c.id, name: c.name, slug: c.slug, visibility: c.visibility,
+            ownerId: c.owner_id, sharedWith: c.shared_with, streamIds: c.stream_ids,
+            backgroundImage: c.background_image.presence }
+        end,
+        settings: {
+          publicViewing: setting.public_viewing,
+          # Resolved to a slug here rather than handing the Go side a bare
+          # id: it already has to look the channel up by slug for every
+          # other channel request, so this way there is exactly one way to
+          # address a channel across the whole data plane, not two.
+          homepageChannelSlug: setting.homepage_channel&.slug,
+        },
       }
     end
   end
