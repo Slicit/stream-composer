@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
+import { ChannelPrefsProvider } from './contexts/ChannelPrefsContext'
 import { NavBar } from './components/NavBar'
 import { LeftNav } from './components/LeftNav'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -17,48 +18,50 @@ import { ChannelsPage } from './pages/ChannelsPage'
 export function App() {
   return (
     <AuthProvider>
-      <div className="flex min-h-svh flex-col">
-        <NavBar />
-        <div className="flex flex-1 items-stretch">
-          <LeftNav />
-          <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<ViewerPage />} />
-              <Route path="/c/:slug" element={<ChannelViewerPage />} />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute roles={['admin']}>
-                    <AdminLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<AdminUsersPage />} />
-                <Route path="streams" element={<AdminStreamsPage />} />
-                <Route path="relays" element={<AdminRelaysPage />} />
-                <Route path="channels" element={<AdminChannelsPage />} />
-              </Route>
-              <Route
-                path="/streamer"
-                element={
-                  <ProtectedRoute roles={['streamer', 'admin']}>
-                    <StreamerPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/channels"
-                element={
-                  <ProtectedRoute>
-                    <ChannelsPage />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
-          </main>
+      <ChannelPrefsProvider>
+        <div className="flex min-h-svh flex-col">
+          <NavBar />
+          <div className="flex flex-1 items-stretch">
+            <LeftNav />
+            <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/" element={<ViewerPage />} />
+                <Route path="/c/:slug" element={<ChannelViewerPage />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute roles={['admin']}>
+                      <AdminLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<AdminUsersPage />} />
+                  <Route path="streams" element={<AdminStreamsPage />} />
+                  <Route path="relays" element={<AdminRelaysPage />} />
+                  <Route path="channels" element={<AdminChannelsPage />} />
+                </Route>
+                <Route
+                  path="/streamer"
+                  element={
+                    <ProtectedRoute roles={['streamer', 'admin']}>
+                      <StreamerPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/channels"
+                  element={
+                    <ProtectedRoute>
+                      <ChannelsPage />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </main>
+          </div>
         </div>
-      </div>
+      </ChannelPrefsProvider>
     </AuthProvider>
   )
 }

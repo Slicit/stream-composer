@@ -3,16 +3,23 @@ import { NavLink } from 'react-router-dom'
 import { Radio } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAuth } from '@/auth/AuthContext'
+import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
+import { StreamsPanel } from '@/components/StreamsPanel'
+import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import type { Channel } from '@/api/types'
 
-// The persistent left sidebar's "Channels" section — every channel the
-// signed-in user can view (public, owned, or shared with them; see
-// Api::ChannelsController#accessible), not just the ones they own
-// (that's /channels, the self-service management page).
+// The persistent left sidebar: "Channels" (every channel the signed-in
+// user can view — public, owned, or shared with them; see
+// Api::ChannelsController#accessible, distinct from /channels, the
+// owned-only self-service management page) and, below it, "Streams" —
+// the favorites/hide list for whichever channel is currently open (fed
+// by ChannelViewerPage via ChannelPrefsContext; empty/absent when not
+// viewing a channel).
 export function LeftNav() {
   const { user } = useAuth()
   const [channels, setChannels] = useState<Channel[] | null>(null)
+  const { slug, onAir, hiddenKeys, spotlightKey, toggleHidden, toggleSpotlight, reset } = useChannelPrefs()
 
   useEffect(() => {
     if (!user) {
@@ -61,6 +68,20 @@ export function LeftNav() {
           ))
         )}
       </div>
+
+      {slug && onAir.length > 0 && (
+        <>
+          <Separator className="my-4" />
+          <StreamsPanel
+            onAir={onAir}
+            hiddenKeys={hiddenKeys}
+            onToggleHidden={toggleHidden}
+            spotlightKey={spotlightKey}
+            onToggleSpotlight={toggleSpotlight}
+            onReset={reset}
+          />
+        </>
+      )}
     </aside>
   )
 }

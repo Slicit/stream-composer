@@ -1,13 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useChannelState } from '@/hooks/useChannelState'
+import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
 import { ComposedGrid } from '@/components/ComposedGrid'
-import { StreamsPanel } from '@/components/StreamsPanel'
 import { Card, CardContent } from '@/components/ui/card'
-
-function storageKey(slug: string) {
-  return `sc:channel:${slug}:hidden`
-}
 
 // A channel's own viewer, at /c/:slug — same grid/audio-picking machinery
 // as the global ViewerPage, fed by GET /api/channels/:slug/state instead.
@@ -15,45 +11,23 @@ function storageKey(slug: string) {
 // is deliberately indistinguishable, matching channelstate.Build's own
 // opaque-denial posture.
 //
-// The "Streams" panel below the grid is per-viewer only: hiding a source
-// or picking one to highlight never reaches the server (nobody else
-// watching sees your choices) and recomposes ComposedGrid's layout
-// locally. Hidden streams persist in localStorage per channel slug so
-// they survive a refresh; the highlight does not — it's a momentary
-// "look at this one" toggle, not a saved preference.
+// The "Streams" (favorites) section lives in the left nav, not on this
+// page — see ChannelPrefsContext, which this page feeds every poll tick
+// and clears on unmount, and LeftNav, which renders it. Favoriting/
+// hiding a source is per-viewer only: it never reaches the server and
+// recomposes ComposedGrid's layout locally.
 export function ChannelViewerPage() {
   const { slug = '' } = useParams<{ slug: string }>()
   const { state, notFound, error } = useChannelState(slug)
-  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set())
-  const [spotlightKey, setSpotlightKey] = useState<string | null>(null)
+  const { hiddenKeys, spotlightKey, setChannelStreams, clearChannel } = useChannelPrefs()
 
   useEffect(() => {
-    setSpotlightKey(null)
-    try {
-      const raw = localStorage.getItem(storageKey(slug))
-      setHiddenKeys(new Set(raw ? (JSON.parse(raw) as string[]) : []))
-    } catch {
-      setHiddenKeys(new Set())
-    }
-  }, [slug])
+    if (state) setChannelStreams(slug, state.channel?.name ?? slug, state.onAir)
+  }, [slug, state, setChannelStreams])
 
-  function toggleHidden(key: string) {
-    setHiddenKeys((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      try {
-        localStorage.setItem(storageKey(slug), JSON.stringify([...next]))
-      } catch {
-        /* storage unavailable (private browsing, quota) — the toggle still works this session */
-      }
-      return next
-    })
-  }
-
-  function toggleSpotlight(key: string) {
-    setSpotlightKey((prev) => (prev === key ? null : key))
-  }
+  useEffect(() => {
+    return () => clearChannel()
+  }, [clearChannel])
 
   if (notFound) {
     return (
@@ -82,13 +56,6 @@ export function ChannelViewerPage() {
     >
       {state.channel && <h1 className="text-2xl font-semibold tracking-tight">{state.channel.name}</h1>}
       <ComposedGrid state={state} hiddenKeys={hiddenKeys} spotlightKey={spotlightKey} />
-      <StreamsPanel
-        onAir={state.onAir}
-        hiddenKeys={hiddenKeys}
-        onToggleHidden={toggleHidden}
-        spotlightKey={spotlightKey}
-        onToggleSpotlight={toggleSpotlight}
-      />
     </div>
   )
 }

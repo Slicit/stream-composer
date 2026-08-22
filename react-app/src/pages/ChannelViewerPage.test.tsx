@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { ChannelPrefsProvider } from '@/contexts/ChannelPrefsContext'
 import { ChannelViewerPage } from './ChannelViewerPage'
 
 function jsonResponse(body: unknown, status = 200) {
@@ -10,9 +11,11 @@ function jsonResponse(body: unknown, status = 200) {
 function renderAtSlug(slug: string) {
   return render(
     <MemoryRouter initialEntries={[`/c/${slug}`]}>
-      <Routes>
-        <Route path="/c/:slug" element={<ChannelViewerPage />} />
-      </Routes>
+      <ChannelPrefsProvider>
+        <Routes>
+          <Route path="/c/:slug" element={<ChannelViewerPage />} />
+        </Routes>
+      </ChannelPrefsProvider>
     </MemoryRouter>,
   )
 }
