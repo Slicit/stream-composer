@@ -620,6 +620,53 @@ label.inline { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85r
 }
 .level-bar > span { display: block; height: 100%; background: var(--good); width: 0; transition: width 0.08s linear; }
 
+/* Same meter, rotated: the overlay is short on width, not height, so the
+ * audio chips below fill from the bottom up instead of left to right. */
+.level-bar-v {
+  width: 5px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--grid);
+  overflow: hidden;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+}
+.level-bar-v > span { display: block; width: 100%; background: var(--good); height: 0; transition: height 0.08s linear; }
+
+/* Per-stream audio picker inside the player overlay — the sidebar's own
+ * picker is out of reach in full screen, same reason the volume slider
+ * moved here. Horizontal-scrolls rather than wrapping, so a long source
+ * list degrades instead of breaking the control bar's height. */
+.audio-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  overflow-x: auto;
+  max-width: 32vw;
+  scrollbar-width: none;
+}
+.audio-chips::-webkit-scrollbar { display: none; }
+
+.audio-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: none;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--ink-2);
+  font-size: 0.7rem;
+  max-width: 9rem;
+  cursor: pointer;
+}
+.audio-chip:hover { border-color: var(--line-strong, var(--line)); color: var(--ink); }
+.audio-chip.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.audio-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.audio-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ------------------------------------------------------------- tables */
 
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
@@ -642,6 +689,41 @@ code, .mono { font-family: var(--mono); font-size: 0.8rem; }
   font-family: var(--mono);
   font-size: 0.78rem;
 }
+
+/* A short (4 letters + ..) key preview inside an actual input — matches the
+ * height of every other input in the table instead of a <span> that never
+ * quite lined up — with the copy icon inline at its end rather than a
+ * second, separate button. Click anywhere on it to copy the full key. */
+.key-input {
+  position: relative;
+  display: inline-flex;
+  width: 6rem;
+}
+.key-input input {
+  width: 100%;
+  padding-right: 1.9rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.key-input-copy {
+  position: absolute;
+  top: 50%;
+  right: 0.3rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.key-input-copy svg { width: 13px; height: 13px; }
+.key-input-copy:hover { color: var(--ink); }
 
 /* --------------------------------------------------------------- tabs */
 

@@ -146,6 +146,7 @@ export function icon(name) {
     mute: '<path d="M4 8h3l4-3v10l-4-3H4z"/><path d="M14 8l4 4M18 8l-4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
     refresh: '<path d="M16 10a6 6 0 11-1.8-4.3M16 2v4h-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
     copy: '<rect x="7" y="7" width="9" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 5H6a2 2 0 00-2 2v7" fill="none" stroke="currentColor" stroke-width="1.6"/>',
+    trash: '<path d="M4 6h12M8 6V4.5a1 1 0 011-1h2a1 1 0 011 1V6M8.5 9.5v6M11.5 9.5v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M5.5 6l.7 9.4a1.5 1.5 0 001.5 1.4h4.6a1.5 1.5 0 001.5-1.4L14.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
     logo: '<rect x="2" y="3" width="7" height="6" rx="1.4" fill="#fff" opacity=".95"/><rect x="11" y="3" width="7" height="6" rx="1.4" fill="#fff" opacity=".7"/><rect x="2" y="11" width="16" height="6" rx="1.4" fill="#fff" opacity=".85"/>',
   };
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

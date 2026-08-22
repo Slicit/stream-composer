@@ -10,6 +10,7 @@ const admin = {
   relaySources: [],
   channels: [],
   homepageChannelId: null,
+  channelEditingId: null, // channel currently being edited in the form above, or null when creating
   users: [],
   composition: null,
   layouts: [],
@@ -36,9 +37,9 @@ $$('.tab').forEach((tab) => tab.addEventListener('click', () => showPanel(tab.da
 
 // ---------------------------------------------------------------- streams
 
-function maskKey(key) {
-  if (key.length <= 10) return key;
-  return `${key.slice(0, 4)}${'•'.repeat(Math.min(10, key.length - 8))}${key.slice(-4)}`;
+/** Just enough to recognise a key at a glance — the full one is a click away. */
+function shortMaskKey(key) {
+  return `${key.slice(0, 4)}..`;
 }
 
 function obsDialog(stream) {
@@ -144,13 +145,11 @@ function renderStreams() {
         s.unknown ? h('div', { style: 'font-size:.72rem; color:var(--warning)', text: 'publishing but not configured' }) : null,
       ]),
       h('td', {}, [s.id ? nicknameField(s) : h('span', { style: 'color:var(--ink-muted)', text: '—' })]),
-      // nowrap: the nickname column widened the table enough that the copy
-      // button was wrapping below the key.
       h('td', { style: 'white-space:nowrap' }, [
-        h('span', { class: 'key-chip' }, [
-          h('span', { text: maskKey(s.key), title: 'Click to reveal', style: 'cursor:pointer', onclick: (e) => { e.target.textContent = e.target.textContent.includes('•') ? s.key : maskKey(s.key); } }),
+        h('div', { class: 'key-input' }, [
+          h('input', { readonly: true, value: shortMaskKey(s.key), class: 'mono', title: 'Click to copy the key', onclick: () => copyToClipboard(s.key) }),
+          h('button', { class: 'key-input-copy', type: 'button', title: 'Copy the key', onclick: () => copyToClipboard(s.key) }, [icon('copy')]),
         ]),
-        h('button', { class: 'icon ghost', title: 'Copy the key', onclick: () => copyToClipboard(s.key) }, [icon('copy')]),
       ]),
       h('td', {}, [
         statusChip(s.live ? 'live' : s.enabled === false ? 'bad' : 'idle', s.live ? 'Live' : s.enabled === false ? 'Disabled' : 'Offline'),
@@ -185,8 +184,8 @@ function renderStreams() {
           s.id ? h('button', { class: 'ghost', text: 'Rename', onclick: () => renameStream(s) }) : null,
           s.id ? h('button', { class: 'ghost', text: s.visibility === 'public' ? 'Make private' : 'Make public', onclick: () => patchStream(s.id, { visibility: s.visibility === 'public' ? 'private' : 'public' }) }) : null,
           s.id && s.visibility !== 'public' ? h('button', { class: 'ghost', text: 'Access', onclick: () => editStreamAccess(s) }) : null,
-          s.id ? h('button', { class: 'ghost', text: 'New key', onclick: () => rotateKey(s) }) : null,
-          s.id ? h('button', { class: 'danger ghost', text: 'Delete', onclick: () => deleteStream(s) }) : null,
+          s.id ? h('button', { class: 'icon ghost', title: 'Generate a new key', onclick: () => rotateKey(s) }, [icon('refresh')]) : null,
+          s.id ? h('button', { class: 'icon ghost danger', title: 'Delete', onclick: () => deleteStream(s) }, [icon('trash')]) : null,
         ]),
       ]),
     ];
@@ -214,26 +213,61 @@ function renderStreams() {
 }
 
 /**
- * A stream that is not public may list specific users who can still reach
- * it — over the media proxy directly, and inside any channel that includes
- * it. Plain-text usernames in, resolved against the users already loaded
- * for the Users tab, because that beats making someone hunt for user ids.
+ * Grant/revoke access to a private resource (a stream here; channels reuse
+ * this too — see setChannelAccess). A checkbox list of every actual user
+ * rather than a type-and-hope prompt: guessing at usernames from memory is
+ * exactly the kind of thing that quietly grants the wrong person access.
  */
-function editStreamAccess(stream) {
-  const current = (stream.sharedWith || [])
-    .map((id) => (admin.users.find((u) => u.id === id) || {}).username)
-    .filter(Boolean)
-    .join(', ');
-  const typed = window.prompt(`Usernames allowed to access “${stream.name}” while private, comma-separated:`, current);
-  if (typed === null) return;
-  const names = typed.split(',').map((n) => n.trim()).filter(Boolean);
-  const unknown = names.filter((n) => !admin.users.some((u) => u.username.toLowerCase() === n.toLowerCase()));
-  if (unknown.length) {
-    toast(`No such user: ${unknown.join(', ')}`, 'error');
-    return;
+function openAccessDialog({ title, currentIds, onSave }) {
+  const dialog = $('#access-dialog');
+  $('#access-title').textContent = title;
+  const filter = $('#access-filter');
+  filter.value = '';
+  const selected = new Set(currentIds || []);
+
+  function renderList() {
+    const q = filter.value.trim().toLowerCase();
+    const users = admin.users.filter((u) => !q || u.username.toLowerCase().includes(q));
+    if (users.length === 0) {
+      $('#access-list').replaceChildren(h('div', { class: 'empty', text: 'No matching users.' }));
+      return;
+    }
+    $('#access-list').replaceChildren(
+      ...users.map((u) => h('label', { class: 'inline', style: 'padding:.3rem 0;' }, [
+        h('input', {
+          type: 'checkbox',
+          checked: selected.has(u.id),
+          onchange: (e) => {
+            if (e.target.checked) selected.add(u.id);
+            else selected.delete(u.id);
+          },
+        }),
+        h('span', { text: u.username }),
+        u.role === 'admin' ? h('span', { class: 'meta', style: 'margin-left:.4rem;', text: '(admin — always allowed)' }) : null,
+      ].filter(Boolean))),
+    );
   }
-  const sharedWith = names.map((n) => admin.users.find((u) => u.username.toLowerCase() === n.toLowerCase()).id);
-  patchStream(stream.id, { sharedWith });
+  renderList();
+  filter.oninput = renderList;
+
+  const cancel = () => dialog.close();
+  $('#access-cancel').onclick = cancel;
+  $('#access-close').onclick = cancel;
+  $('#access-save').onclick = () => {
+    dialog.close();
+    onSave([...selected]);
+  };
+
+  dialog.showModal();
+  filter.focus();
+}
+
+function editStreamAccess(stream) {
+  openAccessDialog({
+    title: `Access — ${stream.name}`,
+    currentIds: stream.sharedWith || [],
+    onSave: (sharedWith) => patchStream(stream.id, { sharedWith }),
+  });
 }
 
 async function loadStreams() {
@@ -742,6 +776,50 @@ async function loadComposition() {
 
 // ---------------------------------------------------------------- channels
 
+function renderChannelStreamPicker() {
+  const box = $('#channel-stream-picker');
+  const editing = admin.channels.find((c) => c.id === admin.channelEditingId);
+  const checked = new Set(editing ? editing.streamIds : []);
+  const withKey = admin.streams.filter((s) => s.id);
+  if (withKey.length === 0) {
+    box.replaceChildren(h('span', { class: 'hint', text: 'No streams exist yet.' }));
+    return;
+  }
+  box.replaceChildren(
+    ...withKey.map((s) =>
+      h('label', { class: 'inline', style: 'font-size:.85rem;' }, [
+        h('input', { type: 'checkbox', name: 'streamIds', value: s.id, checked: checked.has(s.id) }),
+        h('span', { text: `${s.nickname || s.name}${s.visibility === 'private' ? ' 🔒' : ''}` }),
+      ]),
+    ),
+  );
+}
+
+function startEditChannel(channel) {
+  admin.channelEditingId = channel.id;
+  const form = $('#channel-form');
+  form.name.value = channel.name;
+  form.slug.value = channel.slug;
+  form.visibility.value = channel.visibility;
+  $('#channel-form-title').textContent = `Edit “${channel.name}”`;
+  $('#channel-form-submit').textContent = 'Save changes';
+  $('#channel-form-cancel').style.display = '';
+  renderChannelStreamPicker();
+  form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function cancelEditChannel() {
+  admin.channelEditingId = null;
+  const form = $('#channel-form');
+  form.reset();
+  $('#channel-form-title').textContent = 'Add a channel';
+  $('#channel-form-submit').textContent = 'Create';
+  $('#channel-form-cancel').style.display = 'none';
+  renderChannelStreamPicker();
+}
+
+$('#channel-form-cancel').addEventListener('click', cancelEditChannel);
+
 function renderChannels() {
   const box = $('#channels-table');
   if (admin.channels.length === 0) {
@@ -762,12 +840,13 @@ function renderChannels() {
       h('td', {}, [isHomepage ? h('span', { class: 'warn-chip', text: 'Homepage' }) : null].filter(Boolean)),
       h('td', {}, [
         h('div', { class: 'row', style: 'flex-wrap:nowrap; justify-content:flex-end;' }, [
+          h('button', { class: 'ghost', text: 'Edit', onclick: () => startEditChannel(c) }),
           h('button', {
             class: 'ghost',
             text: isHomepage ? 'Unset homepage' : 'Set as homepage',
             onclick: () => setHomepageChannel(isHomepage ? null : c.id),
           }),
-          h('button', { class: 'danger ghost', text: 'Delete', onclick: () => deleteChannel(c) }),
+          h('button', { class: 'icon ghost danger', title: 'Delete', onclick: () => deleteChannel(c) }, [icon('trash')]),
         ]),
       ]),
     ]);
@@ -795,6 +874,7 @@ async function loadChannels() {
   admin.channels = data.channels;
   admin.homepageChannelId = data.homepageChannelId;
   renderChannels();
+  renderChannelStreamPicker(); // pre-checked boxes depend on whether we are editing
 }
 
 async function setHomepageChannel(id) {
@@ -814,14 +894,24 @@ async function deleteChannel(channel) {
 $('#channel-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const body = Object.fromEntries(new FormData(form).entries());
+  // FormData collapses repeated checkbox names to their last value — collect
+  // the checked streamIds explicitly instead.
+  const streamIds = [...form.querySelectorAll('input[name="streamIds"]:checked')].map((el) => el.value);
+  const body = { name: form.name.value, visibility: form.visibility.value, streamIds };
+  if (form.slug.value.trim()) body.slug = form.slug.value.trim();
+
   try {
-    await api('/api/admin/channels', { method: 'POST', body });
-    toast('Channel created.', 'good');
-    form.reset();
+    if (admin.channelEditingId) {
+      await api(`/api/admin/channels/${admin.channelEditingId}`, { method: 'PATCH', body });
+      toast('Channel updated.', 'good');
+    } else {
+      await api('/api/admin/channels', { method: 'POST', body });
+      toast('Channel created.', 'good');
+    }
+    cancelEditChannel();
     loadChannels();
   } catch (err) {
-    toast(err.message || 'Could not create the channel.', 'error');
+    toast(err.message || 'Could not save the channel.', 'error');
   }
 });
 

@@ -518,14 +518,23 @@ function startLevelMeter(stream, key) {
     analyser.fftSize = 512;
     source.connect(analyser);
     const buffer = new Uint8Array(analyser.frequencyBinCount);
-    const bar = document.querySelector(`.audio-option[data-key="${CSS.escape(key)}"] .level-bar > span`);
+    // Two places show this meter: the sidebar list (horizontal, fills by
+    // width) and the overlay's compact chip (vertical, fills by height).
+    // Setting both properties on every match is harmless — each one's CSS
+    // fixes the axis that does not apply, so only the relevant one moves.
+    const bars = document.querySelectorAll(
+      `[data-key="${CSS.escape(key)}"] .level-bar > span, [data-key="${CSS.escape(key)}"] .level-bar-v > span`,
+    );
     const tick = () => {
       if (!analyser || app.audioKey !== key) return;
       analyser.getByteTimeDomainData(buffer);
       let peak = 0;
       for (let i = 0; i < buffer.length; i++) peak = Math.max(peak, Math.abs(buffer[i] - 128));
       const percent = Math.min(100, Math.round((peak / 128) * 140));
-      if (bar) bar.style.width = `${percent}%`;
+      bars.forEach((bar) => {
+        bar.style.width = `${percent}%`;
+        bar.style.height = `${percent}%`;
+      });
       app.levelRaf = requestAnimationFrame(tick);
     };
     tick();
@@ -540,6 +549,9 @@ function stopLevelMeter() {
   analyser = null;
   document.querySelectorAll('.level-bar > span').forEach((el) => {
     el.style.width = '0';
+  });
+  document.querySelectorAll('.level-bar-v > span').forEach((el) => {
+    el.style.height = '0';
   });
 }
 
@@ -569,6 +581,33 @@ function renderAudioList() {
     options.push(h('div', { class: 'empty', style: 'padding:1rem', text: 'No sources are live.' }));
   }
   list.replaceChildren(...options);
+  renderAudioChips(streams);
+}
+
+/**
+ * The same picker, compact, inside the player overlay — the sidebar list
+ * this mirrors is out of reach in full screen. No "Muted" chip: the mute
+ * button right before this in the overlay already covers going silent.
+ */
+function renderAudioChips(streams) {
+  const box = $('#audio-chips');
+  if (!box) return;
+  box.replaceChildren(
+    ...streams.map((s) => {
+      const active = app.audioKey === s.key;
+      return h('button', {
+        class: `audio-chip${active ? ' is-active' : ''}`,
+        type: 'button',
+        dataset: { key: s.key },
+        disabled: !s.hasAudio,
+        title: s.hasAudio ? `Listen to ${s.name}` : `${s.name} has no audio`,
+        onclick: () => selectAudio(s.key),
+      }, [
+        h('span', { class: 'level-bar-v' }, [h('span')]),
+        h('span', { class: 'name', text: s.name }),
+      ]);
+    }),
+  );
 }
 
 // ------------------------------------------------------------------ sources
