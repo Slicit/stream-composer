@@ -44,6 +44,7 @@ SOURCES = {
     "docker-compose.yml": "docker-compose.v1.yml",
     "docker-compose.local.yml": "docker-compose.v1.local.yml",
     "docker-compose.tls.yml": "docker-compose.v1.tls.yml",
+    "docker-compose.tls.external.yml": "docker-compose.v1.tls.external.yml",
 }
 COMPOSE_VERSION = "3.7"
 

@@ -37,6 +37,9 @@ ENV = {
     "PUBLIC_HOST": "192.168.1.10",
     "DOMAIN": "example.com",
     "ACME_EMAIL": "parity@example.com",
+    # Only interpolated by the external-Traefik overlay, which has no bundled
+    # traefik service to derive a real one from.
+    "TRAEFIK_NETWORK": "parity-external-net",
 }
 
 COMBOS = [
@@ -44,6 +47,8 @@ COMBOS = [
      "docker-compose.v1.yml:docker-compose.v1.local.yml"),
     ("tls", "docker-compose.yml:docker-compose.tls.yml",
      "docker-compose.v1.yml:docker-compose.v1.tls.yml"),
+    ("tls-external", "docker-compose.yml:docker-compose.tls.external.yml",
+     "docker-compose.v1.yml:docker-compose.v1.tls.external.yml"),
 ]
 
 

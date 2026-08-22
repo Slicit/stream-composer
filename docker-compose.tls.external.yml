@@ -1,0 +1,64 @@
+# Overlay: HTTPS through a Traefik that is already running on this host,
+# rather than starting a second one.
+#
+# Chosen automatically by install.sh when TLS mode is requested and port 80 or
+# 443 is already held by a container it can identify as Traefik (by image
+# name). Nothing here binds a host port: it hands the existing Traefik one
+# more router by label, on the Docker network install.sh found it watching
+# (${TRAEFIK_NETWORK}).
+#
+# What this cannot safely do: RTMPS. That needs a TCP entrypoint declared in
+# Traefik's own static configuration (--entrypoints.rtmps.address=:1936), and
+# this file has no way to add one to a Traefik it does not own without risking
+# somebody else's routes. OBS pushes plain RTMP on ${RTMP_PORT} instead, the
+# same as local mode.
+#
+# Worth checking against the specific Traefik that was found:
+#   * The router below assumes an entrypoint named "websecure" and a default
+#     certificate resolver already configured on it (the same convention this
+#     project's own Traefik uses). If the existing one names things
+#     differently, add the matching labels here before starting.
+#   * If ${DOMAIN} needs its own certificate rather than one the existing
+#     Traefik already covers (e.g. a wildcard), add a
+#     `traefik.http.routers.composer.tls.certresolver` label naming its
+#     resolver.
+
+services:
+  composer:
+    environment:
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN in .env}
+      RTMP_PUBLIC_HOST: ${DOMAIN}
+      RTMPS_ENABLED: "false"
+      SECURE_COOKIES: "true"
+      # Exactly one proxy hop, same as the bundled-Traefik overlay. If the
+      # existing Traefik sits behind yet another proxy, this needs raising and
+      # that proxy needs to be trusted too, or a forged X-Forwarded-For can
+      # bypass the login throttle.
+      TRUST_PROXY: "1"
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK in .env}
+      traefik.http.routers.composer.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.composer.entrypoints: websecure
+      traefik.http.routers.composer.tls: "true"
+      traefik.http.routers.composer.middlewares: sc-headers@docker
+      traefik.http.services.composer.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.sc-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.sc-headers.headers.stsIncludeSubdomains: "false"
+      traefik.http.middlewares.sc-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.sc-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.sc-headers.headers.customFrameOptionsValue: SAMEORIGIN
+    networks:
+      - streamnet
+      - traefik-external
+
+  mediamtx:
+    environment:
+      MTX_WEBRTCADDITIONALHOSTS: ${DOMAIN}
+    # RTMPS is not offered in this overlay (see the file header). Plain RTMP
+    # needs no port added here: the base file already publishes it.
+
+networks:
+  traefik-external:
+    name: ${TRAEFIK_NETWORK:?set TRAEFIK_NETWORK in .env}
+    external: true

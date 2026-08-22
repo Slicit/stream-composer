@@ -27,6 +27,8 @@ HTTP_PORT="8080"
 RTMP_PORT="1935"
 ASSUME_YES="no"
 MODE="" # tls | local
+EXTERNAL_TRAEFIK="no" # yes when a Traefik outside this stack already owns 80/443
+TRAEFIK_NETWORK="" # set by check_ingress; unused unless EXTERNAL_TRAEFIK=yes
 
 # ------------------------------------------------------------------ output
 
@@ -183,6 +185,102 @@ resolve_privileges() {
   need sudo || die "$INSTALL_DIR is not writable and sudo is unavailable. Re-run as root, or pass --dir <somewhere writable>."
   SUDO="sudo"
   info "Using sudo for $INSTALL_DIR and for Docker"
+}
+
+# Who, if anyone, already holds a host port. This box is not assumed to be
+# ours alone: other stacks bind ports too, and the bundled Traefik binding 80
+# and 443 unconditionally turns "something else is already there" into a
+# `docker compose up` failure with no context beyond "port is already
+# allocated" — which reads as a broken install rather than a neighbour.
+#
+# Answers with two words: "free", or "traefik <container>", or
+# "other <container>" (the container's name, or literally "other -" when the
+# port is bound by something outside Docker entirely, which this cannot
+# name any further).
+port_owner() { # port_owner <port>
+  local port="$1" cid name image
+  cid="$($SUDO docker ps -q --filter "publish=$port" | head -1)"
+
+  if [ -z "$cid" ]; then
+    # Nothing Docker knows about is publishing it. Either it is free, or a
+    # bare process on the host holds it — ss is optional, so this degrades to
+    # "we cannot see anything, proceed" rather than depending on a tool that
+    # might not be installed.
+    if need ss && $SUDO ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[.:]$port\$"; then
+      echo "other -"
+    else
+      echo "free"
+    fi
+    return
+  fi
+
+  name="$($SUDO docker inspect -f '{{.Name}}' "$cid" 2>/dev/null | sed 's#^/##')"
+  image="$($SUDO docker inspect -f '{{.Config.Image}}' "$cid" 2>/dev/null)"
+
+  case "$image" in
+    *traefik*) echo "traefik $name" ;;
+    *) echo "other $name" ;;
+  esac
+}
+
+# Decides whether TLS mode can use its bundled Traefik, must hand off to one
+# already running, or cannot proceed at all without touching someone else's
+# ingress.
+#
+# A container from *this* stack's own previous install (sc-traefik) does not
+# count as a conflict: `docker compose up` on an existing sc-traefik simply
+# recreates it, which is an upgrade, not a collision.
+check_ingress() {
+  EXTERNAL_TRAEFIK="no"
+  TRAEFIK_NETWORK=""
+  local traefik_container="" port kind name where
+
+  for port in 80 443; do
+    local owned; owned="$(port_owner "$port")"
+    kind="${owned%% *}"
+    name="${owned#* }"
+    [ "$kind" = "free" ] && continue
+    [ "$name" = "sc-traefik" ] && continue
+
+    if [ "$kind" = "traefik" ]; then
+      EXTERNAL_TRAEFIK="yes"
+      traefik_container="$name"
+    else
+      where="a container named ${BOLD}${name}${RESET}"
+      [ "$name" = "-" ] && where="a process this script cannot identify"
+      die "Port $port is already in use by $where, and it is not Traefik.
+    Stream Composer's bundled Traefik cannot also bind it. Options:
+      - Run this installer's plain-HTTP mode instead (option 2), on a free port.
+      - Free the port yourself, then re-run this installer.
+      - If that is meant to be this host's front door, put it in front of
+        Stream Composer instead and skip TLS mode here."
+    fi
+  done
+
+  [ "$EXTERNAL_TRAEFIK" = "yes" ] || return
+
+  warn "Traefik is already running on this host (as $traefik_container)."
+  say "  ${DIM}Stream Composer will not start a second one. The web interface will be${RESET}"
+  say "  ${DIM}added to it by label instead. RTMPS needs Traefik's own static TCP${RESET}"
+  say "  ${DIM}entrypoint config, which this script cannot safely add to somebody${RESET}"
+  say "  ${DIM}else's Traefik, so OBS will push plain RTMP on port ${RTMP_PORT} instead.${RESET}"
+
+  # The network the existing Traefik is already attached to, so composer can
+  # join the same one and be reachable. bridge/host/none are Docker's own
+  # networks, never a Traefik provider network, so they are never the answer.
+  local candidates
+  candidates="$($SUDO docker inspect -f '{{range $net, $cfg := .NetworkSettings.Networks}}{{$net}} {{end}}' "$traefik_container" 2>/dev/null | tr ' ' '\n' | grep -vE '^(bridge|host|none|)$' || true)"
+  local count; count="$(printf '%s\n' "$candidates" | grep -c . || true)"
+
+  if [ "$count" -eq 1 ]; then
+    TRAEFIK_NETWORK="$candidates"
+    info "It watches the Docker network ${BOLD}${TRAEFIK_NETWORK}${RESET}; joining that."
+  else
+    say ""
+    [ "$count" -gt 1 ] && say "  ${DIM}$traefik_container is attached to more than one network:${RESET} $(printf '%s ' $candidates)"
+    ask TRAEFIK_NETWORK "  Docker network the existing Traefik watches for containers:" "$candidates"
+    [ -n "$TRAEFIK_NETWORK" ] || die "Traefik needs to share a Docker network with composer to route to it."
+  fi
 }
 
 # Resolve Compose *as the user that will actually run it*.
@@ -392,6 +490,7 @@ configure() {
     [ -n "$prev_admin" ] && ADMIN_USER="$prev_admin"
     MODE="$([ -n "$DOMAIN" ] && echo tls || echo local)"
     if ! confirm "Review the settings again?" "no"; then
+      [ "$MODE" = "tls" ] && check_ingress
       return
     fi
   fi
@@ -428,6 +527,8 @@ configure() {
 
   ask RTMP_PORT "  RTMP ingest port for OBS:" "$RTMP_PORT"
 
+  [ "$MODE" = "tls" ] && check_ingress
+
   say ""
   say "${BOLD}Administrator account${RESET}"
   ask ADMIN_USER "  Username:" "$ADMIN_USER"
@@ -453,7 +554,9 @@ write_env() {
   [ "$COMPOSE_KIND" = "v1" ] && prefix="docker-compose.v1"
 
   local compose_files
-  if [ "$MODE" = "tls" ]; then
+  if [ "$MODE" = "tls" ] && [ "$EXTERNAL_TRAEFIK" = "yes" ]; then
+    compose_files="${prefix}.yml:${prefix}.tls.external.yml"
+  elif [ "$MODE" = "tls" ]; then
     compose_files="${prefix}.yml:${prefix}.tls.yml"
   else
     compose_files="${prefix}.yml:${prefix}.local.yml"
@@ -487,6 +590,9 @@ ADMIN_PASSWORD=$ADMIN_PASSWORD
 PUBLIC_HOST=$PUBLIC_HOST
 DOMAIN=$DOMAIN
 ACME_EMAIL=$ACME_EMAIL
+# Only meaningful when COMPOSE_FILE above selects the external-Traefik
+# overlay: the Docker network install.sh found the existing Traefik watching.
+TRAEFIK_NETWORK=$TRAEFIK_NETWORK
 
 HTTP_PORT=$HTTP_PORT
 RTMP_PORT=$RTMP_PORT
