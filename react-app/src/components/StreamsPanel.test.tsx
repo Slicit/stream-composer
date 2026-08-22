@@ -15,7 +15,15 @@ function noop() {
 describe('StreamsPanel', () => {
   it('renders nothing when on-air is empty', () => {
     const { container } = render(
-      <StreamsPanel onAir={[]} hiddenKeys={new Set()} onToggleHidden={noop} spotlightKey={null} onToggleSpotlight={noop} onReset={noop} />,
+      <StreamsPanel
+        onAir={[]}
+        liveByKey={{}}
+        hiddenKeys={new Set()}
+        onToggleHidden={noop}
+        spotlightKey={null}
+        onToggleSpotlight={noop}
+        onReset={noop}
+      />,
     )
     expect(container.textContent).toBe('')
   })
@@ -27,6 +35,7 @@ describe('StreamsPanel', () => {
     render(
       <StreamsPanel
         onAir={onAir}
+        liveByKey={{}}
         hiddenKeys={new Set()}
         onToggleHidden={onToggleHidden}
         spotlightKey={null}
@@ -50,16 +59,50 @@ describe('StreamsPanel', () => {
 
   it('shows a filled star and Unfavorite label for the favorited stream', () => {
     render(
-      <StreamsPanel onAir={onAir} hiddenKeys={new Set()} onToggleHidden={noop} spotlightKey="b" onToggleSpotlight={noop} onReset={noop} />,
+      <StreamsPanel
+        onAir={onAir}
+        liveByKey={{}}
+        hiddenKeys={new Set()}
+        onToggleHidden={noop}
+        spotlightKey="b"
+        onToggleSpotlight={noop}
+        onReset={noop}
+      />,
     )
     expect(screen.getByTitle('Unfavorite')).toBeInTheDocument()
   })
 
   it('shows a strikethrough name and Show label for a hidden stream', () => {
     render(
-      <StreamsPanel onAir={onAir} hiddenKeys={new Set(['a'])} onToggleHidden={noop} spotlightKey={null} onToggleSpotlight={noop} onReset={noop} />,
+      <StreamsPanel
+        onAir={onAir}
+        liveByKey={{}}
+        hiddenKeys={new Set(['a'])}
+        onToggleHidden={noop}
+        spotlightKey={null}
+        onToggleSpotlight={noop}
+        onReset={noop}
+      />,
     )
     expect(screen.getByText('Camera A')).toHaveClass('line-through')
     expect(screen.getByTitle('Show')).toBeInTheDocument()
+  })
+
+  it('marks a live stream distinctly from an offline one', () => {
+    render(
+      <StreamsPanel
+        onAir={onAir}
+        liveByKey={{ a: true, b: false }}
+        hiddenKeys={new Set()}
+        onToggleHidden={noop}
+        spotlightKey={null}
+        onToggleSpotlight={noop}
+        onReset={noop}
+      />,
+    )
+    const dots = screen.getAllByRole('status')
+    expect(dots).toHaveLength(2)
+    expect(dots[0]).toHaveAccessibleName('Live')
+    expect(dots[1]).toHaveAccessibleName('Offline')
   })
 })

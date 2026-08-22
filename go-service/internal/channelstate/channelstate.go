@@ -175,3 +175,49 @@ func Build(ctx context.Context, store streamstore.Store, mtx IngestLister, check
 		},
 	}, true, nil
 }
+
+// BuildLiveMap answers "is this channel live" for every channel the
+// caller can see — the left nav's bulk status check. Deliberately not
+// Build repeated per channel: no layout, no restricted-member filtering,
+// no per-stream problem/audio lookups, just membership + MediaMTX ready
+// state, the same rule Build's own on-air selection uses ("live" =
+// enabled, has a playback id, and MediaMTX reports it ready) — including
+// a member the caller cannot actually watch, matching every other place
+// in this codebase where a restricted stream still counts as occupying a
+// cell rather than being invisible.
+func BuildLiveMap(ctx context.Context, store streamstore.Store, mtx IngestLister, user *streamstore.User) (map[string]bool, error) {
+	live, err := mtx.ListIngest(ctx)
+	if err != nil {
+		return nil, err
+	}
+	liveByKey := make(map[string]mediamtx.IngestPath, len(live))
+	for _, l := range live {
+		liveByKey[l.Key] = l
+	}
+
+	streamByID := make(map[string]streamstore.Stream)
+	for _, s := range store.Streams() {
+		streamByID[s.ID] = s
+	}
+
+	result := make(map[string]bool)
+	for _, channel := range store.Channels() {
+		c := channel
+		if !access.CanAccessChannel(&c, user) {
+			continue
+		}
+		isLive := false
+		for _, sid := range channel.StreamIDs {
+			s, ok := streamByID[sid]
+			if !ok || !s.Enabled || s.PlaybackID == "" {
+				continue
+			}
+			if l, ok := liveByKey[s.Key]; ok && l.Ready {
+				isLive = true
+				break
+			}
+		}
+		result[channel.Slug] = isLive
+	}
+	return result, nil
+}

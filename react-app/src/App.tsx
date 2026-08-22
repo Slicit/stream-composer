@@ -11,6 +11,7 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminStreamsPage } from './pages/admin/AdminStreamsPage'
 import { AdminRelaysPage } from './pages/admin/AdminRelaysPage'
 import { AdminChannelsPage } from './pages/admin/AdminChannelsPage'
+import { AdminStatsPage } from './pages/admin/AdminStatsPage'
 import { ViewerPage } from './pages/ViewerPage'
 import { ChannelViewerPage } from './pages/ChannelViewerPage'
 import { StreamerPage } from './pages/StreamerPage'
@@ -41,6 +42,7 @@ export function App() {
                   <Route path="streams" element={<AdminStreamsPage />} />
                   <Route path="relays" element={<AdminRelaysPage />} />
                   <Route path="channels" element={<AdminChannelsPage />} />
+                <Route path="stats" element={<AdminStatsPage />} />
                 </Route>
                 <Route
                   path="/streamer"

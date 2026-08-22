@@ -22,6 +22,7 @@ func (f *fakeStore) PublicViewingEnabled() bool                          { retur
 func (f *fakeStore) Relays() []streamstore.Relay                         { return nil }
 func (f *fakeStore) Streams() []streamstore.Stream                       { return f.streams }
 func (f *fakeStore) HomepageChannelSlug() string                         { return "" }
+func (f *fakeStore) Channels() []streamstore.Channel                     { return f.channels }
 func (f *fakeStore) FindChannelBySlug(slug string) (*streamstore.Channel, bool) {
 	for i := range f.channels {
 		if f.channels[i].Slug == slug {

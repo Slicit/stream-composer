@@ -86,6 +86,12 @@ func (m *Memory) Streams() []Stream {
 	return append([]Stream(nil), m.streams...)
 }
 
+func (m *Memory) Channels() []Channel {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]Channel(nil), m.channels...)
+}
+
 func (m *Memory) FindChannelBySlug(slug string) (*Channel, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

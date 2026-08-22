@@ -6,6 +6,7 @@ const TABS = [
   { to: '/admin/streams', label: 'Streams' },
   { to: '/admin/relays', label: 'Relays' },
   { to: '/admin/channels', label: 'Channels' },
+  { to: '/admin/stats', label: 'Server & Stats' },
 ]
 
 export function AdminLayout() {

@@ -94,6 +94,11 @@ type Store interface {
 	// (nil, false) when unknown.
 	FindChannelBySlug(slug string) (*Channel, bool)
 
+	// Channels lists every configured channel — the left nav's bulk live-
+	// status check (internal/channelstate.BuildLiveMap) needs the whole
+	// set, unlike everything else here which resolves one at a time.
+	Channels() []Channel
+
 	// HomepageChannelSlug is the channel "/" should redirect to, or ""
 	// when none is configured.
 	HomepageChannelSlug() string

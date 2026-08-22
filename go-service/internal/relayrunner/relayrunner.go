@@ -85,6 +85,31 @@ func (r *Runner) StatusOf(relayID string) Status {
 	return Status{State: "off"}
 }
 
+// Summary aggregates every configured relay's state — the admin
+// Server/Stats page's restream tile, same shape as the Node version's
+// relays.summary() (server/src/relays.js).
+type Summary struct {
+	Total   int `json:"total"`
+	Enabled int `json:"enabled"`
+	Live    int `json:"live"`
+}
+
+func (r *Runner) Summary() Summary {
+	relays := r.Store.Relays()
+	s := Summary{Total: len(relays)}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, relay := range relays {
+		if relay.Enabled {
+			s.Enabled++
+		}
+		if st, ok := r.health[relay.ID]; ok && st.State == "live" {
+			s.Live++
+		}
+	}
+	return s
+}
+
 // Start runs Tick immediately and then on every interval, until stop is
 // closed. Mirrors startLoop() in the Node version.
 func (r *Runner) Start(ctx context.Context, interval time.Duration, stop <-chan struct{}) {

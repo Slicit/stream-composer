@@ -1,9 +1,11 @@
 import { Eye, EyeOff, RotateCcw, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LiveDot } from '@/components/LiveDot'
 import type { OnAirEntry } from '@/api/viewerState'
 
 interface StreamsPanelProps {
   onAir: OnAirEntry[]
+  liveByKey: Record<string, boolean>
   hiddenKeys: Set<string>
   onToggleHidden: (key: string) => void
   spotlightKey: string | null
@@ -17,7 +19,7 @@ interface StreamsPanelProps {
 // hiddenKeys/spotlightKey props). Nothing here is sent to the server or
 // visible to anyone else watching. "Reset preferences" un-favorites
 // everything and shows every stream again.
-export function StreamsPanel({ onAir, hiddenKeys, onToggleHidden, spotlightKey, onToggleSpotlight, onReset }: StreamsPanelProps) {
+export function StreamsPanel({ onAir, liveByKey, hiddenKeys, onToggleHidden, spotlightKey, onToggleSpotlight, onReset }: StreamsPanelProps) {
   const entries = onAir.filter((s): s is { key: string; name: string } => s.key !== null)
 
   if (entries.length === 0) return null
@@ -30,7 +32,10 @@ export function StreamsPanel({ onAir, hiddenKeys, onToggleHidden, spotlightKey, 
         const favorited = spotlightKey === s.key
         return (
           <div key={s.key} className="flex items-center justify-between gap-1 rounded-md px-2 py-1 hover:bg-accent">
-            <span className={hidden ? 'truncate text-sm text-muted-foreground line-through' : 'truncate text-sm'}>{s.name}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <LiveDot live={!!liveByKey[s.key]} />
+              <span className={hidden ? 'truncate text-sm text-muted-foreground line-through' : 'truncate text-sm'}>{s.name}</span>
+            </span>
             <div className="flex shrink-0 items-center gap-0.5">
               <Button
                 type="button"

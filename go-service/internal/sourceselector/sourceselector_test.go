@@ -18,6 +18,7 @@ func (f *fakeStore) PublicViewingEnabled() bool                            { ret
 func (f *fakeStore) Relays() []streamstore.Relay                           { return nil }
 func (f *fakeStore) Streams() []streamstore.Stream                         { return f.streams }
 func (f *fakeStore) FindChannelBySlug(string) (*streamstore.Channel, bool) { return nil, false }
+func (f *fakeStore) Channels() []streamstore.Channel                       { return nil }
 func (f *fakeStore) HomepageChannelSlug() string                           { return "" }
 
 func TestSelectOrdersManualModeByOperatorOrderOnly(t *testing.T) {

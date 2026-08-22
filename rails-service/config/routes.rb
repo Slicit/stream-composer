@@ -54,6 +54,9 @@ Rails.application.routes.draw do
         post "impersonate", on: :member
       end
 
+      get "stats/status", to: "stats#status"
+      get "stats/bandwidth-history", to: "stats#bandwidth_history"
+
       scope path: "streams", controller: "streams" do
         get "", action: :index
         post "", action: :create

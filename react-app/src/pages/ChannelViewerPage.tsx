@@ -22,7 +22,10 @@ export function ChannelViewerPage() {
   const { hiddenKeys, spotlightKey, setChannelStreams, clearChannel } = useChannelPrefs()
 
   useEffect(() => {
-    if (state) setChannelStreams(slug, state.channel?.name ?? slug, state.onAir)
+    if (!state) return
+    const liveByKey: Record<string, boolean> = {}
+    for (const s of state.streams) liveByKey[s.key] = s.live
+    setChannelStreams(slug, state.channel?.name ?? slug, state.onAir, liveByKey)
   }, [slug, state, setChannelStreams])
 
   useEffect(() => {

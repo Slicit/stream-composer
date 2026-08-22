@@ -114,6 +114,11 @@ services:
       # Internal::StreamsController, the only thing the Go service is
       # allowed to read from Rails.
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-migration-dev-internal-api-token}
+      # The other direction: lets Rails call dataplane's own
+      # /internal/{token}/... routes for the admin Server/Stats page.
+      # Same value as dataplane's MEDIAMTX_INTERNAL_PASSWORD above.
+      INTERNAL_SECRET: ${INTERNAL_SECRET:-migration-dev-secret}
+      DATAPLANE_INTERNAL_URL: http://dataplane:8080
     ports:
       - "13000:3000"
     networks: [scmig-net]

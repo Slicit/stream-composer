@@ -7,7 +7,7 @@ function Harness() {
   const { slug, onAir, hiddenKeys, spotlightKey, setChannelStreams, toggleHidden, toggleSpotlight, reset } = useChannelPrefs()
   return (
     <div>
-      <button onClick={() => setChannelStreams('room', 'Room', [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }])}>seed</button>
+      <button onClick={() => setChannelStreams('room', 'Room', [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }], { a: true, b: false })}>seed</button>
       <button onClick={() => toggleHidden('a')}>hide-a</button>
       <button onClick={() => toggleSpotlight('b')}>favorite-b</button>
       <button onClick={reset}>reset</button>

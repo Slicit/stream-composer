@@ -5,13 +5,17 @@ interface ChannelPrefsState {
   slug: string | null
   channelName: string | null
   onAir: OnAirEntry[]
+  // Per-stream live status (ViewerStreamEntry.live), keyed the same as
+  // onAir — lets the left nav's Streams rows show a live dot without
+  // threading the full ViewerState through.
+  liveByKey: Record<string, boolean>
   hiddenKeys: Set<string>
   spotlightKey: string | null
   // ChannelViewerPage calls this every poll tick with whatever channel
   // it's currently showing — this is the only way the left nav's
   // "Streams" section (which lives outside that page, as a sibling in
   // App.tsx) learns what's on air.
-  setChannelStreams: (slug: string, channelName: string, onAir: OnAirEntry[]) => void
+  setChannelStreams: (slug: string, channelName: string, onAir: OnAirEntry[], liveByKey: Record<string, boolean>) => void
   // Called when ChannelViewerPage unmounts (navigating away from /c/:slug
   // entirely) so the left nav's Streams section disappears rather than
   // showing a stale channel's list.
@@ -50,11 +54,12 @@ export function ChannelPrefsProvider({ children }: { children: ReactNode }) {
   const [slug, setSlug] = useState<string | null>(null)
   const [channelName, setChannelName] = useState<string | null>(null)
   const [onAir, setOnAir] = useState<OnAirEntry[]>([])
+  const [liveByKey, setLiveByKey] = useState<Record<string, boolean>>({})
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set())
   const [spotlightKey, setSpotlightKey] = useState<string | null>(null)
 
   const setChannelStreams = useCallback(
-    (nextSlug: string, nextName: string, nextOnAir: OnAirEntry[]) => {
+    (nextSlug: string, nextName: string, nextOnAir: OnAirEntry[], nextLiveByKey: Record<string, boolean>) => {
       setSlug((prevSlug) => {
         if (prevSlug !== nextSlug) {
           setHiddenKeys(loadHidden(nextSlug))
@@ -64,6 +69,7 @@ export function ChannelPrefsProvider({ children }: { children: ReactNode }) {
       })
       setChannelName(nextName)
       setOnAir(nextOnAir)
+      setLiveByKey(nextLiveByKey)
     },
     [],
   )
@@ -72,6 +78,7 @@ export function ChannelPrefsProvider({ children }: { children: ReactNode }) {
     setSlug(null)
     setChannelName(null)
     setOnAir([])
+    setLiveByKey({})
     setHiddenKeys(new Set())
     setSpotlightKey(null)
   }, [])
@@ -100,8 +107,8 @@ export function ChannelPrefsProvider({ children }: { children: ReactNode }) {
   }, [slug])
 
   const value = useMemo<ChannelPrefsState>(
-    () => ({ slug, channelName, onAir, hiddenKeys, spotlightKey, setChannelStreams, clearChannel, toggleHidden, toggleSpotlight, reset }),
-    [slug, channelName, onAir, hiddenKeys, spotlightKey, setChannelStreams, clearChannel, toggleHidden, toggleSpotlight, reset],
+    () => ({ slug, channelName, onAir, liveByKey, hiddenKeys, spotlightKey, setChannelStreams, clearChannel, toggleHidden, toggleSpotlight, reset }),
+    [slug, channelName, onAir, liveByKey, hiddenKeys, spotlightKey, setChannelStreams, clearChannel, toggleHidden, toggleSpotlight, reset],
   )
 
   return <ChannelPrefsContext.Provider value={value}>{children}</ChannelPrefsContext.Provider>

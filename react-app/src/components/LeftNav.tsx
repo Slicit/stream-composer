@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Radio } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAuth } from '@/auth/AuthContext'
 import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
 import { StreamsPanel } from '@/components/StreamsPanel'
+import { LiveDot } from '@/components/LiveDot'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import type { Channel } from '@/api/types'
+
+const LIVE_POLL_MS = 10_000
 
 // The persistent left sidebar: "Channels" (every channel the signed-in
 // user can view — public, owned, or shared with them; see
@@ -19,7 +21,8 @@ import type { Channel } from '@/api/types'
 export function LeftNav() {
   const { user } = useAuth()
   const [channels, setChannels] = useState<Channel[] | null>(null)
-  const { slug, onAir, hiddenKeys, spotlightKey, toggleHidden, toggleSpotlight, reset } = useChannelPrefs()
+  const [liveBySlug, setLiveBySlug] = useState<Record<string, boolean>>({})
+  const { slug, onAir, liveByKey, hiddenKeys, spotlightKey, toggleHidden, toggleSpotlight, reset } = useChannelPrefs()
 
   useEffect(() => {
     if (!user) {
@@ -37,6 +40,31 @@ export function LeftNav() {
       })
     return () => {
       cancelled = true
+    }
+  }, [user])
+
+  // Bulk live status for every channel in the list, polled independently
+  // of the channel list itself — a transient failure just keeps the last
+  // known state rather than flashing every dot to "offline".
+  useEffect(() => {
+    if (!user) {
+      setLiveBySlug({})
+      return
+    }
+    let cancelled = false
+    async function poll() {
+      try {
+        const data = await api.get<Record<string, boolean>>('/api/channels/live')
+        if (!cancelled) setLiveBySlug(data)
+      } catch {
+        /* keep the last known state */
+      }
+    }
+    poll()
+    const interval = setInterval(poll, LIVE_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
     }
   }, [user])
 
@@ -62,7 +90,7 @@ export function LeftNav() {
                 )
               }
             >
-              <Radio className="h-3.5 w-3.5 shrink-0" />
+              <LiveDot live={!!liveBySlug[c.slug]} />
               <span className="truncate">{c.name}</span>
             </NavLink>
           ))
@@ -74,6 +102,7 @@ export function LeftNav() {
           <Separator className="my-4" />
           <StreamsPanel
             onAir={onAir}
+            liveByKey={liveByKey}
             hiddenKeys={hiddenKeys}
             onToggleHidden={toggleHidden}
             spotlightKey={spotlightKey}

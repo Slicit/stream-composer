@@ -81,6 +81,27 @@ func (m *Monitor) StatusOf(key string) Status {
 	return Status{State: "off"}
 }
 
+// Summary aggregates every source this monitor has ever tracked — unlike
+// relayrunner there is no separate "enabled" configuration to count
+// against (a source either has audio and is live, or it isn't tracked),
+// so this only reports how many are currently transcoding.
+type Summary struct {
+	Tracked int `json:"tracked"`
+	Live    int `json:"live"`
+}
+
+func (m *Monitor) Summary() Summary {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := Summary{Tracked: len(m.health)}
+	for _, st := range m.health {
+		if st.State == "live" {
+			s.Live++
+		}
+	}
+	return s
+}
+
 // Start runs Tick immediately and then on every interval, until stop is
 // closed. Mirrors startLoop() in the Node version.
 func (m *Monitor) Start(ctx context.Context, interval time.Duration, stop <-chan struct{}) {

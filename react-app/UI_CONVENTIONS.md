@@ -56,7 +56,7 @@ Every `Button` uses `variant="outline"` (bordered) — this app does not use
 the solid `default`, borderless `ghost`, or `secondary` variants. A
 button's selected/active state (e.g. the audio picker's current source) is
 expressed with extra `className`, not by switching to `default` — see
-`@/components/AudioPicker` for the pattern:
+`@/components/PlayerOverlay`'s audio-chip row for the pattern:
 
 ```tsx
 <Button
@@ -83,3 +83,8 @@ document why, inline, at the point of use:
   design-system color or scale step. Kept as an inline `style`, not a
   Tailwind token, so it stays visibly a one-off rather than looking like
   a reusable pattern.
+- **`LiveDot`** (the channel-list and Streams-panel live indicator) — the
+  green glow (`shadow-[0_0_6px_hsl(var(--success)/0.7)]`) is an arbitrary
+  value, not a token; the `--success` color underneath it is a real token
+  though, and the 1s fade uses ordinary `transition-colors`, so this is a
+  narrow exception (one effect, one component) rather than a new color.

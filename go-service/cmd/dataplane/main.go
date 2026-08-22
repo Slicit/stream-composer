@@ -29,6 +29,7 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/bandwidthhistory"
 	"github.com/Slicit/stream-composer/go-service/internal/channelstate"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
+	"github.com/Slicit/stream-composer/go-service/internal/hoststats"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
 	"github.com/Slicit/stream-composer/go-service/internal/playability"
@@ -38,6 +39,27 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
 	"github.com/Slicit/stream-composer/go-service/internal/viewerstate"
 )
+
+// The admin Server/Stats page's GET /internal/{token}/status shape —
+// defined here rather than in a package of their own since they exist
+// purely to bundle main()'s own locals (relayrunner.Summary,
+// audiomonitor.Summary, hoststats.Snapshot) into one response.
+type mediaMTXStatus struct {
+	Reachable bool   `json:"reachable"`
+	LastError string `json:"lastError,omitempty"`
+}
+
+type dataplaneStatus struct {
+	UptimeSec int64 `json:"uptimeSec"`
+}
+
+type statusResponse struct {
+	Host      hoststats.Snapshot   `json:"host"`
+	MediaMTX  mediaMTXStatus       `json:"mediamtx"`
+	Relays    relayrunner.Summary  `json:"relays"`
+	Audio     audiomonitor.Summary `json:"audio"`
+	Dataplane dataplaneStatus      `json:"dataplane"`
+}
 
 // rtspBase mirrors relayrunner's own rtspBase() — duplicated rather than
 // exported from that package, since it is a two-line detail of MediaMTX's
@@ -55,6 +77,7 @@ func rtspBase(cfg config.Config) string {
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	cfg := config.Load()
+	startedAt := time.Now()
 
 	store := streamstore.NewMemory()
 
@@ -108,6 +131,8 @@ func main() {
 	bandwidthStop := make(chan struct{})
 	defer close(bandwidthStop)
 	go bandwidth.Start(context.Background(), bandwidthStop)
+
+	hostReader := hoststats.New()
 
 	checker := playability.New(cfg.FFprobePath)
 	composition := sourceselector.Composition{
@@ -164,6 +189,32 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(bandwidth.Get())
+	})
+
+	// Same shared-secret shape — the admin Server/Stats page's one status
+	// call, aggregating everything that page needs so it isn't five
+	// separate internal round trips from Rails.
+	mux.HandleFunc("GET /internal/{token}/status", func(w http.ResponseWriter, r *http.Request) {
+		if !hook.VerifyToken(r.PathValue("token")) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		mtxStatus := mediaMTXStatus{Reachable: true}
+		if _, err := mtxClient.ListPaths(r.Context()); err != nil {
+			mtxStatus.Reachable = false
+			mtxStatus.LastError = err.Error()
+		}
+		resp := statusResponse{
+			Host:     hostReader.Snapshot(),
+			MediaMTX: mtxStatus,
+			Relays:   relays.Summary(),
+			Audio:    audio.Summary(),
+			Dataplane: dataplaneStatus{
+				UptimeSec: int64(time.Since(startedAt).Seconds()),
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	// Session-guarded: ResolvePlayback is what actually turns "no user" or
@@ -227,6 +278,20 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(state)
+	}))
+
+	// The left nav's bulk "which channels are live" check — one request
+	// covering every channel the caller can see, instead of polling each
+	// channel's own /state individually just to color a dot.
+	mux.Handle("GET /api/channels/live", guard(func(w http.ResponseWriter, r *http.Request) {
+		liveMap, err := channelstate.BuildLiveMap(r.Context(), store, mtxClient, mediaproxy.UserFromContext(r.Context()))
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "could not reach mediamtx"})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(liveMap)
 	}))
 
 	addr := ":" + strings.TrimPrefix(cfg.Port, ":")

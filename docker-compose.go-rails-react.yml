@@ -71,6 +71,13 @@ services:
       # plane's only credential for reading stream/channel config and
       # resolving a viewer's session, both server-to-server only.
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      # The other direction: lets Rails call the Go data plane's own
+      # /internal/{token}/... routes (bandwidth history, host/service
+      # status) for the admin Server/Stats page — see Api::Admin::
+      # StatsController. Same secret MEDIAMTX_AUTHHTTPADDRESS and
+      # dataplane's MEDIAMTX_INTERNAL_PASSWORD already carry below.
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      DATAPLANE_INTERNAL_URL: http://dataplane:8080
       ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Set by the TLS overlay; left unset here so DOMAIN stays optional
