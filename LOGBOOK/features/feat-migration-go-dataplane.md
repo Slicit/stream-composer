@@ -67,10 +67,24 @@ itself on the same host with zero collisions.
    the receiving instance's logs. Dockerfile's runtime stage switched from
    distroless (no shell, no ffmpeg) to `debian:12-slim` with ffmpeg
    installed.~~
-5. Not yet started: audio-monitor relay, compositor/layout engine
-   (flagged as the single biggest remaining port), bandwidth history,
-   viewer-state endpoint — later slices of this same Go phase, each to
-   land and be tested independently before the next.
+5. ~~Audio-monitor relay (`internal/audiomonitor`): one supervised ffmpeg
+   Opus transcode per live source that has an audio track, ported
+   field-for-field from `server/src/audioRelay.js`. Unlike the restream
+   relay runner, this has no streamstore-side configuration at all — it
+   reacts purely to what `mediamtx.ListIngest()` reports is currently
+   live, keyed on the source's ingest key rather than a relay id.
+   `internal/mediamtx.IngestPath` extended with a `HasAudio` field (ported
+   from `mediamtx.js`'s `trackSummary()` regex) so `Tick()` can tell a
+   video-only source from one worth transcoding. Same test shape as the
+   relay runner (fake `IngestLister`, fake-ffmpeg shell script for
+   start/stop/backoff), then verified live: the audio track of a synthetic
+   RTMP source was picked up and republished to MediaMTX under
+   `audio/<key>` as genuine Opus — confirmed via MediaMTX's own path list
+   showing an `Opus` track, not just a process running.~~
+6. Not yet started: compositor/layout engine (flagged as the single
+   biggest remaining port), bandwidth history, viewer-state endpoint —
+   later slices of this same Go phase, each to land and be tested
+   independently before the next.
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~

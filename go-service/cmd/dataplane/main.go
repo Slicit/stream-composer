@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Slicit/stream-composer/go-service/internal/audiomonitor"
 	"github.com/Slicit/stream-composer/go-service/internal/authhook"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
@@ -74,6 +75,12 @@ func main() {
 	defer close(relayStop)
 	go relays.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, relayStop)
 	defer relays.StopAll()
+
+	audio := audiomonitor.New(mtxClient, cfg, log)
+	audioStop := make(chan struct{})
+	defer close(audioStop)
+	go audio.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, audioStop)
+	defer audio.StopAll()
 
 	mux := http.NewServeMux()
 

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -29,8 +30,20 @@ func (c *Client) client() *http.Client {
 }
 
 type pathItem struct {
-	Name  string `json:"name"`
-	Ready bool   `json:"ready"`
+	Name   string   `json:"name"`
+	Ready  bool     `json:"ready"`
+	Tracks []string `json:"tracks"`
+}
+
+var audioTrackPattern = regexp.MustCompile(`(?i)aac|opus|mpeg4-audio|audio|pcm`)
+
+func hasAudioTrack(tracks []string) bool {
+	for _, t := range tracks {
+		if audioTrackPattern.MatchString(t) {
+			return true
+		}
+	}
+	return false
 }
 
 type pathsListResponse struct {
@@ -41,8 +54,9 @@ type pathsListResponse struct {
 // IngestPath is a live ingest slot, mapped from MediaMTX's own path name
 // (live/<key>) down to just the key relayrunner cares about.
 type IngestPath struct {
-	Key   string
-	Ready bool
+	Key      string
+	Ready    bool
+	HasAudio bool
 }
 
 // ListIngest returns every path under IngestPrefix, paginated the same way
@@ -67,7 +81,7 @@ func (c *Client) ListIngest(ctx context.Context) ([]IngestPath, error) {
 			if key == "" || strings.Contains(key, "/") {
 				continue
 			}
-			out = append(out, IngestPath{Key: key, Ready: it.Ready})
+			out = append(out, IngestPath{Key: key, Ready: it.Ready, HasAudio: hasAudioTrack(it.Tracks)})
 		}
 		page++
 		if page >= pageCount {

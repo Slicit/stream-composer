@@ -56,6 +56,34 @@ func TestListIngestFiltersAndPaginates(t *testing.T) {
 	}
 }
 
+func TestListIngestReportsWhetherAnAudioTrackIsPresent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(pathsListResponse{
+			Items: []pathItem{
+				{Name: "live/with-audio", Ready: true, Tracks: []string{"H264", "MPEG-4 Audio"}},
+				{Name: "live/video-only", Ready: true, Tracks: []string{"H264"}},
+				{Name: "live/opus-only", Ready: true, Tracks: []string{"Opus"}},
+			},
+			PageCount: 1,
+		})
+	}))
+	defer server.Close()
+
+	client := &Client{BaseURL: server.URL, IngestPrefix: "live"}
+	got, err := client.ListIngest(context.Background())
+	if err != nil {
+		t.Fatalf("ListIngest() error = %v", err)
+	}
+
+	want := map[string]bool{"with-audio": true, "video-only": false, "opus-only": true}
+	for _, ip := range got {
+		if ip.HasAudio != want[ip.Key] {
+			t.Errorf("key %q: HasAudio = %v, want %v", ip.Key, ip.HasAudio, want[ip.Key])
+		}
+	}
+}
+
 func TestListIngestNon200(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
