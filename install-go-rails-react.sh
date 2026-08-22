@@ -22,8 +22,23 @@
 
 set -Eeuo pipefail
 
+# Re-running this script *from inside an existing install* (the normal
+# update path — see update-go-rails-react.sh) must find that install's
+# .env even when it was not put in the default directory. A script
+# invoked via `curl | bash` has no real path (`$0` is "bash"), so this
+# only ever fires for a local copy — exactly the case that needs it.
+default_install_dir() {
+  local script_dir
+  script_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd || true)"
+  if [ -n "$script_dir" ] && [ -f "$script_dir/.env" ] && [ -f "$script_dir/docker-compose.go-rails-react.yml" ]; then
+    echo "$script_dir"
+  else
+    echo "/opt/stream-composer-next"
+  fi
+}
+
 REPO="${SC_REPO:-Slicit/stream-composer}"
-INSTALL_DIR="${SC_INSTALL_DIR:-/opt/stream-composer-next}"
+INSTALL_DIR="${SC_INSTALL_DIR:-$(default_install_dir)}"
 CHANNEL="${SC_CHANNEL:-beta}" # beta | stable
 CHANNEL_EXPLICIT="no"
 
@@ -138,7 +153,9 @@ Usage: install-go-rails-react.sh [options]
   --admin-password <pass>  Password for that account (default: randomly generated)
   --master-key <hex>       Rails master key — required, see below
   --rtmp-port <port>       RTMP ingest port (default: 1935)
-  --dir <path>             Install directory (default: /opt/stream-composer-next)
+  --dir <path>             Install directory (default: /opt/stream-composer-next,
+                            or wherever this script itself is, when run
+                            as a local copy from inside an existing install)
   --channel <beta|stable>  Image channel (default: beta — the only one
                             published while this stack lives on the
                             migration/go-rails-react branch)
