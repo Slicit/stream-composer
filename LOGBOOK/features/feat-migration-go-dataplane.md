@@ -140,6 +140,37 @@ This closes every item of the original 8-item gap-fill plan except
 production build/deploy (never scoped here) and the React viewer/admin
 screens that consume these new endpoints — those remain open work outside
 this Go data-plane phase.
+
+9. ~~Session auth wired into the Go data plane (item 1 of the follow-on
+   "what's still missing" plan): the WHEP/HLS mounts and GET /api/state
+   were correct but always anonymous (`UserFromContext` returning nil for
+   every caller), since nothing resolved the sc_session cookie into an
+   identity. Rails gained `GET /internal/<token>/sessions/<digest>`
+   (`Internal::SessionsController`, a new `Session.authenticate_by_digest`
+   alongside the existing `authenticate`) — the Go side sends only the
+   cookie's SHA-256 digest, never the raw token, so a leaked request or
+   log line here is useless to replay. The shared `verify_token!`
+   before_action (previously only on `Internal::StreamsController`) was
+   extracted into an `InternalTokenAuthenticatable` concern both
+   controllers now include. New Go package `internal/sessionauth`:
+   `Resolver.Resolve()` calls that endpoint, and `Guard()` is HTTP
+   middleware reading the `sc_session` cookie and attaching the result via
+   `mediaproxy.WithUser` — degrading to anonymous (not failing the
+   request) whenever there's no cookie or Rails is unreachable. Wired into
+   `cmd/dataplane/main.go` only when `RAILS_INTERNAL_API_URL` is set
+   (nothing to ask otherwise); `access.CanAccess`, already wired into
+   `mediaproxy.ResolvePlayback` since Go phase 1, is what turns "no user"
+   or "wrong user" into an actual denial — the guard's only job is making
+   sure a real identity reaches it.
+
+   Verified live end to end on the dev stack, not just via RSpec/Go unit
+   tests: logged in for a real admin sc_session cookie, published a real
+   RTMP source under a stream marked `visibility: private`, then compared
+   a WHEP request with no cookie (denied — 404 "Unknown stream.", the same
+   opaque denial an unknown playback id gets) against the identical
+   request with the admin's cookie (granted — the request reached
+   MediaMTX itself, which only complained about the deliberately
+   malformed test SDP body, not access).
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~

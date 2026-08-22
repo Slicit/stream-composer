@@ -32,6 +32,7 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
 	"github.com/Slicit/stream-composer/go-service/internal/playability"
 	"github.com/Slicit/stream-composer/go-service/internal/relayrunner"
+	"github.com/Slicit/stream-composer/go-service/internal/sessionauth"
 	"github.com/Slicit/stream-composer/go-service/internal/sourceselector"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
 	"github.com/Slicit/stream-composer/go-service/internal/viewerstate"
@@ -116,6 +117,24 @@ func main() {
 		GapPx:   cfg.CompositionGapPx,
 	}
 
+	// Only set up when Rails is actually the source of truth (see the
+	// streamstore bridge selection above) — without it there is nothing
+	// to ask who a caller is, and every request stays anonymous exactly
+	// as it always has.
+	var sessionResolver *sessionauth.Resolver
+	if railsURL := os.Getenv("RAILS_INTERNAL_API_URL"); railsURL != "" {
+		sessionResolver = &sessionauth.Resolver{BaseURL: railsURL, Token: os.Getenv("RAILS_INTERNAL_API_TOKEN")}
+	}
+	// guard wraps a handler with session resolution when Rails is
+	// available, or passes it through unchanged (anonymous, as before)
+	// when it isn't.
+	guard := func(h http.HandlerFunc) http.Handler {
+		if sessionResolver == nil {
+			return h
+		}
+		return sessionauth.Guard(sessionResolver, log, h)
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -146,24 +165,20 @@ func main() {
 		_ = json.NewEncoder(w).Encode(bandwidth.Get())
 	})
 
-	// No session/guard middleware is wired in yet — every caller is
-	// anonymous (mediaproxy.UserFromContext returns nil), which is correct
-	// today: there is no control plane to ask who is signed in. Public
-	// streams and, when publicViewing is on, the programme already work
-	// end-to-end; private-stream access resumes once the Rails session
-	// lookup is wired in as guard middleware here.
-	mux.HandleFunc(mediaproxy.WebRTCMount+"/", func(w http.ResponseWriter, r *http.Request) {
+	// Session-guarded: ResolvePlayback is what actually turns "no user" or
+	// "wrong user" into a denial for anything that isn't public — the
+	// guard's only job is making sure a real caller identity reaches it,
+	// via mediaproxy.UserFromContext, instead of always being nil.
+	mux.Handle(mediaproxy.WebRTCMount+"/", guard(func(w http.ResponseWriter, r *http.Request) {
 		proxy.ServeWebRTC(w, r, cfg.MediaMTX.WebRTC)
-	})
-	mux.HandleFunc(mediaproxy.HLSMount+"/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.Handle(mediaproxy.HLSMount+"/", guard(func(w http.ResponseWriter, r *http.Request) {
 		proxy.ServeHLS(w, r, cfg.MediaMTX.HLS)
-	})
+	}))
 
 	// The browser-composition equivalent of server/src/routes/api.js's
-	// GET /api/state. No session guard yet — same open question as the
-	// WHEP/HLS handlers above; every caller currently sees exactly what a
-	// public/anonymous viewer would.
-	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
+	// GET /api/state.
+	mux.Handle("GET /api/state", guard(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		live, err := mtxClient.ListIngest(ctx)
 		if err == nil {
@@ -182,7 +197,7 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(state)
-	})
+	}))
 
 	addr := ":" + strings.TrimPrefix(cfg.Port, ":")
 	log.Info("data plane listening", "addr", addr)
