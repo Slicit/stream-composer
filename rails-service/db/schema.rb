@@ -10,10 +10,33 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_22_000005) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_22_000007) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
+
+  create_table "app_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.uuid "homepage_channel_id"
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "background_image", default: "", null: false
+    t.datetime "created_at", null: false
+    t.string "name", null: false
+    t.uuid "owner_id", null: false
+    t.uuid "shared_with", default: [], null: false, array: true
+    t.string "slug", null: false
+    t.uuid "stream_ids", default: [], null: false, array: true
+    t.datetime "updated_at", null: false
+    t.string "visibility", default: "private", null: false
+    t.index "lower((slug)::text)", name: "index_channels_on_lower_slug", unique: true
+    t.index ["owner_id"], name: "index_channels_on_owner_id"
+    t.index ["shared_with"], name: "index_channels_on_shared_with", using: :gin
+    t.index ["stream_ids"], name: "index_channels_on_stream_ids", using: :gin
+    t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying, 'private'::character varying]::text[])", name: "channels_visibility_check"
+  end
 
   create_table "relay_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "audio", default: "copy", null: false
@@ -73,6 +96,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_22_000005) do
     t.check_constraint "stream_quota >= 0 AND stream_quota <= 1000", name: "users_stream_quota_range"
   end
 
+  add_foreign_key "channels", "users", column: "owner_id", on_delete: :cascade
   add_foreign_key "relay_destinations", "streams", on_delete: :cascade
   add_foreign_key "sessions", "users"
   add_foreign_key "streams", "users", column: "owner_id", on_delete: :nullify

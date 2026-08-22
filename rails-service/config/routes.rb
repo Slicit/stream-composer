@@ -22,6 +22,16 @@ Rails.application.routes.draw do
       get ":id/key", action: :key
     end
 
+    get "streams/available", to: "streams_available#index"
+
+    scope path: "channels/mine", controller: "channels" do
+      get "", action: :index
+      post "", action: :create
+      patch ":id", action: :update
+      delete ":id", action: :destroy
+      put ":id/background", action: :background
+    end
+
     namespace :admin do
       resources :users, only: %i[index create update destroy]
 
@@ -38,6 +48,15 @@ Rails.application.routes.draw do
         post "", action: :create
         patch ":id", action: :update
         delete ":id", action: :destroy
+      end
+
+      scope path: "channels", controller: "channels" do
+        get "", action: :index
+        post "", action: :create
+        patch ":id", action: :update
+        delete ":id", action: :destroy
+        put ":id/homepage", action: :set_homepage
+        delete ":id/homepage", action: :clear_homepage
       end
     end
   end

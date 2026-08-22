@@ -15,6 +15,7 @@ class User < ApplicationRecord
 
   has_many :sessions, dependent: :destroy
   has_many :owned_streams, class_name: "Stream", foreign_key: :owner_id, inverse_of: :owner, dependent: nil
+  has_many :owned_channels, class_name: "Channel", foreign_key: :owner_id, inverse_of: :owner, dependent: :destroy
 
   before_validation { self.username = username.to_s.strip }
   before_validation { self.role = "viewer" if role.blank? }

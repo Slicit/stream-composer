@@ -64,13 +64,27 @@ repo, not its own.
    row) with the same cross-tenant-isolation test coverage as streams. 102
    RSpec examples total now. Verified end to end against the real running
    server (create, list, key masked in the response).~~
-9. Not yet started: channels, admin settings.
-10. Not started: relay destinations in `migrate_from_json.rake` (only
-    users and streams migrate so far).
-11. Not started: wiring the Go data plane's `streamstore.Store` to a real
+9. ~~Channels: `Channel` model (slug generation/uniqueness, membership and
+   sharing as arrays, background image as a raw-body upload written to
+   `public/uploads/`, no multipart parsing) ported from `channels.js`'s
+   *configuration* half — viewing a channel's live state stays out of
+   scope, same data-plane boundary as everything else. A tiny `AppSetting`
+   singleton for `homepage_channel_id`, since `Channel#destroy` needs to
+   clear it. `Api::Admin::ChannelsController` (full CRUD + homepage
+   set/clear) and `Api::ChannelsController` (`/channels/mine`, open to any
+   signed-in user, not just streamer/admin — no quota, matching
+   `routes/channels.js` exactly) plus `/api/streams/available`. 129 RSpec
+   examples total now (was 102). Verified end to end against the real
+   server: channel created with an auto-generated slug, background image
+   uploaded and served back through Rails' own static file handling.~~
+10. Not started: relay destinations and channels in
+    `migrate_from_json.rake` (only users and streams migrate so far).
+11. Not started: the rest of admin settings beyond `homepage_channel_id`
+    (`publicViewing`, composition config, ...).
+12. Not started: wiring the Go data plane's `streamstore.Store` to a real
     Rails internal API client (see phase 1's plan item 7 — the actual
     "connect the services" step).
-12. Not started: React frontend.
+13. Not started: React frontend.
 
 ## Decisions
 
@@ -153,6 +167,33 @@ repo, not its own.
   `@importing_legacy_hash` for an already-hashed one — conflating them was
   the root cause), and `lib/tasks/migrate_from_json.rake` now
   `find_or_initialize_by(id:)` for both users and streams.
+
+- **Decision:** `Channel` owns configuration only — slug, membership,
+  sharing, background image. Viewing a channel (`GET /api/channels/:slug/state`
+  in the Node backend: layout computation, live/on-air status, the
+  `restricted` placeholder shape for an inaccessible member stream) is not
+  ported here at all.
+- **Why:** that endpoint needs `layout.js`'s pure layout math plus live
+  stream state from MediaMTX — neither of which the control plane has or
+  should have. It is a rendering concern for whoever ends up serving actual
+  viewers, which per the migration's own split is the data plane's job, not
+  Rails'.
+- **Impact:** no `Api::ChannelsStateController` exists yet. Whether channel
+  *viewing* ends up in the Go service or stays a gap until a decision is
+  made explicitly is unresolved — flagged here rather than silently
+  assumed either way.
+
+- **Decision:** `AppSetting` is a one-column singleton
+  (`homepage_channel_id`), not a general settings key-value store, even
+  though the Node backend's `settings` object has many more fields
+  (`publicViewing`, composition config, restart backoff, ...).
+- **Why:** `Channel#destroy` needs *something* to clear when it was the
+  homepage channel, and building that required the smallest real thing
+  that could work — porting every other setting is unrelated scope this
+  channels slice does not need to unblock.
+- **Impact:** `AppSetting.instance` (`first_or_create!`) is the only access
+  pattern; adding a second setting later means literally adding a column,
+  not redesigning anything.
 
 ## Links
 

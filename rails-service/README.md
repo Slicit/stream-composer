@@ -73,13 +73,28 @@ against the same file; matches existing rows by `id`.
   `relays.js`. The ffmpeg process supervision half of that file (starting,
   backing off, progress) is not here — that stays a data-plane concern for
   a later Go slice, same boundary as the media proxy.
+- `app/models/channel.rb` — a named, sluggable, curated stream list any
+  signed-in user may own, ported from `channels.js`'s *configuration* half
+  (name/slug/membership/sharing/background image). Viewing a channel's live
+  state (layout computation, on-air status) is not here — same data-plane
+  boundary as everything else in this list.
+- `app/models/app_setting.rb` — a deliberately tiny singleton, today only
+  `homepage_channel_id`. Not a general settings store; see its own comment.
 - `app/controllers/api/` — `auth#login/logout/me`,
-  `admin/{users,streams,relays}` (full admin CRUD), `streams`/`relays` (the
-  streamer role's `/streams/mine` and `/relays/mine` self-service,
-  quota-enforced and ownership-scoped — a relay's ownership follows its
-  source stream, not the relay row itself).
+  `admin/{users,streams,relays,channels}` (full admin CRUD, plus
+  `PUT/DELETE admin/channels/:id/homepage`), `streams`/`relays`/`channels`
+  (self-service `/streams/mine`, `/relays/mine`, `/channels/mine` —
+  streams/relays are streamer-role and quota-enforced, channels are open to
+  any signed-in user with no quota, matching `routes/channels.js`),
+  `streams_available#index` (`/api/streams/available`, the pool a user may
+  build a channel from). A channel's background image is a raw-body PUT
+  (`Api::ChannelsController#background`) written to `public/uploads/`, no
+  multipart parsing and no new dependency — mirrors `express.raw()` in the
+  Node backend exactly.
 - `lib/tasks/migrate_from_json.rake` — the config.json -> Postgres import
-  (users and streams so far; relay destinations not yet added).
+  (users and streams so far; channels and relay destinations not yet
+  added).
 
-Not yet ported: channels, the audio-monitor relay's configuration, admin
-settings. Those are later slices of this same phase.
+Not yet ported: the audio-monitor relay's configuration, most of admin
+settings (only the one field `Channel` needs exists). Those are later
+slices of this same phase.
