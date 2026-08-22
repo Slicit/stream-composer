@@ -64,3 +64,18 @@ export interface Channel {
   sharedWith: string[]
   createdAt: string
 }
+
+// The streamer self-service relay picker's source list — GET /api/relays/mine.
+export interface RelaySource {
+  id: string
+  name: string
+  enabled: boolean
+}
+
+// GET /api/streams/available — the pool a user may build a channel from.
+export interface AvailableStream {
+  id: string
+  name: string
+  nickname: string
+  visibility: 'private' | 'public'
+}
