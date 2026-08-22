@@ -36,6 +36,34 @@ RSpec.describe "Api::Auth", type: :request do
     end
   end
 
+  describe "PATCH /api/auth/me (self-service password change)" do
+    it "changes the password when the current one is right" do
+      sign_in_as(user, password: "correct-horse-1")
+      patch "/api/auth/me", params: { currentPassword: "correct-horse-1", newPassword: "new-horse-battery-2" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(User.authenticate_credentials("alice", "new-horse-battery-2")).to eq(user)
+    end
+
+    it "refuses when the current password is wrong" do
+      sign_in_as(user, password: "correct-horse-1")
+      patch "/api/auth/me", params: { currentPassword: "wrong", newPassword: "new-horse-battery-2" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+      expect(User.authenticate_credentials("alice", "correct-horse-1")).to eq(user)
+    end
+
+    it "refuses a weak new password" do
+      sign_in_as(user, password: "correct-horse-1")
+      patch "/api/auth/me", params: { currentPassword: "correct-horse-1", newPassword: "short" }, as: :json
+      expect(response).to have_http_status(:bad_request)
+      expect(User.authenticate_credentials("alice", "correct-horse-1")).to eq(user)
+    end
+
+    it "refuses an anonymous caller" do
+      patch "/api/auth/me", params: { currentPassword: "x", newPassword: "new-horse-battery-2" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "POST /api/auth/logout" do
     it "ends the session so /api/auth/me goes back to nil" do
       sign_in_as(user, password: "correct-horse-1")

@@ -15,6 +15,18 @@ module Api
       render json: { channels: current_user.owned_channels.order(:created_at).map(&:as_public_json) }
     end
 
+    # Every channel this user can view — public, owned, or explicitly
+    # shared (Channel#accessible_to?, the same rule channel-state access
+    # and the go-service data plane both already use). Powers the left
+    # nav's channel list. Loaded and filtered in Ruby rather than a SQL
+    # WHERE: the accessible_to? check already exists as one shared method
+    # (Accessible concern) and the channel count here is not large enough
+    # to matter.
+    def accessible
+      channels = Channel.order(:created_at).select { |c| c.accessible_to?(current_user) }
+      render json: { channels: channels.map(&:as_public_json) }
+    end
+
     def create
       channel = current_user.owned_channels.new(channel_attrs(params.permit(:name, :slug, :visibility, streamIds: [], sharedWith: [])))
       if channel.save

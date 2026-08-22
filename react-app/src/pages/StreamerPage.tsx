@@ -161,7 +161,7 @@ export function StreamerPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-8">
+    <div className="flex w-full flex-col gap-6">
       {error && (
         <p className="text-sm text-destructive" role="alert">
           {error}
@@ -335,6 +335,6 @@ export function StreamerPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </div>
   )
 }

@@ -69,3 +69,17 @@ expressed with extra `className`, not by switching to `default` — see
 `destructive`-toned actions (delete) stay `variant="outline"` too, with
 `className="text-destructive hover:text-destructive"` for color — not
 `variant="destructive"`, which is a solid fill.
+
+## Exceptions (custom styling outside the design system)
+
+Stepping outside shadcn/the token palette is fine when it's justified —
+document why, inline, at the point of use:
+
+- **`PlayerOverlay`** (the video control bar) — sits on arbitrary video
+  content, needs a translucent/blurred surface the solid-HSL tokens don't
+  provide. See that file's own comment.
+- **`ViewerTile`'s stream-name label** — literal, specified values
+  (`font-size`/`line-height: 2.5vw`, `color: #1a8900`, bold), not a
+  design-system color or scale step. Kept as an inline `style`, not a
+  Tailwind token, so it stays visibly a one-off rather than looking like
+  a reusable pattern.

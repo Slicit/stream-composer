@@ -36,7 +36,10 @@ export function LoginPage() {
   }
 
   return (
-    <main className="mx-auto mt-16 w-full max-w-sm px-4">
+    // Deliberately not full width — a login form stretched across the
+    // page reads as broken, not as "using the space"; see
+    // UI_CONVENTIONS.md's exceptions section.
+    <div className="mx-auto mt-16 w-full max-w-sm">
       <Card>
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
@@ -68,6 +71,6 @@ export function LoginPage() {
           </form>
         </CardContent>
       </Card>
-    </main>
+    </div>
   )
 }

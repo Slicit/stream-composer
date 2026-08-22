@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { Button } from '@/components/ui/button'
+import { UserMenu } from '@/components/UserMenu'
 
 export function NavBar() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
 
   return (
     <header className="sticky top-0 z-40 flex items-center gap-4 border-b bg-background/95 px-5 py-3 backdrop-blur">
@@ -26,12 +26,7 @@ export function NavBar() {
           </Link>
         )}
         {user ? (
-          <>
-            <span className="text-muted-foreground">{user.username}</span>
-            <Button variant="outline" size="sm" onClick={() => logout()}>
-              Sign out
-            </Button>
-          </>
+          <UserMenu />
         ) : (
           <Link to="/login" className="text-muted-foreground hover:text-foreground">
             Sign in

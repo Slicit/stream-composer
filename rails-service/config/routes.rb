@@ -15,6 +15,7 @@ Rails.application.routes.draw do
     post "auth/login", to: "auth#login"
     delete "auth/logout", to: "auth#logout"
     get "auth/me", to: "auth#me"
+    patch "auth/me", to: "auth#update_me"
 
     scope path: "streams/mine", controller: "streams" do
       get "", action: :index
@@ -33,6 +34,11 @@ Rails.application.routes.draw do
     end
 
     get "streams/available", to: "streams_available#index"
+
+    # Every channel the signed-in user can view (public, owned, or
+    # explicitly shared) — the left nav's "Channels" list. Distinct from
+    # channels/mine below, which is owned-only self-service CRUD.
+    get "channels", to: "channels#accessible"
 
     scope path: "channels/mine", controller: "channels" do
       get "", action: :index

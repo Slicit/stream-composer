@@ -10,7 +10,7 @@ const TABS = [
 
 export function AdminLayout() {
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-8">
+    <div className="w-full">
       <nav className="mb-4 flex gap-1 border-b">
         {TABS.map((tab) => (
           <NavLink
@@ -29,6 +29,6 @@ export function AdminLayout() {
         ))}
       </nav>
       <Outlet />
-    </main>
+    </div>
   )
 }

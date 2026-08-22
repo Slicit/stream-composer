@@ -3,29 +3,47 @@ import { ViewerTile } from '@/components/ViewerTile'
 import { PlayerOverlay } from '@/components/PlayerOverlay'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { computeClientLayout } from '@/lib/clientLayout'
 import type { ViewerState } from '@/api/viewerState'
 import type { WhepStats } from '@/lib/whep'
 
 interface ComposedGridProps {
   state: ViewerState
   emptyMessage?: string
+  // Per-viewer overrides (the channel page's "Streams" panel drives
+  // these) — hiding a source or picking a spotlight is never sent to the
+  // server, so the grid recomposes locally instead of waiting on the
+  // next poll. Both default to "no override", identical to the plain
+  // global viewer.
+  hiddenKeys?: Set<string>
+  spotlightKey?: string | null
 }
 
 // The browser-composed grid, shared by the global viewer and a channel's
-// viewer — same layout math (from GET /api/state or GET /api/channels/
+// viewer — same source list (from GET /api/state or GET /api/channels/
 // :slug/state), same three tile kinds: a live WhepClient tile, a
 // playability-problem placeholder, and (channel state only) a restricted
-// placeholder for a member the viewer cannot reach. The bottom PlayerOverlay
-// (play/pause, stats, audio picker, fullscreen) mirrors the pre-migration
-// app's .player-overlay — see PlayerOverlay.tsx for why it's styled outside
-// the shadcn design system.
-export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start streaming and the grid appears here automatically.' }: ComposedGridProps) {
+// placeholder for a member the viewer cannot reach. Cell positions are
+// computed entirely client-side (lib/clientLayout.ts, ported from
+// go-service/internal/layout) rather than taken from the server's own
+// layout.cells, so hiding a source or picking a spotlight recomposes the
+// grid immediately with no round trip. The bottom PlayerOverlay (play/
+// pause, stats, audio picker, fullscreen) mirrors the pre-migration
+// app's .player-overlay — see PlayerOverlay.tsx for why it's styled
+// outside the shadcn design system.
+export function ComposedGrid({
+  state,
+  emptyMessage = 'Nothing on air. Start streaming and the grid appears here automatically.',
+  hiddenKeys,
+  spotlightKey = null,
+}: ComposedGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [statsByKey, setStatsByKey] = useState<Record<string, WhepStats>>({})
 
-  const onAir = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
+  const onAirAll = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
+  const onAir = hiddenKeys ? onAirAll.filter((s) => !hiddenKeys.has(s.key)) : onAirAll
   const streamsByKey = new Map(state.streams.map((s) => [s.key, s]))
 
   const aggregate = useMemo(() => {
@@ -46,6 +64,12 @@ export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start stre
   }
 
   const layout = state.layout
+  const spotlightIndex = spotlightKey ? onAir.findIndex((s) => s.key === spotlightKey) : -1
+  const cells = computeClientLayout(
+    onAir.length,
+    { width: layout.width, height: layout.height, gap: state.program.gapPx },
+    spotlightIndex >= 0 ? spotlightIndex : null,
+  )
 
   return (
     <div
@@ -54,7 +78,7 @@ export function ComposedGrid({ state, emptyMessage = 'Nothing on air. Start stre
       style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
     >
       {onAir.map((source, i) => {
-        const cell = layout.cells[i]
+        const cell = cells[i]
         if (!cell) return null
         const meta = streamsByKey.get(source.key)
         const cellStyle = {

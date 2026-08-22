@@ -53,6 +53,46 @@ RSpec.describe "Api::Channels (self-service /channels/mine)", type: :request do
     end
   end
 
+  describe "GET /api/channels (every channel this user can view)" do
+    let!(:public_channel) do
+      sign_in_as(viewer_b, password: "correct-horse-1")
+      post "/api/channels/mine", params: { name: "B's public channel", visibility: "public" }, as: :json
+      Channel.find(JSON.parse(response.body)["channel"]["id"])
+    end
+    let!(:private_channel) do
+      post "/api/channels/mine", params: { name: "B's private channel" }, as: :json
+      Channel.find(JSON.parse(response.body)["channel"]["id"])
+    end
+    let!(:shared_channel) do
+      post "/api/channels/mine", params: { name: "B's shared channel", sharedWith: [viewer_a.id] }, as: :json
+      Channel.find(JSON.parse(response.body)["channel"]["id"])
+    end
+
+    it "includes public and explicitly shared channels, not a stranger's private one" do
+      sign_in_as(viewer_a, password: "correct-horse-1")
+      get "/api/channels", as: :json
+      ids = JSON.parse(response.body)["channels"].map { |c| c["id"] }
+      expect(ids).to include(public_channel.id, shared_channel.id)
+      expect(ids).not_to include(private_channel.id)
+    end
+
+    it "the owner sees all three of their own channels regardless of visibility" do
+      sign_in_as(viewer_b, password: "correct-horse-1")
+      get "/api/channels", as: :json
+      ids = JSON.parse(response.body)["channels"].map { |c| c["id"] }
+      expect(ids).to include(public_channel.id, private_channel.id, shared_channel.id)
+    end
+
+    it "refuses an anonymous caller" do
+      # The let!s above sign in as viewer_b to create the fixture
+      # channels, which leaves this example's session cookie jar
+      # authenticated unless explicitly cleared first.
+      delete "/api/auth/logout", as: :json
+      get "/api/channels", as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "background image upload" do
     let!(:channel) do
       sign_in_as(viewer_a, password: "correct-horse-1")
