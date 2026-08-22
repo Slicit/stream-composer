@@ -106,6 +106,17 @@ services:
       traefik.http.routers.dataplane-mtx.middlewares: sc-headers@docker
       traefik.http.routers.dataplane-mtx.priority: "10"
       traefik.http.services.dataplane.loadbalancer.server.port: "8080"
+      # sc-headers is redeclared here rather than relying on rails's copy —
+      # Traefik's docker provider does not reliably resolve a middleware
+      # defined only on another container's labels ("middleware
+      # sc-headers@docker does not exist" was observed in a real deploy),
+      # so each service that references sc-headers@docker must also define
+      # it. Keep this block identical to rails's.
+      traefik.http.middlewares.sc-headers.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.sc-headers.headers.stsIncludeSubdomains: "false"
+      traefik.http.middlewares.sc-headers.headers.contentTypeNosniff: "true"
+      traefik.http.middlewares.sc-headers.headers.referrerPolicy: same-origin
+      traefik.http.middlewares.sc-headers.headers.customFrameOptionsValue: SAMEORIGIN
 
   mediamtx:
     environment:
