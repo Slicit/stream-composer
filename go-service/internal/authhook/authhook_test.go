@@ -16,7 +16,7 @@ func testHook() (*Hook, *streamstore.Memory) {
 	store.Replace([]streamstore.Stream{
 		{Key: "good-key", Enabled: true},
 		{Key: "disabled-key", Enabled: false},
-	}, false)
+	}, nil, false)
 
 	cfg := config.Config{
 		MediaMTX: config.MediaMTX{

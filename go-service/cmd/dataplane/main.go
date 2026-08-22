@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -22,7 +23,9 @@ import (
 
 	"github.com/Slicit/stream-composer/go-service/internal/authhook"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
+	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
+	"github.com/Slicit/stream-composer/go-service/internal/relayrunner"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
 )
 
@@ -64,6 +67,13 @@ func main() {
 
 	hook := authhook.New(store, cfg, log)
 	proxy := mediaproxy.New(store, cfg, log)
+
+	mtxClient := &mediamtx.Client{BaseURL: cfg.MediaMTX.API, IngestPrefix: cfg.IngestPrefix}
+	relays := relayrunner.New(store, mtxClient, cfg, log)
+	relayStop := make(chan struct{})
+	defer close(relayStop)
+	go relays.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, relayStop)
+	defer relays.StopAll()
 
 	mux := http.NewServeMux()
 

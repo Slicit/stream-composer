@@ -10,6 +10,8 @@ type MediaMTX struct {
 	API              string // control API, e.g. http://mediamtx:9997
 	WebRTC           string // WHEP base, e.g. http://mediamtx:8889
 	HLS              string // HLS base, e.g. http://mediamtx:8888
+	RTSPHost         string // e.g. "mediamtx", the host ffmpeg reads/writes RTSP against
+	RTSPPort         string // e.g. "8554"
 	InternalUser     string
 	InternalPassword string // shared secret for both the auth hook path and internal reads
 }
@@ -21,6 +23,16 @@ type Config struct {
 	IngestPrefix string // e.g. "live" -> live/<key>
 	ProgramPath  string // e.g. "program"
 	AudioPrefix  string // e.g. "audio" -> audio/<key>
+
+	FFmpegPath string // "ffmpeg" unless overridden
+
+	// Restream backoff. Not yet a Rails-side setting (see AppSetting's own
+	// comment on staying deliberately small) — these are the same numeric
+	// defaults server/src/relays.js falls back to when settings.
+	// restartDelayMs/maxRestartDelayMs are unset.
+	RestartDelayMs    int
+	MaxRestartDelayMs int
+	PollIntervalMs    int
 }
 
 func env(key, def string) string {
@@ -28,6 +40,21 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n := 0
+	for _, c := range v {
+		if c < '0' || c > '9' {
+			return def
+		}
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 // Load reads Config from the environment, applying the same defaults as
@@ -39,11 +66,17 @@ func Load() Config {
 			API:              env("MEDIAMTX_API", "http://mediamtx:9997"),
 			WebRTC:           env("MEDIAMTX_WEBRTC", "http://mediamtx:8889"),
 			HLS:              env("MEDIAMTX_HLS", "http://mediamtx:8888"),
+			RTSPHost:         env("MEDIAMTX_RTSP_HOST", "mediamtx"),
+			RTSPPort:         env("MEDIAMTX_RTSP_PORT", "8554"),
 			InternalUser:     env("MEDIAMTX_INTERNAL_USER", "composer"),
 			InternalPassword: env("MEDIAMTX_INTERNAL_PASSWORD", ""),
 		},
-		IngestPrefix: env("INGEST_PREFIX", "live"),
-		ProgramPath:  env("PROGRAM_PATH", "program"),
-		AudioPrefix:  env("AUDIO_PREFIX", "audio"),
+		IngestPrefix:      env("INGEST_PREFIX", "live"),
+		ProgramPath:       env("PROGRAM_PATH", "program"),
+		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
+		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
+		RestartDelayMs:    envInt("RESTART_DELAY_MS", 2000),
+		MaxRestartDelayMs: envInt("MAX_RESTART_DELAY_MS", 15000),
+		PollIntervalMs:    envInt("POLL_INTERVAL_MS", 2000),
 	}
 }

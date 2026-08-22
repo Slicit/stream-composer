@@ -9,9 +9,11 @@ import (
 )
 
 // jsonConfig mirrors just the fields server/src/store.js's config.json ever
-// writes that this service cares about.
+// writes that this service cares about. Also reused by RailsBridge, since
+// Internal::StreamsController's response is shaped identically on purpose.
 type jsonConfig struct {
 	Streams []struct {
+		ID         string   `json:"id"`
 		Key        string   `json:"key"`
 		PlaybackID string   `json:"playbackId"`
 		Enabled    bool     `json:"enabled"`
@@ -19,9 +21,52 @@ type jsonConfig struct {
 		OwnerID    string   `json:"ownerId"`
 		SharedWith []string `json:"sharedWith"`
 	} `json:"streams"`
+	Relays []struct {
+		ID       string `json:"id"`
+		StreamID string `json:"streamId"`
+		Provider string `json:"provider"`
+		Name     string `json:"name"`
+		URL      string `json:"url"`
+		Key      string `json:"key"`
+		Audio    string `json:"audio"`
+		Enabled  bool   `json:"enabled"`
+	} `json:"relays"`
 	Settings struct {
 		PublicViewing bool `json:"publicViewing"`
 	} `json:"settings"`
+}
+
+func (cfg jsonConfig) toStreams() []Stream {
+	streams := make([]Stream, 0, len(cfg.Streams))
+	for _, s := range cfg.Streams {
+		streams = append(streams, Stream{
+			ID:         s.ID,
+			Key:        s.Key,
+			PlaybackID: s.PlaybackID,
+			Enabled:    s.Enabled,
+			Visibility: s.Visibility,
+			OwnerID:    s.OwnerID,
+			SharedWith: s.SharedWith,
+		})
+	}
+	return streams
+}
+
+func (cfg jsonConfig) toRelays() []Relay {
+	relays := make([]Relay, 0, len(cfg.Relays))
+	for _, r := range cfg.Relays {
+		relays = append(relays, Relay{
+			ID:       r.ID,
+			StreamID: r.StreamID,
+			Provider: r.Provider,
+			Name:     r.Name,
+			URL:      r.URL,
+			Key:      r.Key,
+			Audio:    r.Audio,
+			Enabled:  r.Enabled,
+		})
+	}
+	return relays
 }
 
 // JSONBridge polls the legacy JSON config file on an interval and refreshes
@@ -50,19 +95,7 @@ func (b *JSONBridge) Load() error {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", b.Path, err)
 	}
-
-	streams := make([]Stream, 0, len(cfg.Streams))
-	for _, s := range cfg.Streams {
-		streams = append(streams, Stream{
-			Key:        s.Key,
-			PlaybackID: s.PlaybackID,
-			Enabled:    s.Enabled,
-			Visibility: s.Visibility,
-			OwnerID:    s.OwnerID,
-			SharedWith: s.SharedWith,
-		})
-	}
-	b.Store.Replace(streams, cfg.Settings.PublicViewing)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.Settings.PublicViewing)
 	return nil
 }
 

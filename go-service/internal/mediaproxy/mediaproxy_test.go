@@ -17,7 +17,7 @@ func testResolver(publicViewing bool) (Resolver, *streamstore.Memory) {
 		{ID: "1", Key: "pub-key", PlaybackID: "aaaaaaaaaaaaaaaa", Enabled: true, Visibility: "public"},
 		{ID: "2", Key: "priv-key", PlaybackID: "bbbbbbbbbbbbbbbb", Enabled: true, Visibility: "private", SharedWith: []string{"granted-1"}},
 		{ID: "3", Key: "off-key", PlaybackID: "cccccccccccccccc", Enabled: false, Visibility: "public"},
-	}, publicViewing)
+	}, nil, publicViewing)
 	cfg := config.Config{IngestPrefix: "live", ProgramPath: "program", AudioPrefix: "audio"}
 	return Resolver{Store: store, Config: cfg}, store
 }
@@ -161,7 +161,7 @@ func TestForwardStripsAuthAndAddsInternalCredential(t *testing.T) {
 	defer upstream.Close()
 
 	store := streamstore.NewMemory()
-	store.Replace([]streamstore.Stream{{Key: "pub-key", PlaybackID: "aaaaaaaaaaaaaaaa", Enabled: true, Visibility: "public"}}, false)
+	store.Replace([]streamstore.Stream{{Key: "pub-key", PlaybackID: "aaaaaaaaaaaaaaaa", Enabled: true, Visibility: "public"}}, nil, false)
 	cfg := config.Config{
 		IngestPrefix: "live", ProgramPath: "program", AudioPrefix: "audio",
 		MediaMTX: config.MediaMTX{InternalUser: "composer", InternalPassword: "internal-secret"},

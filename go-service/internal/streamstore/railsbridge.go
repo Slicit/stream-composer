@@ -61,18 +61,7 @@ func (b *RailsBridge) Load() error {
 		return fmt.Errorf("decode response: %w", err)
 	}
 
-	streams := make([]Stream, 0, len(cfg.Streams))
-	for _, s := range cfg.Streams {
-		streams = append(streams, Stream{
-			Key:        s.Key,
-			PlaybackID: s.PlaybackID,
-			Enabled:    s.Enabled,
-			Visibility: s.Visibility,
-			OwnerID:    s.OwnerID,
-			SharedWith: s.SharedWith,
-		})
-	}
-	b.Store.Replace(streams, cfg.Settings.PublicViewing)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.Settings.PublicViewing)
 	return nil
 }
 

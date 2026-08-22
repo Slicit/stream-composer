@@ -9,6 +9,7 @@ import "sync"
 type Memory struct {
 	mu            sync.RWMutex
 	streams       []Stream
+	relays        []Relay
 	publicViewing bool
 }
 
@@ -16,13 +17,14 @@ func NewMemory() *Memory {
 	return &Memory{}
 }
 
-// Replace swaps the entire stream set atomically — how a future JSON-file or
-// polling-based loader would apply a refresh without a caller ever observing
-// a half-updated set.
-func (m *Memory) Replace(streams []Stream, publicViewing bool) {
+// Replace swaps the entire stream and relay set atomically — how a
+// future JSON-file or polling-based loader would apply a refresh without a
+// caller ever observing a half-updated set.
+func (m *Memory) Replace(streams []Stream, relays []Relay, publicViewing bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.streams = append([]Stream(nil), streams...)
+	m.relays = append([]Relay(nil), relays...)
 	m.publicViewing = publicViewing
 }
 
@@ -50,8 +52,26 @@ func (m *Memory) FindByKey(key string) (*Stream, bool) {
 	return nil, false
 }
 
+func (m *Memory) FindByID(id string) (*Stream, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.streams {
+		if m.streams[i].ID == id {
+			s := m.streams[i]
+			return &s, true
+		}
+	}
+	return nil, false
+}
+
 func (m *Memory) PublicViewingEnabled() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.publicViewing
+}
+
+func (m *Memory) Relays() []Relay {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]Relay(nil), m.relays...)
 }

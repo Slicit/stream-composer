@@ -38,6 +38,14 @@ RSpec.describe "Internal::Streams", type: :request do
     expect(body["settings"]).to eq({ "publicViewing" => false })
   end
 
+  it "returns every relay destination with its real (unmasked) key" do
+    relay = stream.relay_destinations.create!(provider: "twitch", key: "real-key-value")
+    get "/internal/test-internal-secret/streams", as: :json
+    body = JSON.parse(response.body)
+    entry = body["relays"].find { |r| r["id"] == relay.id }
+    expect(entry).to include("streamId" => stream.id, "provider" => "twitch", "key" => "real-key-value", "enabled" => true)
+  end
+
   it "reflects publicViewing once set" do
     AppSetting.instance.update!(public_viewing: true)
     get "/internal/test-internal-secret/streams", as: :json

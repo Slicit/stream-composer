@@ -15,8 +15,11 @@ func TestJSONBridgeLoad(t *testing.T) {
 
 	doc := map[string]any{
 		"streams": []map[string]any{
-			{"key": "k1", "playbackId": "p1", "enabled": true, "visibility": "public", "ownerId": "", "sharedWith": []string{}},
-			{"key": "k2", "playbackId": "p2", "enabled": false, "visibility": "private", "ownerId": "u1", "sharedWith": []string{"u2"}},
+			{"id": "s1", "key": "k1", "playbackId": "p1", "enabled": true, "visibility": "public", "ownerId": "", "sharedWith": []string{}},
+			{"id": "s2", "key": "k2", "playbackId": "p2", "enabled": false, "visibility": "private", "ownerId": "u1", "sharedWith": []string{"u2"}},
+		},
+		"relays": []map[string]any{
+			{"id": "r1", "streamId": "s1", "provider": "twitch", "name": "Twitch", "url": "rtmp://live.twitch.tv/app", "key": "relay-key", "audio": "copy", "enabled": true},
 		},
 		"settings": map[string]any{"publicViewing": true},
 	}
@@ -44,6 +47,15 @@ func TestJSONBridgeLoad(t *testing.T) {
 	s2, ok := store.FindByPlaybackID("p2")
 	if !ok || s2.OwnerID != "u1" || len(s2.SharedWith) != 1 || s2.SharedWith[0] != "u2" {
 		t.Errorf("p2: got %+v, ok=%v", s2, ok)
+	}
+	byID, ok := store.FindByID("s1")
+	if !ok || byID.Key != "k1" {
+		t.Errorf("FindByID(s1): got %+v, ok=%v", byID, ok)
+	}
+
+	relays := store.Relays()
+	if len(relays) != 1 || relays[0].StreamID != "s1" || relays[0].Key != "relay-key" {
+		t.Errorf("relays: got %+v", relays)
 	}
 }
 

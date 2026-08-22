@@ -51,9 +51,26 @@ itself on the same host with zero collisions.
    exists in the bridged config. Both the deny and allow paths confirmed via
    MediaMTX's own logs and the Go service's logs, not just curl against the
    Go service directly.~~
-4. Not yet started: compositor/ffmpeg supervision, the restream relay, the
-   audio-monitor relay, bandwidth history — later slices of this same Go
-   phase, each to land and be tested independently before the next.
+4. ~~Restream relay runner (`internal/relayrunner`): one supervised ffmpeg
+   process per enabled destination, a straight RTSP-in/FLV-out remux ported
+   field-for-field from `server/src/relays.js` (buildArgs, backoff,
+   reconciliation via Tick()). `streamstore.Store` extended to carry relay
+   data and a stream ID lookup; a new `internal/mediamtx` client lists live
+   ingest paths so Tick() can tell a genuinely offline source from a failed
+   destination and skip backoff for the former. Unit-tested via a narrowed
+   `IngestLister` interface and a fake-ffmpeg shell script standing in for
+   the real binary (start/stop/backoff-growth/source-gone paths), then
+   verified for real: a synthetic RTMP source published into the dev
+   MediaMTX, the runner's own ffmpeg picked it up and forwarded it live to
+   an independent, unauthenticated MediaMTX instance standing in for a
+   restream platform — confirmed both from the Go service's own logs and
+   the receiving instance's logs. Dockerfile's runtime stage switched from
+   distroless (no shell, no ffmpeg) to `debian:12-slim` with ffmpeg
+   installed.~~
+5. Not yet started: audio-monitor relay, compositor/layout engine
+   (flagged as the single biggest remaining port), bandwidth history,
+   viewer-state endpoint — later slices of this same Go phase, each to
+   land and be tested independently before the next.
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~
@@ -109,6 +126,35 @@ itself on the same host with zero collisions.
   SECURITY-labeled cases (traversal, percent-encoding, WHIP never routed,
   private-stream denial, the internal-credential requirement for reads)
   rather than being invented independently, so a divergence is easy to spot.
+
+### 2026-08-22 (relay runner)
+
+- **Decision:** the relay runner treats "source not publishing" and "ffmpeg
+  failed" as different outcomes with different consequences — the former
+  stops the process (if any) and reports "waiting" with no backoff; only
+  the latter schedules an exponentially growing retry.
+- **Why:** OBS reconnecting after a network blip is normal and frequent;
+  treating it as a failure would mean a real disconnect gets the same
+  multi-second backoff as a rejected/typo'd stream key, delaying recovery
+  for the common case to protect against the rare one. `relays.js` already
+  drew this distinction; the port preserves it rather than collapsing both
+  into one "not running" state.
+- **Impact:** `Tick()` checks the live-ingest key set before deciding
+  whether a stopped/never-started relay is "waiting" (reset backoff) or
+  still inside a scheduled retry window (leave it alone).
+
+- **Decision:** `internal/mediamtx.Client` is narrowed to an
+  `IngestLister` interface at the `relayrunner.Runner` boundary rather
+  than the runner depending on `*mediamtx.Client` directly.
+- **Why:** `Tick()`'s reconciliation logic (stop what's unwanted, start
+  what's live and enabled, back off what's failing) is the part worth unit
+  testing in isolation, and that requires controlling exactly which keys
+  are "live" without a real MediaMTX instance.
+- **Impact:** `tick_test.go` fakes both dependencies — a fake
+  `IngestLister` for live/offline key sets, and a real `exec.Command`
+  pointed at a small on-the-fly shell script standing in for ffmpeg — to
+  exercise start/stop/backoff-growth/source-gone entirely offline, in well
+  under a second per test.
 
 ## Links
 

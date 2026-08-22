@@ -18,6 +18,9 @@ func TestRailsBridgeLoad(t *testing.T) {
 				{"id": "s1", "key": "k1", "playbackId": "p1", "enabled": true, "visibility": "public", "ownerId": "", "sharedWith": []string{}},
 				{"id": "s2", "key": "k2", "playbackId": "p2", "enabled": false, "visibility": "private", "ownerId": "u1", "sharedWith": []string{"u2"}},
 			},
+			"relays": []map[string]any{
+				{"id": "r1", "streamId": "s1", "provider": "custom", "name": "Backup", "url": "rtmp://example.test/live", "key": "k", "audio": "aac", "enabled": false},
+			},
 			"settings": map[string]any{"publicViewing": true},
 		})
 	}))
@@ -43,6 +46,11 @@ func TestRailsBridgeLoad(t *testing.T) {
 	s2, ok := store.FindByPlaybackID("p2")
 	if !ok || s2.OwnerID != "u1" || len(s2.SharedWith) != 1 || s2.SharedWith[0] != "u2" {
 		t.Errorf("p2: got %+v, ok=%v", s2, ok)
+	}
+
+	relays := store.Relays()
+	if len(relays) != 1 || relays[0].Enabled || relays[0].Audio != "aac" {
+		t.Errorf("relays: got %+v", relays)
 	}
 }
 
