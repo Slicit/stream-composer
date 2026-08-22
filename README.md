@@ -2,205 +2,229 @@
 
 # Stream Composer
 
-**Many streams in. One grid out.**
+**Many streams in. Curated channels out.**
 
-Point any number of OBS instances at one server and it composes them into a single
-live programme — automatically laid out, sub-second latency, no GPU required.
+Point any number of OBS instances at one server, drop the ones you want into
+a channel, and viewers get a live grid that lays itself out, composed
+entirely in the browser, sub-second latency, no server-side encoding at all.
 
 [![CI](https://github.com/Slicit/stream-composer/actions/workflows/ci.yml/badge.svg)](https://github.com/Slicit/stream-composer/actions/workflows/ci.yml)
-[![Release](https://github.com/Slicit/stream-composer/actions/workflows/release.yml/badge.svg)](https://github.com/Slicit/stream-composer/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <br>
 
-<img src="docs/screenshots/viewer.png" alt="The viewer page: four sources composed into a 1080p grid, each labelled with its nickname, with the audio picker and programme details alongside" width="900">
+<img src="docs/screenshots/channel-viewer.png" alt="A channel page: live streams laid out in a grid, a green live dot next to the channel name, the left nav showing Channels and a Streams (favorites) panel below it" width="900">
 
 </div>
 
 ---
 
+> This branch (`migration/go-rails-react`) is a rewrite of the original
+> single-container Node app into three services: a Go data plane, a Rails
+> control plane, and a React frontend. It is under active development;
+> `main`/`install.sh` still point at the older, single-container release.
+
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/install-go-rails-react.sh | bash
 ```
 
-The installer checks Docker, downloads the latest release, asks four or five
-questions (domain or port, administrator account, ingest port) and starts
-everything. With a domain it obtains a Let's Encrypt certificate automatically.
+Unlike the old installer, this one never builds anything: it fetches two
+compose files and a MediaMTX config, then pulls pre-built images from GHCR.
+A fresh install or an upgrade is seconds of network I/O. Re-running it later
+upgrades in place, keeping `.env`.
 
 Non-interactive:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/install.sh | bash -s -- \
-  --yes --domain stream.example.com --email you@example.com --admin-password 'a-good-password'
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/install-go-rails-react.sh | bash -s -- \
+  --yes --domain stream.example.com --email you@example.com \
+  --admin-password 'a-good-password' --master-key "$(cat rails-service/config/master.key)"
 ```
 
-Then open the admin console, create a stream, and paste the key into OBS. That is
-the whole setup.
+To update an existing install, re-run the same installer from inside its
+directory, or:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/update-go-rails-react.sh | bash
+```
+
+Then open the admin console, create a stream, and paste the key into OBS.
+Create a channel to curate which streams show up together on their own page.
 
 ## What it does
 
-- **Composes automatically.** Streams appear and vanish; the grid re-lays itself.
-  One source fills the frame, two sit side by side, three centre the odd one out,
-  nine make a 3×3. Or pin a fixed layout, or a spotlight.
-- **Sub-second playback** over WebRTC (WHEP), with low-latency HLS as a fallback
-  for awkward networks.
-- **Audio stays with its source.** The programme is deliberately silent — viewers
-  pick one stream to listen to in the player, and everything starts muted.
-  Mixing several live rooms together produces something nobody wants to hear.
-- **Cinema mode.** The default view gives the picture nearly the whole window
-  and reduces everything else to one slim row. One click brings the detail back,
-  and the choice is remembered per user.
-- **Two places to compose.** Let the server encode one programme, or let each
-  viewer's browser arrange the sources with nothing re-encoded at all. Same
-  layout either way — one switch in the admin console.
-- **Restream anywhere.** Forward any incoming source on to Twitch, YouTube or
-  any other RTMP service — as many destinations per source as you like, each
-  switched on and off on its own. Nothing is re-encoded, so it costs a socket
-  rather than a core.
-- **CPU-first.** Sized and measured for machines with no GPU; hardware encoders
-  are used automatically when they are there.
-- **Named on air.** Give each stream a nickname and it is burnt into the bottom
-  of its cell — white with a black outline, legible over anything.
-- **Managed from the browser.** Stream keys, users, layout, bitrate, logs and
-  server load all live in one admin console.
-- **Simple for OBS.** Server URL plus stream key. Optionally a Lua script that
-  fills both in for you.
+- **Composes in the browser, not the server.** Each source is a separate
+  WebRTC (WHEP) session; the browser lays the grid out and decodes every
+  tile itself. No ffmpeg compositor, no extra server CPU per viewer or per
+  channel.
+- **Channels.** A named, sluggable, curated list of streams at its own URL
+  (`/c/your-channel`). Public or private, with per-channel access grants,
+  an optional background image, and one channel can be set as the site's
+  homepage.
+- **Per-stream visibility.** Streams are private by default; make one
+  public, or share it with specific users. A private stream inside a
+  channel you can otherwise see renders as a locked placeholder, never a
+  playable tile.
+- **Favorites, in the left nav.** The Streams panel under Channels lets a
+  viewer star sources to keep, hide the rest, and reset back to "show
+  everything" in one click. Entirely client-side, never touches the server.
+- **Live, at a glance.** Channels and streams fade to green in the left nav
+  the moment they go live, no polling the page to find out. A channel is
+  live if any of its members are.
+- **Audio stays with its source.** The grid is silent by default; picking a
+  tile unmutes just that one.
+- **Restream anywhere.** Forward any incoming source to Twitch, YouTube, or
+  any RTMP endpoint, as many destinations per source as you like, each
+  switched on independently. Nothing is re-encoded.
+- **Admin impersonation.** See the app exactly as another user does, with a
+  fixed banner naming who you're impersonating and a one-click way back.
+- **Server & Stats.** CPU, memory, host and data-plane uptime, MediaMTX and
+  relay health, and a real (not demo) bandwidth history chart with hover
+  detail, 15-minute samples kept for 7 days.
+- **Managed from the browser.** Users, stream keys, restream destinations,
+  channels and server health all live in one admin console.
 
 ## A look around
 
-**Viewers** get the composed programme, a strip of the individual sources, and an
-audio picker. The programme itself is silent; choosing a source unmutes just that
-one, so a producer can listen to the drum cam while watching all four.
+**The viewer** picks up whichever channel it's pointed at (or the
+configured homepage channel); the left nav lists every channel you can see,
+with a live dot, and your favorited streams below it.
 
-<img src="docs/screenshots/viewer-audio.png" alt="The viewer page with the Main Stage source selected in the audio monitor, its level meter active while the other sources stay muted" width="820">
+<img src="docs/screenshots/viewer-home.png" alt="The default viewer page: a live grid tile with the source name burned in at the bottom, the left nav listing channels with live indicators" width="820">
 
-**Admin → Streams** is where keys live. Each row has a nickname you can edit in
-place — that is the text burnt into the stream's cell — and the key stays masked
-until you copy it.
+**A channel page** groups a curated set of streams under its own slug.
+Members you can't access render as a locked placeholder instead of a tile;
+everyone else's just play.
 
-<img src="docs/screenshots/admin-streams.png" alt="The admin Streams tab listing four streams with editable nickname fields, masked stream keys, live status, uptime and per-stream actions" width="820">
+<img src="docs/screenshots/channel-viewer.png" alt="A channel's own page with a live grid and the Streams favorites panel in the left nav" width="820">
 
-**Admin → Restream** forwards the individual sources on to other platforms. Pick
-a source, pick Twitch or YouTube (or paste any RTMP URL), add the key. A source
-can feed several platforms at once, and each destination has its own switch.
+**Admin → Users** is where accounts and roles live, including the
+impersonate action on each row (only available to admins).
 
-<img src="docs/screenshots/admin-restream.png" alt="The admin Restream tab with one destination forwarding at 2.6 Mb/s and four more configured but switched off, grouped by their source stream" width="820">
+<img src="docs/screenshots/admin-users.png" alt="The admin Users tab listing accounts with their role, last sign-in, and per-row impersonate/delete actions" width="820">
 
-**Admin → Composition** picks the layout, the output size and bitrate, the
-encoder, and whether nicknames are burnt in. The preview redraws as you change it.
+**Admin → Streams** is where keys and visibility live. Keys stay masked
+until you copy them; visibility (private/public) is a dropdown per row.
 
-<img src="docs/screenshots/admin-composition.png" alt="The admin Composition tab showing layout choices, a 2x2 preview, source ordering, and output settings including resolution, bitrate and encoder" width="820">
+<img src="docs/screenshots/admin-streams.png" alt="The admin Streams tab listing streams with masked keys, a visibility dropdown, and an enabled toggle" width="820">
 
-**Admin → Server** shows what the box is actually doing: CPU, encoder frame rate
-and speed, measured output bitrate, restarts, and the last thing ffmpeg said.
+**Admin → Relays** forwards individual sources to other platforms. Pick a
+source, pick a destination (or paste any RTMP URL), and switch it on.
 
-<img src="docs/screenshots/admin-server.png" alt="The admin Server tab with CPU, memory, encoder frame rate, output bitrate and uptime tiles above an output-bitrate chart and server settings" width="820">
+<img src="docs/screenshots/admin-relays.png" alt="The admin Relays tab for configuring restream destinations per source" width="820">
 
-More screens — sign-in, users and logs — are in
-[docs/screenshots/](docs/screenshots/).
+**Admin → Channels** is where curated stream lists get built and made
+public, private, or shared with specific users.
+
+<img src="docs/screenshots/admin-channels.png" alt="The admin Channels tab listing channels with their visibility and member streams" width="820">
+
+**Admin → Server & Stats** shows what the box is actually doing: CPU,
+memory, uptime, service health, and a real bandwidth chart you can hover
+for the exact value at any point.
+
+<img src="docs/screenshots/admin-stats.png" alt="The admin Server & Stats tab with CPU, memory and uptime tiles, a services health list, and a bandwidth chart over the last 7 days" width="820">
 
 ## How it fits together
 
 ```
   OBS  ──RTMP/SRT──┐
-  OBS  ──RTMP/SRT──┤
-  OBS  ──RTMP/SRT──┼──▶  MediaMTX  ──RTSP──▶  ffmpeg compositor  ──RTSP──▶  MediaMTX
-                   │      (ingest)             (scale · lay out             (programme)
-                   │                            · encode)                        │
-                   │                                                             │
-  Browser  ◀──WebRTC / HLS over HTTPS──  Stream Composer  ◀────────────────────────┘
-                                          (web UI, API, auth, proxy)
+  OBS  ──RTMP/SRT──┼──▶  MediaMTX  ──WHEP (per source)──▶  Browser
+  OBS  ──RTMP/SRT──┘      (ingest,                          (composes the
+                           packaging)                        grid itself)
+                              ▲
+                              │ auth hook
+                              │
+                         Go data plane  ◀──WHEP proxy, channel/live state──▶  Browser
+                              │
+                              │ users, sessions, channel/stream config
+                              ▼
+                       Rails control plane  ◀──▶  Postgres
+                              ▲
+                              │
+                            React (Vite dev proxy / built assets in prod)
 ```
 
-One process supervises ffmpeg, decides the layout, serves the UI and proxies
-playback. MediaMTX does ingest and packaging. Traefik terminates TLS.
-Only the ingest ports and the WebRTC media port are exposed; everything else
-sits on an internal network behind authentication.
-
-More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Every source stays a separate WHEP session all the way to the browser;
+there is no server-side compositor to route media through. The Go data
+plane owns MediaMTX's auth hook, proxies playback, and tracks live/bandwidth
+state. Rails owns users, sessions, and the channel/stream/relay
+configuration that both the data plane and the React app read. Traefik
+terminates TLS in production; only the ingest ports and the WebRTC media
+port are exposed publicly.
 
 ## Getting a stream on air
 
-1. **Admin → Streams → Create.** Name it, and a key is generated.
-2. Press **OBS** next to the stream to see the exact server URL and key.
-3. In OBS: *Settings → Stream → Service: Custom*, paste both, **Start Streaming**.
-4. Open the viewer page. The grid rebuilds itself within a couple of seconds.
+1. **Admin → Streams → Add stream.** Name it, and a key is generated.
+2. In OBS: *Settings → Stream → Service: Custom*, server `rtmp://<host>/live`,
+   paste the key, **Start Streaming**.
+3. Open the viewer or a channel containing that stream. It appears within a
+   couple of seconds.
 
-Recommended OBS output for a 720p source: 1280×720, 30 fps, 2500–4000 kb/s,
-keyframe interval 2 s, x264 `veryfast`, profile `high`, tune `zerolatency`.
-
-There is also an [OBS helper script](obs/stream-composer.lua) that configures the
-service for you — see [docs/OBS.md](docs/OBS.md).
-
-## How much machine do I need?
-
-Measure yours rather than guessing:
-
-```bash
-./scripts/benchmark.sh
-```
-
-It encodes a real H.264 grid at increasing source counts and tells you where the
-machine stops keeping up. On a 2-core 2.1 GHz Xeon the cost works out at roughly
-
-```
-core-seconds per second of output  ≈  0.24  +  0.111 × sources
-```
-
-for 720p30 inputs into a 1080p30 output at preset `ultrafast` — about 9 sources
-at the limit, 6 with comfortable headroom. Full tables, the reasoning and the
-levers that actually matter are in [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+Recommended OBS output for a 720p source: 1280x720, 30 fps, 2500 to
+4000 kb/s, keyframe interval 2s, x264 `veryfast`, profile `high`, tune
+`zerolatency`, B-frames off (WebRTC can't play B-frames; the admin console
+flags a source that has them).
 
 ## Everyday commands
 
 ```bash
-cd /opt/stream-composer
+cd /opt/stream-composer          # or wherever install-go-rails-react.sh put it
 
-docker compose ps                 # what is running
-docker compose logs -f            # container logs
-docker compose pull && docker compose up -d   # upgrade
-make backup                       # tarball of users and configuration
-./scripts/benchmark.sh            # capacity check
-node scripts/selftest.js --count 6   # render a synthetic grid to a PNG
+docker compose ps                             # what is running
+docker compose logs -f                        # container logs
+docker compose pull && docker compose up -d   # upgrade images only
+./update-go-rails-react.sh                    # upgrade, redownloading compose/config too
 ```
 
 ## Documentation
 
 | Document | What is in it |
 |---|---|
-| [docs/OBS.md](docs/OBS.md) | Connecting OBS, encoder settings, the helper script, multiple instances |
-| [docs/CONFIGURATION.md](docs/CONFIGURATION.md) | Every environment variable and admin setting, including the Compose v1 fallback |
-| [docs/PERFORMANCE.md](docs/PERFORMANCE.md) | CPU sizing, measurements, tuning, hardware encoders |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the pieces fit, security model, design decisions |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | When something is not working |
-| [docs/screenshots/](docs/screenshots/) | Every screen, and the script that recaptures them |
+| [docs/OBS.md](docs/OBS.md) | Connecting OBS, encoder settings, the helper script |
+| [docs/screenshots/](docs/screenshots/) | Every screen shown above, and the script that recaptures them |
+
+`docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/PERFORMANCE.md` and
+`docs/TROUBLESHOOTING.md` still describe the pre-migration, single-container
+app (in particular, the server-side ffmpeg compositor this branch no longer
+has) and haven't been brought forward yet, so they're deliberately left out
+of the table above until they are.
 
 ## Development
+
+This branch runs as three services against Postgres, not one process
+against a JSON file. The dev compose file (`docker-compose.migration.yml`)
+runs all of it, prefixed `scmig-` and on its own ports, so it can sit next
+to an existing install or an unrelated project on the same host:
 
 ```bash
 git clone https://github.com/Slicit/stream-composer.git
 cd stream-composer
-cp .env.example .env               # then set the two secrets
+git checkout migration/go-rails-react
 
-COMPOSE_FILE=docker-compose.yml:docker-compose.local.yml:docker-compose.build.yml \
-  docker compose up -d --build
-
-cd server && npm install && npm test
+MEDIAMTX_PUBLIC_HOST=<your box's LAN/public IP> \
+  docker compose -f docker-compose.migration.yml up -d --build
 ```
 
-`node scripts/selftest.js --count 9 --layout spotlight --encode` renders the real
-filtergraph against synthetic sources — the fastest way to check a change to the
-compositor without a camera in sight.
+`MEDIAMTX_PUBLIC_HOST` matters even for local work: without it, WebRTC
+signaling succeeds but ICE has nothing reachable to connect to, and nothing
+actually plays in a real browser.
 
-`./scripts/screenshots.sh` boots a throwaway instance, publishes synthetic
-sources into it and recaptures every image in `docs/screenshots/`, so the
-documentation can be brought back in line with the UI in one command.
+```bash
+cd go-service && go build ./... && go vet ./... && go test ./...
+cd rails-service && bundle exec rspec
+cd react-app && npm test
+```
+
+`scripts/screenshots/capture.mjs` drives Playwright against an already
+running dev stack to recapture every image in `docs/screenshots/`; see the
+comment at the top of that file for usage.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
 
 Built on [MediaMTX](https://github.com/bluenviron/mediamtx),
-[FFmpeg](https://ffmpeg.org/) and [Traefik](https://traefik.io/).
+[Rails](https://rubyonrails.org/), [React](https://react.dev/) and
+[Traefik](https://traefik.io/).
