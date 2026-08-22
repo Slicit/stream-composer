@@ -34,6 +34,8 @@ RSpec.describe "Internal::Streams", type: :request do
       "visibility" => "private",
       "ownerId" => owner.id,
       "sharedWith" => [],
+      "name" => "Cam",
+      "nickname" => "",
     )
     expect(body["settings"]).to eq({ "publicViewing" => false })
   end

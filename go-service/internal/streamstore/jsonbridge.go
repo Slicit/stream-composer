@@ -20,6 +20,8 @@ type jsonConfig struct {
 		Visibility string   `json:"visibility"`
 		OwnerID    string   `json:"ownerId"`
 		SharedWith []string `json:"sharedWith"`
+		Name       string   `json:"name"`
+		Nickname   string   `json:"nickname"`
 	} `json:"streams"`
 	Relays []struct {
 		ID       string `json:"id"`
@@ -47,6 +49,8 @@ func (cfg jsonConfig) toStreams() []Stream {
 			Visibility: s.Visibility,
 			OwnerID:    s.OwnerID,
 			SharedWith: s.SharedWith,
+			Name:       s.Name,
+			Nickname:   s.Nickname,
 		})
 	}
 	return streams

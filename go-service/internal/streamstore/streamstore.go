@@ -20,6 +20,8 @@ type Stream struct {
 	Visibility string // "public" or "private"
 	OwnerID    string // "" when unowned (admin-managed)
 	SharedWith []string
+	Name       string // operator-facing label; falls back to Key when unset
+	Nickname   string // caption override; falls back to Name when unset
 }
 
 // Relay is a restream destination's configuration — everything
@@ -67,4 +69,9 @@ type Store interface {
 	// Relays lists every configured restream destination, regardless of
 	// whether its source stream is currently live.
 	Relays() []Relay
+
+	// Streams lists every configured stream, live or not — what a
+	// selection/ordering decision (e.g. sourceselector) needs to resolve a
+	// live ingest key back to its name, nickname and enabled flag.
+	Streams() []Stream
 }

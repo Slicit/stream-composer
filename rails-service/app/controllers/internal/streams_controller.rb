@@ -16,7 +16,8 @@ module Internal
       render json: {
         streams: Stream.all.map do |s|
           { id: s.id, key: s.key, playbackId: s.playback_id, enabled: s.enabled,
-            visibility: s.visibility, ownerId: s.owner_id, sharedWith: s.shared_with }
+            visibility: s.visibility, ownerId: s.owner_id, sharedWith: s.shared_with,
+            name: s.name, nickname: s.nickname }
         end,
         relays: RelayDestination.all.map do |r|
           { id: r.id, streamId: r.stream_id, provider: r.provider, name: r.name,

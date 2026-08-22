@@ -75,3 +75,9 @@ func (m *Memory) Relays() []Relay {
 	defer m.mu.RUnlock()
 	return append([]Relay(nil), m.relays...)
 }
+
+func (m *Memory) Streams() []Stream {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]Stream(nil), m.streams...)
+}

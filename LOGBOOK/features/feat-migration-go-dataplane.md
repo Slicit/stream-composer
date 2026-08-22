@@ -81,10 +81,27 @@ itself on the same host with zero collisions.
    RTMP source was picked up and republished to MediaMTX under
    `audio/<key>` as genuine Opus — confirmed via MediaMTX's own path list
    showing an `Opus` track, not just a process running.~~
-6. Not yet started: compositor/layout engine (flagged as the single
-   biggest remaining port), bandwidth history, viewer-state endpoint —
-   later slices of this same Go phase, each to land and be tested
-   independently before the next.
+6. ~~Browser composition (descoped from a full server-side ffmpeg
+   compositor — decision below): `internal/layout` ports layout.js's
+   grid/spotlight/row/column/fixed-NxN cell math field-for-field, verified
+   cell-for-cell against the real Node implementation across 17 cases
+   (golden JSONL fixture generated via node on the dev box). `internal/
+   encoder` ports encoder.js's capability probing/resolve/outputArgs, kept
+   for completeness though nothing calls it yet with server-side encoding
+   out of scope; verified both against Node's outputArgs() output and via
+   a real Probe() run against the box's own ffmpeg. `internal/playability`
+   ports playability.js's ffprobe-based B-frames-over-WebRTC check
+   unchanged, since it applies to browser composition too. `internal/
+   sourceselector` is the new, browser-only replacement for compositor.js's
+   selection/ordering logic (selectSources/planLayout) — no ffmpeg process
+   at all, since the browser assembles the grid itself from individual WHEP
+   sessions. streamstore.Stream gained Name/Nickname, Store gained a
+   Streams() accessor, and Internal::StreamsController now returns both
+   fields — verified live via curl against the real running Rails
+   container.~~
+7. Not yet started: bandwidth history, viewer-state endpoint (the next
+   natural consumer of sourceselector) — later slices of this same Go
+   phase, each to land and be tested independently before the next.
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~
@@ -169,6 +186,29 @@ itself on the same host with zero collisions.
   pointed at a small on-the-fly shell script standing in for ffmpeg — to
   exercise start/stop/backoff-growth/source-gone entirely offline, in well
   under a second per test.
+
+### 2026-08-22 (browser composition, not server-side ffmpeg composition)
+
+- **Decision:** the Go migration does not port compositor.js's ffmpeg
+  encoder process supervision (start/apply/tick building and running a
+  real filtergraph encode). Only the parts that decide *what* goes on
+  screen — layout math and source selection/ordering — are ported, as a
+  new `internal/sourceselector` with no ffmpeg process at all.
+- **Why:** explicit user direction mid-session — server-side composition
+  was flagged as the single biggest remaining port, and the user chose to
+  put it aside and scope this phase to browser composition (the existing
+  `comp.mode === 'web'` path, where the browser assembles the grid from
+  individual WHEP sessions) plus the audio monitor's Opus transcode
+  (already done, see item 5 above).
+- **Impact:** `internal/layout` and `internal/playability` are fully
+  needed either way and are done. `internal/encoder` was already built and
+  verified (both against Node's own outputArgs() output and a real Probe()
+  against the box's ffmpeg) before this direction landed; it is kept since
+  it is correct and complete, but nothing calls it yet — server-side
+  encoding stays out of scope until/unless that changes. If it's revisited
+  later, `compositor.js`'s `start()`/`apply()`/`tick()` process-supervision
+  logic (killCurrent, scheduleRestart, the signature-based debounce/
+  stabilize window) is what's still unported.
 
 ## Links
 
