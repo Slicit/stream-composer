@@ -18,11 +18,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Slicit/stream-composer/go-service/internal/audiomonitor"
 	"github.com/Slicit/stream-composer/go-service/internal/authhook"
+	"github.com/Slicit/stream-composer/go-service/internal/bandwidthhistory"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/mediaproxy"
@@ -82,6 +84,11 @@ func main() {
 	go audio.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, audioStop)
 	defer audio.StopAll()
 
+	bandwidth := bandwidthhistory.New(mtxClient, cfg.IngestPrefix, filepath.Join(cfg.DataDir, "bandwidth-history.json"), log)
+	bandwidthStop := make(chan struct{})
+	defer close(bandwidthStop)
+	go bandwidth.Start(context.Background(), bandwidthStop)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +105,18 @@ func main() {
 			return
 		}
 		hook.ServeHTTP(w, r)
+	})
+
+	// Same shared-secret-in-the-URL shape as the auth hook above — the
+	// admin console (via Rails) is the only intended caller, not a
+	// browser, so there is no session guard to check here either.
+	mux.HandleFunc("GET /internal/{token}/bandwidth-history", func(w http.ResponseWriter, r *http.Request) {
+		if !hook.VerifyToken(r.PathValue("token")) {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(bandwidth.Get())
 	})
 
 	// No session/guard middleware is wired in yet — every caller is

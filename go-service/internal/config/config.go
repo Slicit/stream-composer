@@ -33,6 +33,8 @@ type Config struct {
 	RestartDelayMs    int
 	MaxRestartDelayMs int
 	PollIntervalMs    int
+
+	DataDir string // where persistent state (e.g. bandwidth history) is written
 }
 
 func env(key, def string) string {
@@ -78,5 +80,6 @@ func Load() Config {
 		RestartDelayMs:    envInt("RESTART_DELAY_MS", 2000),
 		MaxRestartDelayMs: envInt("MAX_RESTART_DELAY_MS", 15000),
 		PollIntervalMs:    envInt("POLL_INTERVAL_MS", 2000),
+		DataDir:           env("DATA_DIR", "/data"),
 	}
 }

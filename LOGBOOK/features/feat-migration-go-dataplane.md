@@ -99,9 +99,22 @@ itself on the same host with zero collisions.
    Streams() accessor, and Internal::StreamsController now returns both
    fields — verified live via curl against the real running Rails
    container.~~
-7. Not yet started: bandwidth history, viewer-state endpoint (the next
-   natural consumer of sourceselector) — later slices of this same Go
-   phase, each to land and be tested independently before the next.
+7. ~~Bandwidth history (`internal/bandwidthhistory`, item 4/8): ported
+   field-for-field from bandwidthHistory.js — samples every 15 minutes,
+   keeps 7 days, tracks inbound (ingest-prefixed paths only) vs. outbound
+   (every read, any path) bytes from MediaMTX's own counters, resets to
+   zero rather than reporting a negative/nonsense rate when a counter goes
+   backwards (a republish or a MediaMTX restart). `mediamtx.Client` gained
+   `ListPaths()` (the unfiltered path list, byte counters included) since
+   `ListIngest()` alone isn't enough here. Exposed at
+   `GET /internal/<token>/bandwidth-history`, same shared-secret-in-the-
+   URL shape as the auth hook. Verified live: rebuilt and restarted the
+   dataplane container in the dev stack, confirmed the endpoint returns
+   real JSON (a first sample reporting zero, as expected with no prior
+   baseline).~~
+8. Not yet started: viewer-state endpoint (the next natural consumer of
+   `sourceselector` and `audiomonitor`'s status) — the last remaining
+   slice of this Go phase.
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~

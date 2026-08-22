@@ -30,9 +30,11 @@ func (c *Client) client() *http.Client {
 }
 
 type pathItem struct {
-	Name   string   `json:"name"`
-	Ready  bool     `json:"ready"`
-	Tracks []string `json:"tracks"`
+	Name          string   `json:"name"`
+	Ready         bool     `json:"ready"`
+	Tracks        []string `json:"tracks"`
+	BytesReceived int64    `json:"bytesReceived"`
+	BytesSent     int64    `json:"bytesSent"`
 }
 
 var audioTrackPattern = regexp.MustCompile(`(?i)aac|opus|mpeg4-audio|audio|pcm`)
@@ -57,6 +59,38 @@ type IngestPath struct {
 	Key      string
 	Ready    bool
 	HasAudio bool
+}
+
+// Path is one raw MediaMTX path entry, name unmodified — what callers that
+// need every path (not just ingest slots), such as bandwidth sampling,
+// work from.
+type Path struct {
+	Name          string
+	Ready         bool
+	BytesReceived int64
+	BytesSent     int64
+}
+
+// ListPaths returns every path known to MediaMTX, whether or not it is
+// publishing — the unfiltered equivalent of listPaths() in the Node
+// backend.
+func (c *Client) ListPaths(ctx context.Context) ([]Path, error) {
+	var out []Path
+	page := 0
+	for {
+		items, pageCount, err := c.listPathsPage(ctx, page)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range items {
+			out = append(out, Path{Name: it.Name, Ready: it.Ready, BytesReceived: it.BytesReceived, BytesSent: it.BytesSent})
+		}
+		page++
+		if page >= pageCount {
+			break
+		}
+	}
+	return out, nil
 }
 
 // ListIngest returns every path under IngestPrefix, paginated the same way
