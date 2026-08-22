@@ -215,6 +215,21 @@ this Go data-plane phase.
     working audio. Confirmed `/` actually redirects to `/c/:slug` once a
     homepage channel is configured.~~
 
+11. ~~Production build/deploy (item 5/5 of the follow-on plan) — see
+    [[feat-migration-production-deploy]] for full detail: production
+    Dockerfiles for Rails (serves the built React SPA from its own
+    public/, replacing the unused stock Kamal-oriented generator
+    Dockerfile) and the Go data plane (non-root, a /data volume), new
+    docker-compose.go-rails-react.yml + .tls.yml keeping Traefik exactly
+    as the pre-migration stack already uses it for TLS, split by path
+    between rails (default) and the data plane (only GET /api/state, GET
+    /api/channels/:slug/state, /mtx/*). Two real bugs found only by
+    actually building and booting the stack, not by config-checking it:
+    database.yml's unused multi-database production template silently
+    ignoring DATABASE_URL, and config.hosts blocking the data plane's own
+    internal calls to Rails. This closes the original 8-item gap-fill plan
+    and its 5-item follow-on in full.~~
+
 5. ~~Rails control plane (API-first), the Postgres data model, the
    `config.json` -> Postgres migration script — see
    [[feat-migration-rails-control-plane]] for that phase's own detail.~~
