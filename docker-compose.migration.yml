@@ -7,7 +7,17 @@
 # collisions.
 #
 # Usage:
-#   docker compose -f docker-compose.migration.yml up -d --build
+#   MEDIAMTX_PUBLIC_HOST=<box's LAN/public IP> docker compose -f docker-compose.migration.yml up -d --build
+#
+# MEDIAMTX_PUBLIC_HOST is not optional if you want to actually watch a
+# stream from a real browser (as opposed to verifying signaling/access
+# control with curl or tooling on the container network) — see the
+# mediamtx service's own comment below for why. It is not persisted
+# anywhere (no .env file for this compose project, deliberately, so it
+# never bleeds into the unrelated production docker-compose.yml in this
+# same directory), so every `docker compose ... up` touching the mediamtx
+# service needs it passed again, including a plain `up -d` with no
+# service argument.
 #
 # This does not publish anything to the internet — every port below is for
 # local/dev access only. INTERNAL_SECRET/POSTGRES_PASSWORD/
@@ -23,11 +33,24 @@ services:
     restart: unless-stopped
     environment:
       MTX_AUTHHTTPADDRESS: http://dataplane:8080/internal/${INTERNAL_SECRET:-migration-dev-secret}/mediamtx/auth
+      # Without this, MediaMTX only advertises ICE candidates on its
+      # container-network address, which a real browser outside the
+      # compose network can never reach — WebRTC signaling succeeds (the
+      # WHEP POST gets its 201/SDP answer) but ICE then times out and the
+      # session closes with nothing ever actually playing. Set this to
+      # the dev box's real LAN/public address to watch a stream from an
+      # actual browser rather than only from tooling on the same network.
+      MTX_WEBRTCADDITIONALHOSTS: ${MEDIAMTX_PUBLIC_HOST:-}
     volumes:
       - ./config/mediamtx.yml:/mediamtx.yml:ro
     ports:
       - "11935:1935"   # RTMP ingest, for smoke-testing a publish with ffmpeg
       - "19997:9997"   # control API, dev convenience only
+      # Not remapped (8189:8189, not e.g. 18189:8189): the port number is
+      # embedded directly in the SDP candidate MediaMTX advertises, so a
+      # remapped external port would tell the browser to dial a port
+      # nothing is actually listening on from outside the container.
+      - "8189:8189/udp"
     networks: [scmig-net]
 
   dataplane:
@@ -101,13 +124,15 @@ services:
       dockerfile: Dockerfile.dev
     container_name: scmig-react
     restart: unless-stopped
-    depends_on: [rails]
+    depends_on: [rails, dataplane]
     environment:
-      # Vite's dev-server proxy target for /api — see vite.config.ts. The
-      # browser never talks to Rails directly; every request goes through
-      # Vite's own origin, which keeps the sc_session cookie same-origin
-      # with zero CORS/SameSite configuration needed for local dev.
+      # Vite's dev-server proxy targets — see vite.config.ts. The browser
+      # never talks to Rails or the Go data plane directly; every request
+      # goes through Vite's own origin, which keeps the sc_session cookie
+      # same-origin with zero CORS/SameSite configuration needed for
+      # local dev.
       VITE_RAILS_ORIGIN: http://rails:3000
+      VITE_DATAPLANE_ORIGIN: http://dataplane:8080
     ports:
       - "15173:5173"
     networks: [scmig-net]

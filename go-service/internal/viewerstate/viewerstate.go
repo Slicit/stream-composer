@@ -31,7 +31,12 @@ type Program struct {
 	GapPx  int    `json:"gapPx"`
 }
 
-type Cell struct{ X, Y, W, H int }
+type Cell struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
 
 type Layout struct {
 	Name   string `json:"name"`

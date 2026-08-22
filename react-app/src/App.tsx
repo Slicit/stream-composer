@@ -4,7 +4,7 @@ import { NavBar } from './components/NavBar'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
-import { HomePage } from './pages/HomePage'
+import { ViewerPage } from './pages/ViewerPage'
 
 export function App() {
   return (
@@ -12,7 +12,7 @@ export function App() {
       <NavBar />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<ViewerPage />} />
         <Route
           path="/admin"
           element={

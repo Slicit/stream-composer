@@ -33,9 +33,9 @@ type Info struct {
 }
 
 type Problem struct {
-	Code    string
-	Summary string
-	Fix     string
+	Code    string `json:"code"`
+	Summary string `json:"summary"`
+	Fix     string `json:"fix"`
 }
 
 func ReasonFor(info *Info) *Problem {
