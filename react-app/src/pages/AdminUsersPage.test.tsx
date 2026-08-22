@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { AuthProvider } from '../auth/AuthContext'
 import { AdminUsersPage } from './AdminUsersPage'
@@ -15,9 +16,11 @@ const viewer: User = { id: 'viewer-1', username: 'viewer-1', role: 'viewer', str
 function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   return render(
-    <AuthProvider>
-      <AdminUsersPage />
-    </AuthProvider>,
+    <MemoryRouter>
+      <AuthProvider>
+        <AdminUsersPage />
+      </AuthProvider>
+    </MemoryRouter>,
   )
 }
 
@@ -114,5 +117,44 @@ describe('AdminUsersPage', () => {
 
     expect(within(adminRow).getByRole('button', { name: 'Delete' })).toBeDisabled()
     expect(within(viewerRow).getByRole('button', { name: 'Delete' })).toBeEnabled()
+  })
+
+  it('impersonates a user and refreshes auth state', async () => {
+    let currentUser: User = admin
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: currentUser })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
+      if (url === '/api/admin/users/viewer-1/impersonate' && init?.method === 'POST') {
+        currentUser = viewer
+        return jsonResponse({ user: viewer })
+      }
+      throw new Error(`unexpected fetch ${url} ${init?.method}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const viewerRow = dataRows()[1]
+
+    await userEvent.click(within(viewerRow).getByRole('button', { name: 'Impersonate viewer-1' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/admin/users/viewer-1/impersonate')
+      expect(call).toBeTruthy()
+    })
+  })
+
+  it('disables impersonating the account currently signed in with', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const [adminRow, viewerRow] = dataRows()
+
+    expect(within(adminRow).getByRole('button', { name: 'Impersonate admin' })).toBeDisabled()
+    expect(within(viewerRow).getByRole('button', { name: 'Impersonate viewer-1' })).toBeEnabled()
   })
 })

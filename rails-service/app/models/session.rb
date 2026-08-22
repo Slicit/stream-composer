@@ -7,13 +7,18 @@ class Session < ApplicationRecord
   TTL = 14.days
 
   belongs_to :user
+  belongs_to :impersonator, class_name: "User", optional: true
 
   attr_reader :raw_token
 
   class << self
-    def start_for(user)
+    # impersonator: set only when an admin is impersonating `user` — see
+    # Api::Admin::UsersController#impersonate. A plain sign-in never
+    # passes it, so impersonator_id is nil for the overwhelming majority
+    # of sessions.
+    def start_for(user, impersonator: nil)
       token = SecureRandom.hex(32)
-      session = create!(user: user, token_digest: digest(token), expires_at: TTL.from_now)
+      session = create!(user: user, impersonator: impersonator, token_digest: digest(token), expires_at: TTL.from_now)
       session.instance_variable_set(:@raw_token, token)
       session
     end

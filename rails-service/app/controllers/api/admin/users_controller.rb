@@ -54,6 +54,24 @@ module Api
         end
       end
 
+      # Signs the caller in as `target` while remembering who started it
+      # (Session#impersonator), so Api::AuthController#stop_impersonating
+      # can mint a fresh session for the real admin without a second
+      # login. before_action already guarantees current_user is an admin;
+      # this only adds the two impersonation-specific refusals.
+      def impersonate
+        if current_session&.impersonator_id.present?
+          return render_error(:conflict, "Stop impersonating before impersonating someone else.")
+        end
+        target = User.find(params[:id])
+        if target.id == current_user.id
+          return render_error(:bad_request, "You are already signed in as yourself.")
+        end
+
+        sign_in(target, impersonator: current_user)
+        render json: { user: target.as_public_json }
+      end
+
       private
 
       def user_create_params

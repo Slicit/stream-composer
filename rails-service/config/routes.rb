@@ -16,6 +16,7 @@ Rails.application.routes.draw do
     delete "auth/logout", to: "auth#logout"
     get "auth/me", to: "auth#me"
     patch "auth/me", to: "auth#update_me"
+    delete "auth/impersonate", to: "auth#stop_impersonating"
 
     scope path: "streams/mine", controller: "streams" do
       get "", action: :index
@@ -49,7 +50,9 @@ Rails.application.routes.draw do
     end
 
     namespace :admin do
-      resources :users, only: %i[index create update destroy]
+      resources :users, only: %i[index create update destroy] do
+        post "impersonate", on: :member
+      end
 
       scope path: "streams", controller: "streams" do
         get "", action: :index

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Trash2, VenetianMask } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { Role, User } from '../api/types'
@@ -30,7 +31,8 @@ function RoleSelect({ value, onChange, label }: { value: Role; onChange: (role: 
 }
 
 export function AdminUsersPage() {
-  const { user: currentUser } = useAuth()
+  const { user: currentUser, refresh } = useAuth()
+  const navigate = useNavigate()
   const [users, setUsers] = useState<User[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -99,6 +101,17 @@ export function AdminUsersPage() {
       await load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not delete the user.')
+    }
+  }
+
+  async function impersonate(id: string) {
+    setError(null)
+    try {
+      await api.post(`/api/admin/users/${id}/impersonate`)
+      await refresh()
+      navigate('/')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not impersonate this user.')
     }
   }
 
@@ -185,7 +198,17 @@ export function AdminUsersPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => impersonate(u.id)}
+                      disabled={u.id === currentUser?.id}
+                      title={u.id === currentUser?.id ? 'You are already signed in as yourself.' : `Impersonate ${u.username}`}
+                    >
+                      <VenetianMask className="h-4 w-4" />
+                      <span className="sr-only">Impersonate {u.username}</span>
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"

@@ -70,7 +70,10 @@ describe('LeftNav', () => {
   })
 
   it('shows a "Streams" section below Channels once a channel is open, with a reset action', async () => {
-    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ user })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => (url === '/api/channels' ? jsonResponse({ channels: [] }) : jsonResponse({ user }))),
+    )
 
     const { container } = render(
       <MemoryRouter>

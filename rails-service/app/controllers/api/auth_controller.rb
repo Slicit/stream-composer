@@ -1,5 +1,7 @@
 module Api
   class AuthController < ApplicationController
+    before_action :require_user!, only: %i[stop_impersonating]
+
     def login
       user = User.authenticate_credentials(params[:username], params[:password])
       return render_unauthorized("Wrong username or password.") unless user
@@ -15,7 +17,21 @@ module Api
     end
 
     def me
-      render json: { user: current_user&.as_public_json }
+      render json: { user: current_user&.as_public_json, impersonatedBy: impersonator_json }
+    end
+
+    # Ends impersonation by minting a fresh session for the admin who
+    # started it (Session#impersonator) — not by trying to resurrect
+    # their original session/cookie, which the impersonate action never
+    # kept around. The impersonated session is discarded; it was only
+    # ever a means to view the app as that user.
+    def stop_impersonating
+      impersonator = current_session&.impersonator
+      return render_error(:conflict, "You are not impersonating anyone.") unless impersonator
+
+      current_session.destroy
+      sign_in(impersonator)
+      render json: { user: impersonator.as_public_json }
     end
 
     # Self-service password change — the "Edit" action in the account
@@ -36,6 +52,12 @@ module Api
       else
         render_error :bad_request, current_user.errors.full_messages.join(", ")
       end
+    end
+
+    private
+
+    def impersonator_json
+      current_session&.impersonator&.as_public_json
     end
   end
 end

@@ -74,4 +74,42 @@ RSpec.describe "Api::Auth", type: :request do
       expect(JSON.parse(response.body)["user"]).to be_nil
     end
   end
+
+  describe "DELETE /api/auth/impersonate (stop impersonating)" do
+    let!(:admin) { User.create!(username: "admin-1", password: "correct-horse-1", role: "admin") }
+
+    it "returns to the admin's own session" do
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{user.id}/impersonate", as: :json
+
+      delete "/api/auth/impersonate", as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["user"]["username"]).to eq("admin-1")
+
+      get "/api/auth/me", as: :json
+      body = JSON.parse(response.body)
+      expect(body["user"]["username"]).to eq("admin-1")
+      expect(body["impersonatedBy"]).to be_nil
+    end
+
+    it "discards the impersonated session" do
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{user.id}/impersonate", as: :json
+      impersonated_count = Session.where(user: user).count
+
+      delete "/api/auth/impersonate", as: :json
+      expect(Session.where(user: user).count).to eq(impersonated_count - 1)
+    end
+
+    it "refuses when not currently impersonating" do
+      sign_in_as(user, password: "correct-horse-1")
+      delete "/api/auth/impersonate", as: :json
+      expect(response).to have_http_status(:conflict)
+    end
+
+    it "refuses an anonymous caller" do
+      delete "/api/auth/impersonate", as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

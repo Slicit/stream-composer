@@ -8,12 +8,14 @@ class ApplicationController < ActionController::API
 
   private
 
+  def current_session
+    return @current_session if defined?(@current_session)
+    @current_session = Session.authenticate(cookies[SESSION_COOKIE])
+  end
+
   def current_user
     return @current_user if defined?(@current_user)
-    @current_user = begin
-      session = Session.authenticate(cookies[SESSION_COOKIE])
-      session&.user
-    end
+    @current_user = current_session&.user
   end
 
   def require_user!
@@ -32,8 +34,8 @@ class ApplicationController < ActionController::API
     end
   end
 
-  def sign_in(user)
-    session = Session.start_for(user)
+  def sign_in(user, impersonator: nil)
+    session = Session.start_for(user, impersonator: impersonator)
     cookies[SESSION_COOKIE] = {
       value: session.raw_token,
       httponly: true,

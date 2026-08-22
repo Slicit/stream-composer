@@ -3,6 +3,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { ChannelPrefsProvider } from './contexts/ChannelPrefsContext'
 import { NavBar } from './components/NavBar'
 import { LeftNav } from './components/LeftNav'
+import { ImpersonationBanner } from './components/ImpersonationBanner'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
@@ -61,6 +62,7 @@ export function App() {
             </main>
           </div>
         </div>
+        <ImpersonationBanner />
       </ChannelPrefsProvider>
     </AuthProvider>
   )

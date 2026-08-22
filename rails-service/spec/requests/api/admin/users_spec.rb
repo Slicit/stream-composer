@@ -61,4 +61,65 @@ RSpec.describe "Api::Admin::Users", type: :request do
       expect(User.exists?(admin.id)).to be true
     end
   end
+
+  describe "impersonation" do
+    it "signs the admin in as the target user" do
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{viewer.id}/impersonate", as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["user"]["username"]).to eq("viewer-1")
+
+      get "/api/auth/me", as: :json
+      body = JSON.parse(response.body)
+      expect(body["user"]["username"]).to eq("viewer-1")
+      expect(body["impersonatedBy"]["username"]).to eq("admin-1")
+    end
+
+    it "does not disturb the target's own real session elsewhere" do
+      sign_in_as(viewer, password: "correct-horse-1")
+      own_session_count = Session.where(user: viewer).count
+
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{viewer.id}/impersonate", as: :json
+
+      expect(Session.where(user: viewer).count).to eq(own_session_count + 1)
+    end
+
+    it "refuses a non-admin" do
+      sign_in_as(viewer, password: "correct-horse-1")
+      post "/api/admin/users/#{admin.id}/impersonate", as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses impersonating yourself" do
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{admin.id}/impersonate", as: :json
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "refuses to impersonate a non-admin, since real permissions belong to whoever the session actually is" do
+      sign_in_as(admin, password: "correct-horse-1")
+      other = User.create!(username: "viewer-2", password: "correct-horse-1", role: "viewer")
+      post "/api/admin/users/#{viewer.id}/impersonate", as: :json
+
+      # Now signed in as viewer-1, who genuinely has no admin access —
+      # impersonation is a real viewer session, not admin-with-a-mask.
+      post "/api/admin/users/#{other.id}/impersonate", as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "refuses to start a second impersonation while already impersonating (chained via an admin target)" do
+      admin2 = User.create!(username: "admin-2", password: "correct-horse-1", role: "admin")
+      sign_in_as(admin, password: "correct-horse-1")
+      post "/api/admin/users/#{admin2.id}/impersonate", as: :json
+
+      # Still admin-role (admin2 is an admin too), so require_admin! alone
+      # would not have caught a second impersonate attempt here.
+      post "/api/admin/users/#{viewer.id}/impersonate", as: :json
+      expect(response).to have_http_status(:conflict)
+
+      get "/api/auth/me", as: :json
+      expect(JSON.parse(response.body)["user"]["username"]).to eq("admin-2")
+    end
+  end
 end
