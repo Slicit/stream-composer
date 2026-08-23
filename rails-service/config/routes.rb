@@ -82,6 +82,13 @@ Rails.application.routes.draw do
         put ":id/homepage", action: :set_homepage
         delete ":id/homepage", action: :clear_homepage
       end
+
+      scope path: "games", controller: "games" do
+        get "", action: :index
+        post "", action: :create
+        patch ":id", action: :update
+        delete ":id", action: :destroy
+      end
     end
   end
 

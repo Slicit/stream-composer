@@ -53,4 +53,12 @@ ENV RAILS_ENV=production \
 
 USER rails
 EXPOSE 3000
-ENTRYPOINT ["sh", "-c", "bin/rails db:prepare && exec bin/rails server -b 0.0.0.0"]
+# db:prepare only runs db:seed on a brand-new database — on every restart
+# after that (the normal upgrade path: pull new images, restart), it just
+# applies pending migrations, so anything added to seeds.rb after go-live
+# would never actually reach an existing install without this. seeds.rb
+# is written to be safe to rerun on every boot (User.ensure_bootstrap_
+# admin! is a no-op once any user exists; Game rows use find_or_create_by!),
+# so running it unconditionally here means new seed data (like the
+# featured-game list) shows up on the next deploy, not by a manual step.
+ENTRYPOINT ["sh", "-c", "bin/rails db:prepare && bin/rails db:seed && exec bin/rails server -b 0.0.0.0"]

@@ -15,4 +15,7 @@ RUN bundle install
 COPY . .
 
 EXPOSE 3000
-CMD ["sh", "-c", "bin/rails db:prepare && bin/rails server -b 0.0.0.0"]
+# See Dockerfile's own comment: db:prepare alone only seeds a brand-new
+# database, so this also runs db:seed on every boot (safe to rerun, see
+# db/seeds.rb) to keep dev containers in sync with prod's behavior.
+CMD ["sh", "-c", "bin/rails db:prepare && bin/rails db:seed && bin/rails server -b 0.0.0.0"]
