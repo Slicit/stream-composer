@@ -17,29 +17,20 @@ const channel = {
   backgroundImage: null,
   streamIds: [],
   sharedWith: [],
-  description: 'Old description',
-  currentTopic: 'Old topic',
+  description: '',
+  currentTopic: '',
   featuredGameId: null,
   featuredGameName: null,
+  layoutMode: null,
   createdAt: '2026-01-01',
 }
 
-const games = [
-  { id: 'g1', name: 'Celeste' },
-  { id: 'g2', name: 'Hades II' },
-]
-
-function stubFetch(posted: unknown[] = []) {
-  return vi.fn((url: string, init?: RequestInit) => {
-    if (url === '/api/channels/mine' && (!init || init.method === undefined)) return jsonResponse({ channels: [channel] })
-    if (url === '/api/streams/available') return jsonResponse({ streams: [] })
-    if (url === '/api/games') return jsonResponse({ games })
-    if (url === `/api/channels/mine/${channel.id}` && init?.method === 'PATCH') {
-      posted.push(JSON.parse(String(init.body)))
-      return jsonResponse({ channel })
-    }
-    throw new Error(`unexpected fetch ${url} ${init?.method}`)
-  })
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <ChannelsPage />
+    </MemoryRouter>,
+  )
 }
 
 describe('ChannelsPage', () => {
@@ -47,60 +38,80 @@ describe('ChannelsPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('saves the description on blur when it changed', async () => {
-    const posted: unknown[] = []
-    vi.stubGlobal('fetch', stubFetch(posted))
-    const user = userEvent.setup()
+  it('lists a channel with a link to its edit page and its public URL', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ channels: [channel] })))
 
-    render(
-      <MemoryRouter>
-        <ChannelsPage />
-      </MemoryRouter>,
-    )
+    renderPage()
 
-    const description = await screen.findByLabelText('Description')
-    await user.clear(description)
-    await user.type(description, 'New description')
-    await user.tab()
-
-    expect(posted).toEqual([{ description: 'New description' }])
+    expect(await screen.findByRole('link', { name: 'My Channel' })).toHaveAttribute('href', '/channels/c1')
+    expect(screen.getByRole('link', { name: '/c/my-channel' })).toHaveAttribute('href', '/c/my-channel')
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/channels/c1')
   })
 
-  it('saves the current topic on blur when it changed', async () => {
+  it('creates a channel from the form', async () => {
     const posted: unknown[] = []
-    vi.stubGlobal('fetch', stubFetch(posted))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/channels/mine' && (!init || init.method === undefined)) return jsonResponse({ channels: [] })
+        if (url === '/api/channels/mine' && init?.method === 'POST') {
+          posted.push(JSON.parse(String(init.body)))
+          return jsonResponse({ channel }, 201)
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      }),
+    )
     const user = userEvent.setup()
 
-    render(
-      <MemoryRouter>
-        <ChannelsPage />
-      </MemoryRouter>,
-    )
+    renderPage()
+    await screen.findByText('No channels yet.')
+    await user.type(screen.getByLabelText('Name'), 'My Channel')
+    await user.click(screen.getByRole('button', { name: 'Add channel' }))
 
-    const topic = await screen.findByLabelText('Current topic')
-    await user.clear(topic)
-    await user.type(topic, 'New topic')
-    await user.tab()
-
-    expect(posted).toEqual([{ currentTopic: 'New topic' }])
+    expect(posted).toEqual([{ name: 'My Channel' }])
   })
 
-  it('lists games by name in the featured-game combobox and posts the picked id', async () => {
-    const posted: unknown[] = []
-    vi.stubGlobal('fetch', stubFetch(posted))
+  it('changes visibility as a quick action from the list', async () => {
+    const patched: unknown[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/channels/mine' && (!init || init.method === undefined)) return jsonResponse({ channels: [channel] })
+        if (url === '/api/channels/mine/c1' && init?.method === 'PATCH') {
+          patched.push(JSON.parse(String(init.body)))
+          return jsonResponse({ channel: { ...channel, visibility: 'public' } })
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      }),
+    )
     const user = userEvent.setup()
 
-    render(
-      <MemoryRouter>
-        <ChannelsPage />
-      </MemoryRouter>,
+    renderPage()
+    await user.click(await screen.findByRole('combobox', { name: 'Visibility for My Channel' }))
+    await user.click(screen.getByRole('option', { name: 'Public' }))
+
+    expect(patched).toEqual([{ visibility: 'public' }])
+  })
+
+  it('deletes a channel after confirmation', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const deleted: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === '/api/channels/mine' && (!init || init.method === undefined)) return jsonResponse({ channels: [channel] })
+        if (url === '/api/channels/mine/c1' && init?.method === 'DELETE') {
+          deleted.push(url)
+          return jsonResponse({ ok: true })
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      }),
     )
+    const user = userEvent.setup()
 
-    const combobox = await screen.findByRole('combobox', { name: 'Featured game for My Channel' })
-    await user.click(combobox)
-    expect(screen.getByRole('option', { name: 'Celeste' })).toBeInTheDocument()
-    await user.click(screen.getByRole('option', { name: 'Hades II' }))
+    renderPage()
+    await user.click(await screen.findByTitle('Delete'))
 
-    expect(posted).toEqual([{ featuredGameId: 'g2' }])
+    expect(deleted).toEqual(['/api/channels/mine/c1'])
   })
 })

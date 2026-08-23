@@ -54,6 +54,10 @@ export interface ChannelInfo {
   // is a Rails-side concern (see api/types.ts's Channel for the editable
   // featuredGameId/featuredGameName pair used by the admin/mine forms).
   featuredGame: string
+  // Always "fixed" or "maximize" — already resolved (channel override or
+  // the site default) by go-service/internal/channelstate.Build, so the
+  // client never implements the inheritance rule itself.
+  layoutMode: 'fixed' | 'maximize'
 }
 
 export interface ViewerState {

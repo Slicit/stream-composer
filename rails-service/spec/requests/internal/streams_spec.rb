@@ -37,7 +37,7 @@ RSpec.describe "Internal::Streams", type: :request do
       "name" => "Cam",
       "nickname" => "",
     )
-    expect(body["settings"]).to eq({ "publicViewing" => false, "homepageChannelSlug" => nil })
+    expect(body["settings"]).to eq({ "publicViewing" => false, "homepageChannelSlug" => nil, "defaultLayoutMode" => "fixed" })
   end
 
   it "returns every relay destination with its real (unmasked) key" do
@@ -52,7 +52,7 @@ RSpec.describe "Internal::Streams", type: :request do
     game = Game.create!(name: "Stardew Valley")
     channel = owner.owned_channels.create!(
       name: "Community Room", visibility: "public", stream_ids: [stream.id],
-      description: "A cozy corner", current_topic: "Farming", featured_game: game,
+      description: "A cozy corner", current_topic: "Farming", featured_game: game, layout_mode: "maximize",
     )
     get "/internal/test-internal-secret/streams", as: :json
     entry = JSON.parse(response.body)["channels"].find { |c| c["id"] == channel.id }
@@ -67,13 +67,27 @@ RSpec.describe "Internal::Streams", type: :request do
       "description" => "A cozy corner",
       "currentTopic" => "Farming",
       "featuredGame" => "Stardew Valley",
+      "layoutMode" => "maximize",
     )
+  end
+
+  it "sends a channel's unset layout_mode as null, not a made-up default" do
+    channel = owner.owned_channels.create!(name: "Room", visibility: "public")
+    get "/internal/test-internal-secret/streams", as: :json
+    entry = JSON.parse(response.body)["channels"].find { |c| c["id"] == channel.id }
+    expect(entry["layoutMode"]).to be_nil
   end
 
   it "reflects publicViewing once set" do
     AppSetting.instance.update!(public_viewing: true)
     get "/internal/test-internal-secret/streams", as: :json
     expect(JSON.parse(response.body)["settings"]["publicViewing"]).to be true
+  end
+
+  it "reflects the default layout mode" do
+    AppSetting.instance.update!(default_layout_mode: "maximize")
+    get "/internal/test-internal-secret/streams", as: :json
+    expect(JSON.parse(response.body)["settings"]["defaultLayoutMode"]).to eq("maximize")
   end
 
   it "resolves the homepage channel to its slug" do

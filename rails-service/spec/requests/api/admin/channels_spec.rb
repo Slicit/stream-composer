@@ -46,5 +46,43 @@ RSpec.describe "Api::Admin::Channels", type: :request do
       expect(response).to have_http_status(:ok)
       expect(Channel.exists?(channel.id)).to be false
     end
+
+    it "shows a single channel regardless of ownership" do
+      channel = Channel.create!(name: "Someone Else's", owner: viewer)
+      get "/api/admin/channels/#{channel.id}", as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["channel"]["id"]).to eq(channel.id)
+    end
+
+    it "sets a channel's layout mode override" do
+      channel = Channel.create!(name: "Room", owner: admin)
+      patch "/api/admin/channels/#{channel.id}", params: { layoutMode: "maximize" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(channel.reload.layout_mode).to eq("maximize")
+    end
+
+    it "reassigns ownership on update" do
+      channel = Channel.create!(name: "Room", owner: admin)
+      patch "/api/admin/channels/#{channel.id}", params: { ownerId: viewer.id }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(channel.reload.owner_id).to eq(viewer.id)
+    end
+
+    describe "background image upload" do
+      after { FileUtils.rm_rf(Rails.public_path.join("uploads", "channel-backgrounds")) }
+
+      it "uploads a background for any channel regardless of ownership" do
+        channel = Channel.create!(name: "Someone Else's", owner: viewer)
+        put "/api/admin/channels/#{channel.id}/background", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+        expect(response).to have_http_status(:ok)
+        expect(channel.reload.background_image).to eq("/uploads/channel-backgrounds/#{channel.id}.png")
+      end
+
+      it "refuses a disallowed content type" do
+        channel = Channel.create!(name: "Room", owner: admin)
+        put "/api/admin/channels/#{channel.id}/background", params: "not an image", headers: { "CONTENT_TYPE" => "text/plain" }
+        expect(response).to have_http_status(:bad_request)
+      end
+    end
   end
 end

@@ -7,6 +7,7 @@ const TABS = [
   { to: '/admin/relays', label: 'Relays' },
   { to: '/admin/channels', label: 'Channels' },
   { to: '/admin/games', label: 'Games' },
+  { to: '/admin/settings', label: 'Settings' },
   { to: '/admin/stats', label: 'Server & Stats' },
 ]
 

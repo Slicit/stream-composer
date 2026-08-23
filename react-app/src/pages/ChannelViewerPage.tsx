@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useChannelState } from '@/hooks/useChannelState'
 import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
+import { useAvailableHeight } from '@/hooks/useAvailableHeight'
 import { ComposedGrid } from '@/components/ComposedGrid'
 import { LiveDot } from '@/components/LiveDot'
 import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 // A channel's own viewer, at /c/:slug — same grid/audio-picking machinery
 // as the global ViewerPage, fed by GET /api/channels/:slug/state instead.
@@ -20,10 +22,20 @@ import { Card, CardContent } from '@/components/ui/card'
 // the same way: this page only ever reports it into context, App.tsx's
 // <main> is what actually paints it, since that's the element it needs
 // to cover.
+//
+// layoutMode === 'maximize' bounds this page to exactly the viewport
+// space actually available below it (useAvailableHeight), gives the
+// title block a fixed natural height, and hands ComposedGrid the rest —
+// see that component's own `fill` prop. 'fixed' (the default) is
+// unchanged from before: a 16:9-locked canvas that scales with width.
 export function ChannelViewerPage() {
   const { slug = '' } = useParams<{ slug: string }>()
   const { state, notFound, error } = useChannelState(slug)
   const { hiddenKeys, spotlightKey, setChannelStreams, clearChannel } = useChannelPrefs()
+  const stageRef = useRef<HTMLDivElement>(null)
+
+  const maximize = state?.channel?.layoutMode === 'maximize'
+  const availableHeight = useAvailableHeight(stageRef, maximize)
 
   useEffect(() => {
     if (!state) return
@@ -57,10 +69,16 @@ export function ChannelViewerPage() {
   }
 
   return (
-    <div className="flex w-full flex-col gap-3">
-      <ComposedGrid state={state} hiddenKeys={hiddenKeys} spotlightKey={spotlightKey} />
+    <div
+      ref={stageRef}
+      className={cn('flex w-full flex-col gap-3', maximize && 'overflow-hidden')}
+      style={maximize && availableHeight ? { height: availableHeight } : undefined}
+    >
+      <div className={maximize ? 'min-h-0 flex-1' : undefined}>
+        <ComposedGrid state={state} hiddenKeys={hiddenKeys} spotlightKey={spotlightKey} fill={maximize} />
+      </div>
       {state.channel && (
-        <div className="flex flex-col gap-1">
+        <div className={cn('flex flex-col gap-1', maximize && 'shrink-0')}>
           {state.channel.description && <p className="text-lg font-medium">{state.channel.description}</p>}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-2 font-medium text-foreground">

@@ -46,6 +46,7 @@ Rails.application.routes.draw do
     scope path: "channels/mine", controller: "channels" do
       get "", action: :index
       post "", action: :create
+      get ":id", action: :show
       patch ":id", action: :update
       delete ":id", action: :destroy
       put ":id/background", action: :background
@@ -58,6 +59,9 @@ Rails.application.routes.draw do
 
       get "stats/status", to: "stats#status"
       get "stats/bandwidth-history", to: "stats#bandwidth_history"
+
+      get "settings", to: "settings#show"
+      patch "settings", to: "settings#update"
 
       scope path: "streams", controller: "streams" do
         get "", action: :index
@@ -77,10 +81,12 @@ Rails.application.routes.draw do
       scope path: "channels", controller: "channels" do
         get "", action: :index
         post "", action: :create
+        get ":id", action: :show
         patch ":id", action: :update
         delete ":id", action: :destroy
         put ":id/homepage", action: :set_homepage
         delete ":id/homepage", action: :clear_homepage
+        put ":id/background", action: :background
       end
 
       scope path: "games", controller: "games" do

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Pencil, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { Channel } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -120,7 +121,11 @@ export function AdminChannelsPage() {
             <TableBody>
               {channels.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link to={`/admin/channels/${c.id}`} className="hover:underline">
+                      {c.name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">/c/{c.slug}</TableCell>
                   <TableCell>
                     <Badge variant={c.visibility === 'public' ? 'default' : 'secondary'}>{c.visibility}</Badge>
@@ -132,7 +137,13 @@ export function AdminChannelsPage() {
                       aria-label={`Homepage channel: ${c.name}`}
                     />
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="icon" asChild title="Edit">
+                      <Link to={`/admin/channels/${c.id}`}>
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit</span>
+                      </Link>
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"

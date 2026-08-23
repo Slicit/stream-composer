@@ -25,10 +25,10 @@ func TestJSONBridgeLoad(t *testing.T) {
 			{
 				"id": "c1", "name": "Community Room", "slug": "community-room", "visibility": "public", "ownerId": "u1",
 				"sharedWith": []string{}, "streamIds": []string{"s1"}, "backgroundImage": "",
-				"description": "A cozy corner", "currentTopic": "Farming", "featuredGame": "Stardew Valley",
+				"description": "A cozy corner", "currentTopic": "Farming", "featuredGame": "Stardew Valley", "layoutMode": "maximize",
 			},
 		},
-		"settings": map[string]any{"publicViewing": true, "homepageChannelSlug": "community-room"},
+		"settings": map[string]any{"publicViewing": true, "homepageChannelSlug": "community-room", "defaultLayoutMode": "fixed"},
 	}
 	data, err := json.Marshal(doc)
 	if err != nil {
@@ -72,8 +72,14 @@ func TestJSONBridgeLoad(t *testing.T) {
 	if channel.Description != "A cozy corner" || channel.CurrentTopic != "Farming" || channel.FeaturedGame != "Stardew Valley" {
 		t.Errorf("channel description/currentTopic/featuredGame: got %+v", channel)
 	}
+	if channel.LayoutMode != "maximize" {
+		t.Errorf("channel.LayoutMode = %q, want maximize", channel.LayoutMode)
+	}
 	if store.HomepageChannelSlug() != "community-room" {
 		t.Errorf("HomepageChannelSlug() = %q, want community-room", store.HomepageChannelSlug())
+	}
+	if store.DefaultLayoutMode() != "fixed" {
+		t.Errorf("DefaultLayoutMode() = %q, want fixed", store.DefaultLayoutMode())
 	}
 }
 

@@ -54,6 +54,8 @@ export interface RelayDestination {
   createdAt: string
 }
 
+export type LayoutMode = 'fixed' | 'maximize'
+
 export interface Channel {
   id: string
   name: string
@@ -67,6 +69,8 @@ export interface Channel {
   currentTopic: string
   featuredGameId: string | null
   featuredGameName: string | null
+  // null = inherit AppSettings.defaultLayoutMode — see LayoutMode.
+  layoutMode: LayoutMode | null
   createdAt: string
 }
 
@@ -74,6 +78,12 @@ export interface Channel {
 export interface Game {
   id: string
   name: string
+}
+
+// GET/PATCH /api/admin/settings.
+export interface AppSettings {
+  defaultLayoutMode: LayoutMode
+  publicViewing: boolean
 }
 
 // The streamer self-service relay picker's source list — GET /api/relays/mine.

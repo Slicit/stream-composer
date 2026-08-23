@@ -31,7 +31,8 @@ module Internal
           { id: c.id, name: c.name, slug: c.slug, visibility: c.visibility,
             ownerId: c.owner_id, sharedWith: c.shared_with, streamIds: c.stream_ids,
             backgroundImage: c.background_image.presence, description: c.description,
-            currentTopic: c.current_topic, featuredGame: c.featured_game&.name }
+            currentTopic: c.current_topic, featuredGame: c.featured_game&.name,
+            layoutMode: c.layout_mode }
         end,
         settings: {
           publicViewing: setting.public_viewing,
@@ -40,6 +41,7 @@ module Internal
           # other channel request, so this way there is exactly one way to
           # address a channel across the whole data plane, not two.
           homepageChannelSlug: setting.homepage_channel&.slug,
+          defaultLayoutMode: setting.default_layout_mode,
         },
       }
     end

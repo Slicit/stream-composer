@@ -84,6 +84,11 @@ type ChannelInfo struct {
 	Description     string `json:"description"`
 	CurrentTopic    string `json:"currentTopic"`
 	FeaturedGame    string `json:"featuredGame"`
+	// LayoutMode is always resolved to "fixed" or "maximize" here — the
+	// channel's own override or the site default, worked out once in
+	// internal/channelstate.Build so the client never has to know the
+	// inheritance rule exists.
+	LayoutMode string `json:"layoutMode"`
 }
 
 type State struct {

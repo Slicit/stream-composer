@@ -65,6 +65,7 @@ describe('ChannelViewerPage', () => {
             description: 'A place for mixed streams',
             currentTopic: 'Just chatting',
             featuredGame: 'Stardew Valley',
+            layoutMode: 'fixed',
           },
         })
       }),
@@ -87,5 +88,32 @@ describe('ChannelViewerPage', () => {
     // itself counts as live — matches ComposedGrid's own "restricted
     // still occupies a cell" treatment.
     expect(nameEl.closest('span')?.querySelector('[role="status"]')).toHaveAccessibleName('Live')
+  })
+
+  it('bounds the page to the available viewport height in "maximize" layout mode, unlike "fixed"', async () => {
+    function channelState(layoutMode: 'fixed' | 'maximize') {
+      return jsonResponse({
+        settings: { publicViewing: false, homepageChannelSlug: '' },
+        program: { mode: 'web', ready: false, width: 1920, height: 1080, gapPx: 4 },
+        layout: null,
+        onAir: [],
+        streams: [],
+        serverTime: '2026-01-01T00:00:00Z',
+        channel: { name: 'Solo', slug: 'solo', backgroundImage: '', description: '', currentTopic: '', featuredGame: '', layoutMode },
+      })
+    }
+
+    vi.stubGlobal('fetch', vi.fn(() => channelState('maximize')))
+    const maximized = renderAtSlug('solo')
+    await waitFor(() => expect(screen.getByText('Solo')).toBeInTheDocument())
+    const maximizedStage = maximized.container.firstElementChild as HTMLElement
+    await waitFor(() => expect(maximizedStage.style.height).not.toBe(''))
+    maximized.unmount()
+
+    vi.stubGlobal('fetch', vi.fn(() => channelState('fixed')))
+    const fixed = renderAtSlug('solo')
+    await waitFor(() => expect(screen.getByText('Solo')).toBeInTheDocument())
+    const fixedStage = fixed.container.firstElementChild as HTMLElement
+    expect(fixedStage.style.height).toBe('')
   })
 })

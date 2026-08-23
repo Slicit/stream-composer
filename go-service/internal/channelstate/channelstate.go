@@ -173,6 +173,7 @@ func Build(ctx context.Context, store streamstore.Store, mtx IngestLister, check
 		Channel: &viewerstate.ChannelInfo{
 			Name: channel.Name, Slug: channel.Slug, BackgroundImage: channel.BackgroundImage,
 			Description: channel.Description, CurrentTopic: channel.CurrentTopic, FeaturedGame: channel.FeaturedGame,
+			LayoutMode: resolveLayoutMode(channel.LayoutMode, store.DefaultLayoutMode()),
 		},
 	}, true, nil
 }
@@ -221,4 +222,17 @@ func BuildLiveMap(ctx context.Context, store streamstore.Store, mtx IngestLister
 		result[channel.Slug] = isLive
 	}
 	return result, nil
+}
+
+// resolveLayoutMode applies the one inheritance rule the whole feature
+// has: a channel's own override wins, otherwise the site default, with a
+// final "fixed" fallback so a client is never handed an empty mode.
+func resolveLayoutMode(channelOverride, siteDefault string) string {
+	if channelOverride != "" {
+		return channelOverride
+	}
+	if siteDefault != "" {
+		return siteDefault
+	}
+	return "fixed"
 }

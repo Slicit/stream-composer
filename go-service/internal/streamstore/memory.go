@@ -13,6 +13,7 @@ type Memory struct {
 	channels            []Channel
 	publicViewing       bool
 	homepageChannelSlug string
+	defaultLayoutMode   string
 }
 
 func NewMemory() *Memory {
@@ -22,7 +23,7 @@ func NewMemory() *Memory {
 // Replace swaps the entire stream, relay and channel set atomically — how
 // a future JSON-file or polling-based loader would apply a refresh
 // without a caller ever observing a half-updated set.
-func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, publicViewing bool, homepageChannelSlug string) {
+func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, publicViewing bool, homepageChannelSlug string, defaultLayoutMode string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.streams = append([]Stream(nil), streams...)
@@ -30,6 +31,7 @@ func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, p
 	m.channels = append([]Channel(nil), channels...)
 	m.publicViewing = publicViewing
 	m.homepageChannelSlug = homepageChannelSlug
+	m.defaultLayoutMode = defaultLayoutMode
 }
 
 func (m *Memory) FindByPlaybackID(playbackID string) (*Stream, bool) {
@@ -108,4 +110,13 @@ func (m *Memory) HomepageChannelSlug() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.homepageChannelSlug
+}
+
+func (m *Memory) DefaultLayoutMode() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.defaultLayoutMode == "" {
+		return "fixed"
+	}
+	return m.defaultLayoutMode
 }

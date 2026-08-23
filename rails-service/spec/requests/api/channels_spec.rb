@@ -51,6 +51,47 @@ RSpec.describe "Api::Channels (self-service /channels/mine)", type: :request do
       put "/api/channels/mine/#{channel_a.id}/background", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "B cannot view A's channel via the edit-page endpoint" do
+      sign_in_as(viewer_b, password: "correct-horse-1")
+      get "/api/channels/mine/#{channel_a.id}", as: :json
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
+
+  describe "GET /api/channels/mine/:id (the edit page)" do
+    it "returns the owner's own channel" do
+      sign_in_as(viewer_a, password: "correct-horse-1")
+      post "/api/channels/mine", params: { name: "My Channel" }, as: :json
+      id = JSON.parse(response.body)["channel"]["id"]
+
+      get "/api/channels/mine/#{id}", as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["channel"]["id"]).to eq(id)
+    end
+  end
+
+  describe "layout mode" do
+    it "sets and clears the layout mode override" do
+      sign_in_as(viewer_a, password: "correct-horse-1")
+      post "/api/channels/mine", params: { name: "My Channel" }, as: :json
+      id = JSON.parse(response.body)["channel"]["id"]
+
+      patch "/api/channels/mine/#{id}", params: { layoutMode: "maximize" }, as: :json
+      expect(JSON.parse(response.body)["channel"]["layoutMode"]).to eq("maximize")
+
+      patch "/api/channels/mine/#{id}", params: { layoutMode: nil }, as: :json
+      expect(JSON.parse(response.body)["channel"]["layoutMode"]).to be_nil
+    end
+
+    it "rejects an invalid layout mode" do
+      sign_in_as(viewer_a, password: "correct-horse-1")
+      post "/api/channels/mine", params: { name: "My Channel" }, as: :json
+      id = JSON.parse(response.body)["channel"]["id"]
+
+      patch "/api/channels/mine/#{id}", params: { layoutMode: "bogus" }, as: :json
+      expect(response).to have_http_status(:bad_request)
+    end
   end
 
   describe "GET /api/channels (every channel this user can view)" do

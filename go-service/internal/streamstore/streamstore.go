@@ -61,6 +61,11 @@ type Channel struct {
 	Description     string
 	CurrentTopic    string
 	FeaturedGame    string // resolved game name, or "" — Rails owns the games table
+	// LayoutMode is this channel's own override ("fixed"/"maximize"), or
+	// "" to inherit Store.DefaultLayoutMode() — resolved once, in
+	// internal/channelstate.Build, so nothing downstream re-implements
+	// the inheritance rule.
+	LayoutMode string
 }
 
 // Store is read-only from the data plane's perspective — nothing here ever
@@ -105,4 +110,8 @@ type Store interface {
 	// HomepageChannelSlug is the channel "/" should redirect to, or ""
 	// when none is configured.
 	HomepageChannelSlug() string
+
+	// DefaultLayoutMode is the site-wide fallback ("fixed" or "maximize")
+	// a channel uses when it has no LayoutMode override of its own.
+	DefaultLayoutMode() string
 }

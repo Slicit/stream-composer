@@ -12,12 +12,15 @@ import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminStreamsPage } from './pages/admin/AdminStreamsPage'
 import { AdminRelaysPage } from './pages/admin/AdminRelaysPage'
 import { AdminChannelsPage } from './pages/admin/AdminChannelsPage'
+import { AdminChannelEditPage } from './pages/admin/AdminChannelEditPage'
 import { AdminGamesPage } from './pages/admin/AdminGamesPage'
+import { AdminSettingsPage } from './pages/admin/AdminSettingsPage'
 import { AdminStatsPage } from './pages/admin/AdminStatsPage'
 import { ViewerPage } from './pages/ViewerPage'
 import { ChannelViewerPage } from './pages/ChannelViewerPage'
 import { StreamerPage } from './pages/StreamerPage'
 import { ChannelsPage } from './pages/ChannelsPage'
+import { ChannelEditPage } from './pages/ChannelEditPage'
 
 // A channel's background image must cover <main> itself — the actual
 // content area next to the left nav — not just whatever box a page's own
@@ -63,7 +66,9 @@ export function App() {
                   <Route path="streams" element={<AdminStreamsPage />} />
                   <Route path="relays" element={<AdminRelaysPage />} />
                   <Route path="channels" element={<AdminChannelsPage />} />
+                  <Route path="channels/:id" element={<AdminChannelEditPage />} />
                   <Route path="games" element={<AdminGamesPage />} />
+                  <Route path="settings" element={<AdminSettingsPage />} />
                 <Route path="stats" element={<AdminStatsPage />} />
                 </Route>
                 <Route
@@ -79,6 +84,14 @@ export function App() {
                   element={
                     <ProtectedRoute>
                       <ChannelsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/channels/:id"
+                  element={
+                    <ProtectedRoute>
+                      <ChannelEditPage />
                     </ProtectedRoute>
                   }
                 />

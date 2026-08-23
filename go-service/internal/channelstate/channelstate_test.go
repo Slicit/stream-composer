@@ -11,18 +11,25 @@ import (
 )
 
 type fakeStore struct {
-	streams  []streamstore.Stream
-	channels []streamstore.Channel
+	streams           []streamstore.Stream
+	channels          []streamstore.Channel
+	defaultLayoutMode string
 }
 
 func (f *fakeStore) FindByPlaybackID(string) (*streamstore.Stream, bool) { return nil, false }
 func (f *fakeStore) FindByKey(string) (*streamstore.Stream, bool)        { return nil, false }
 func (f *fakeStore) FindByID(string) (*streamstore.Stream, bool)         { return nil, false }
 func (f *fakeStore) PublicViewingEnabled() bool                          { return false }
-func (f *fakeStore) Relays() []streamstore.Relay                         { return nil }
-func (f *fakeStore) Streams() []streamstore.Stream                       { return f.streams }
-func (f *fakeStore) HomepageChannelSlug() string                         { return "" }
-func (f *fakeStore) Channels() []streamstore.Channel                     { return f.channels }
+func (f *fakeStore) DefaultLayoutMode() string {
+	if f.defaultLayoutMode != "" {
+		return f.defaultLayoutMode
+	}
+	return "fixed"
+}
+func (f *fakeStore) Relays() []streamstore.Relay     { return nil }
+func (f *fakeStore) Streams() []streamstore.Stream   { return f.streams }
+func (f *fakeStore) HomepageChannelSlug() string     { return "" }
+func (f *fakeStore) Channels() []streamstore.Channel { return f.channels }
 func (f *fakeStore) FindChannelBySlug(slug string) (*streamstore.Channel, bool) {
 	for i := range f.channels {
 		if f.channels[i].Slug == slug {
@@ -227,5 +234,36 @@ func TestBuildHasAudioOnlyOnceTheOpusTranscodeIsLive(t *testing.T) {
 	}
 	if state.Streams[0].HasAudio {
 		t.Error("hasAudio must stay false until the Opus republish is actually live")
+	}
+}
+
+func TestBuildResolvesLayoutMode(t *testing.T) {
+	cases := []struct {
+		name              string
+		channelOverride   string
+		defaultLayoutMode string
+		want              string
+	}{
+		{"channel override wins over the site default", "maximize", "fixed", "maximize"},
+		{"inherits the site default when unset", "", "maximize", "maximize"},
+		{"falls back to fixed when neither is set", "", "", "fixed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeStore{
+				channels:          []streamstore.Channel{{ID: "c1", Slug: "mode-test", Name: "Mode Test", Visibility: "public", LayoutMode: tc.channelOverride}},
+				defaultLayoutMode: tc.defaultLayoutMode,
+			}
+			state, found, err := Build(context.Background(), store, &fakeLister{}, nil, nil, testComp, "live", "mode-test", nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !found {
+				t.Fatal("expected the channel to be found")
+			}
+			if state.Channel.LayoutMode != tc.want {
+				t.Errorf("LayoutMode = %q, want %q", state.Channel.LayoutMode, tc.want)
+			}
+		})
 	}
 }

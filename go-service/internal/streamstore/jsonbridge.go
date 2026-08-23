@@ -45,10 +45,12 @@ type jsonConfig struct {
 		Description     string   `json:"description"`
 		CurrentTopic    string   `json:"currentTopic"`
 		FeaturedGame    string   `json:"featuredGame"`
+		LayoutMode      string   `json:"layoutMode"`
 	} `json:"channels"`
 	Settings struct {
 		PublicViewing       bool   `json:"publicViewing"`
 		HomepageChannelSlug string `json:"homepageChannelSlug"`
+		DefaultLayoutMode   string `json:"defaultLayoutMode"`
 	} `json:"settings"`
 }
 
@@ -102,6 +104,7 @@ func (cfg jsonConfig) toChannels() []Channel {
 			Description:     c.Description,
 			CurrentTopic:    c.CurrentTopic,
 			FeaturedGame:    c.FeaturedGame,
+			LayoutMode:      c.LayoutMode,
 		})
 	}
 	return channels
@@ -133,7 +136,7 @@ func (b *JSONBridge) Load() error {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", b.Path, err)
 	}
-	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug, cfg.Settings.DefaultLayoutMode)
 	return nil
 }
 

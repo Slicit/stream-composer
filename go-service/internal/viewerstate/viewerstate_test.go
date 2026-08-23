@@ -22,6 +22,7 @@ func (f *fakeStore) FindByPlaybackID(string) (*streamstore.Stream, bool) { retur
 func (f *fakeStore) FindByKey(string) (*streamstore.Stream, bool)        { return nil, false }
 func (f *fakeStore) FindByID(string) (*streamstore.Stream, bool)         { return nil, false }
 func (f *fakeStore) PublicViewingEnabled() bool                          { return f.publicViewing }
+func (f *fakeStore) DefaultLayoutMode() string                           { return "fixed" }
 func (f *fakeStore) Relays() []streamstore.Relay                         { return nil }
 func (f *fakeStore) Streams() []streamstore.Stream                       { return f.streams }
 func (f *fakeStore) HomepageChannelSlug() string                         { return f.homepageChannelSlug }

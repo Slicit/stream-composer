@@ -1,8 +1,9 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ViewerTile } from '@/components/ViewerTile'
 import { PlayerOverlay } from '@/components/PlayerOverlay'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { computeClientLayout } from '@/lib/clientLayout'
 import type { ViewerState } from '@/api/viewerState'
 import type { WhepStats } from '@/lib/whep'
@@ -17,6 +18,12 @@ interface ComposedGridProps {
   // global viewer.
   hiddenKeys?: Set<string>
   spotlightKey?: string | null
+  // "maximize" layout mode: pack tiles into whatever box this component
+  // actually renders at (measured via ResizeObserver) instead of the
+  // server's fixed 1920x1080 canvas locked to a 16:9 aspect ratio. The
+  // caller (ChannelViewerPage) is responsible for giving that box a real
+  // height — this component only measures, it never claims one itself.
+  fill?: boolean
 }
 
 // The browser-composed grid, shared by the global viewer and a channel's
@@ -36,11 +43,24 @@ export function ComposedGrid({
   emptyMessage = 'Nothing on air. Start streaming and the grid appears here automatically.',
   hiddenKeys,
   spotlightKey = null,
+  fill = false,
 }: ComposedGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [paused, setPaused] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [statsByKey, setStatsByKey] = useState<Record<string, WhepStats>>({})
+  const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    if (!fill) return
+    const el = containerRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setMeasured({ width: entry.contentRect.width, height: entry.contentRect.height })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [fill])
 
   const onAirAll = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
   const onAir = hiddenKeys ? onAirAll.filter((s) => !hiddenKeys.has(s.key)) : onAirAll
@@ -65,27 +85,33 @@ export function ComposedGrid({
 
   const layout = state.layout
   const spotlightIndex = spotlightKey ? onAir.findIndex((s) => s.key === spotlightKey) : -1
+  // "fixed" packs into the server's 1920x1080-ish canvas, aspect-ratio
+  // locked; "maximize" packs into whatever this component is actually
+  // rendered at, falling back to the fixed canvas size for the one frame
+  // before ResizeObserver's first measurement lands.
+  const canvasWidth = fill ? measured?.width || layout.width : layout.width
+  const canvasHeight = fill ? measured?.height || layout.height : layout.height
   const cells = computeClientLayout(
     onAir.length,
-    { width: layout.width, height: layout.height, gap: state.program.gapPx },
+    { width: canvasWidth, height: canvasHeight, gap: state.program.gapPx },
     spotlightIndex >= 0 ? spotlightIndex : null,
   )
 
   return (
     <div
       ref={containerRef}
-      className="group relative w-full overflow-hidden rounded-lg border bg-black"
-      style={{ aspectRatio: `${layout.width} / ${layout.height}` }}
+      className={cn('group relative overflow-hidden rounded-lg border bg-black', fill ? 'h-full w-full' : 'w-full')}
+      style={fill ? undefined : { aspectRatio: `${layout.width} / ${layout.height}` }}
     >
       {onAir.map((source, i) => {
         const cell = cells[i]
         if (!cell) return null
         const meta = streamsByKey.get(source.key)
         const cellStyle = {
-          left: `${(cell.x / layout.width) * 100}%`,
-          top: `${(cell.y / layout.height) * 100}%`,
-          width: `${(cell.w / layout.width) * 100}%`,
-          height: `${(cell.h / layout.height) * 100}%`,
+          left: `${(cell.x / canvasWidth) * 100}%`,
+          top: `${(cell.y / canvasHeight) * 100}%`,
+          width: `${(cell.w / canvasWidth) * 100}%`,
+          height: `${(cell.h / canvasHeight) * 100}%`,
         }
 
         if (meta?.restricted) {
@@ -122,8 +148,8 @@ export function ComposedGrid({
             path={meta.path}
             name={source.name}
             cell={cell}
-            canvasWidth={layout.width}
-            canvasHeight={layout.height}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
             paused={paused}
             showStats={showStats}
             onStats={(stats) => setStatsByKey((prev) => ({ ...prev, [source.key]: stats }))}

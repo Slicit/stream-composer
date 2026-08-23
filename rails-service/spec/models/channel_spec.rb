@@ -92,6 +92,21 @@ RSpec.describe Channel, type: :model do
     end
   end
 
+  describe "layout_mode" do
+    it "defaults to nil (inherit the site default)" do
+      expect(build_channel.tap(&:save!).layout_mode).to be_nil
+    end
+
+    it "accepts fixed or maximize" do
+      expect(build_channel(layout_mode: "fixed")).to be_valid
+      expect(build_channel(layout_mode: "maximize")).to be_valid
+    end
+
+    it "rejects anything else" do
+      expect(build_channel(layout_mode: "bogus")).not_to be_valid
+    end
+  end
+
   describe "deleting a channel" do
     it "clears itself as the homepage channel" do
       channel = build_channel.tap(&:save!)

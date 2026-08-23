@@ -28,9 +28,17 @@ module Api
     end
 
     CHANNEL_PARAMS = %i[name slug visibility description].freeze
+    EXTRA_CHANNEL_PARAMS = %i[currentTopic featuredGameId layoutMode].freeze
+
+    def show
+      channel = owned_channel!
+      return unless channel
+
+      render json: { channel: channel.as_public_json }
+    end
 
     def create
-      channel = current_user.owned_channels.new(channel_attrs(params.permit(*CHANNEL_PARAMS, :currentTopic, :featuredGameId, streamIds: [], sharedWith: [])))
+      channel = current_user.owned_channels.new(channel_attrs(params.permit(*CHANNEL_PARAMS, *EXTRA_CHANNEL_PARAMS, streamIds: [], sharedWith: [])))
       if channel.save
         render json: { channel: channel.as_public_json }, status: :created
       else
@@ -42,7 +50,7 @@ module Api
       channel = owned_channel!
       return unless channel
 
-      if channel.update(channel_attrs(params.permit(*CHANNEL_PARAMS, :currentTopic, :featuredGameId, streamIds: [], sharedWith: [])))
+      if channel.update(channel_attrs(params.permit(*CHANNEL_PARAMS, *EXTRA_CHANNEL_PARAMS, streamIds: [], sharedWith: [])))
         render json: { channel: channel.as_public_json }
       else
         render_error :bad_request, channel.errors.full_messages.join(", ")
@@ -85,7 +93,8 @@ module Api
 
     def channel_attrs(body)
       body.to_h.transform_keys do |k|
-        { "streamIds" => "stream_ids", "sharedWith" => "shared_with", "currentTopic" => "current_topic", "featuredGameId" => "featured_game_id" }.fetch(k, k)
+        { "streamIds" => "stream_ids", "sharedWith" => "shared_with", "currentTopic" => "current_topic",
+          "featuredGameId" => "featured_game_id", "layoutMode" => "layout_mode" }.fetch(k, k)
       end
     end
 

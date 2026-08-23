@@ -28,6 +28,7 @@ class Channel < ApplicationRecord
   validates :visibility, inclusion: { in: VISIBILITIES }
   validates :description, length: { maximum: 500 }
   validates :current_topic, length: { maximum: 255 }
+  validates :layout_mode, inclusion: { in: AppSetting::LAYOUT_MODES }, allow_nil: true
   validate :stream_ids_are_sane
   validate :shared_with_is_sane
 
@@ -81,6 +82,7 @@ class Channel < ApplicationRecord
       currentTopic: current_topic,
       featuredGameId: featured_game_id,
       featuredGameName: featured_game&.name,
+      layoutMode: layout_mode,
       createdAt: created_at.iso8601,
     }
   end

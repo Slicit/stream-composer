@@ -70,7 +70,7 @@ func TestTickDoesNotStartADisabledRelay(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: false, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -84,7 +84,7 @@ func TestTickWaitsWhenSourceIsNotLive(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -98,7 +98,7 @@ func TestTickStopsARelayWhoseSourceStreamIsGone(t *testing.T) {
 	store := streamstore.NewMemory()
 	// No matching stream for r1's StreamID at all.
 	relay := streamstore.Relay{ID: "r1", StreamID: "missing", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace(nil, []streamstore.Relay{relay}, nil, false, "")
+	store.Replace(nil, []streamstore.Relay{relay}, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -112,7 +112,7 @@ func TestTickStartsAndStopsALiveRelay(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live", Audio: "copy"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
 
 	lister := &fakeIngestLister{live: map[string]bool{"src-key": true}}
 	r := New(store, lister, testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5")), silentLog())
@@ -145,7 +145,7 @@ func TestFailingFFmpegSchedulesABackoffThatGrows(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "exit 1")), silentLog())
 	r.Tick(context.Background())

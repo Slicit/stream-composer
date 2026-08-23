@@ -10,16 +10,18 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_23_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
 
   create_table "app_settings", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.string "default_layout_mode", default: "fixed", null: false
     t.uuid "homepage_channel_id"
     t.boolean "public_viewing", default: false, null: false
     t.datetime "updated_at", null: false
+    t.check_constraint "default_layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "app_settings_default_layout_mode_check"
   end
 
   create_table "channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -28,6 +30,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000003) do
     t.string "current_topic", limit: 255, default: "", null: false
     t.string "description", limit: 500, default: "", null: false
     t.uuid "featured_game_id"
+    t.string "layout_mode"
     t.string "name", null: false
     t.uuid "owner_id", null: false
     t.uuid "shared_with", default: [], null: false, array: true
@@ -40,6 +43,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000003) do
     t.index ["owner_id"], name: "index_channels_on_owner_id"
     t.index ["shared_with"], name: "index_channels_on_shared_with", using: :gin
     t.index ["stream_ids"], name: "index_channels_on_stream_ids", using: :gin
+    t.check_constraint "layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "channels_layout_mode_check"
     t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying, 'private'::character varying]::text[])", name: "channels_visibility_check"
   end
 
