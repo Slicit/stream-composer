@@ -19,15 +19,15 @@ entirely in the browser, sub-second latency, no server-side encoding at all.
 
 ---
 
-> This branch (`migration/go-rails-react`) is a rewrite of the original
-> single-container Node app into three services: a Go data plane, a Rails
-> control plane, and a React frontend. It is under active development;
-> `main`/`install.sh` still point at the older, single-container release.
+> v2.0.0 is a rewrite of the original single-container Node app into three
+> services: a Go data plane, a Rails control plane, and a React frontend.
+> Still want the old single-container release? `install.sh` and the
+> `v1.5.0` tag are still here.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/install-go-rails-react.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/install-go-rails-react.sh | bash
 ```
 
 Unlike the old installer, this one never builds anything: it fetches two
@@ -38,7 +38,7 @@ upgrades in place, keeping `.env`.
 Non-interactive:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/install-go-rails-react.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/install-go-rails-react.sh | bash -s -- \
   --yes --domain stream.example.com --email you@example.com \
   --admin-password 'a-good-password' --master-key "$(cat rails-service/config/master.key)"
 ```
@@ -47,7 +47,7 @@ To update an existing install, re-run the same installer from inside its
 directory, or:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/update-go-rails-react.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/update-go-rails-react.sh | bash
 ```
 
 Then open the admin console, create a stream, and paste the key into OBS.
@@ -201,7 +201,6 @@ to an existing install or an unrelated project on the same host:
 ```bash
 git clone https://github.com/Slicit/stream-composer.git
 cd stream-composer
-git checkout migration/go-rails-react
 
 MEDIAMTX_PUBLIC_HOST=<your box's LAN/public IP> \
   docker compose -f docker-compose.migration.yml up -d --build

@@ -2,7 +2,7 @@
 #
 # Stream Composer (Go data plane + Rails control plane + React) installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/install-go-rails-react.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/install-go-rails-react.sh | bash
 #
 # Unlike install.sh (the pre-migration single-container app), this never
 # builds anything: it fetches a handful of small config files and pulls
@@ -16,9 +16,10 @@
 #       --domain stream.example.com --email me@example.com \
 #       --master-key "$(cat rails-service/config/master.key)"
 #
-# This stack is still on the migration/go-rails-react branch, so the only
-# published channel today is `beta`; --channel/--stable exist so switching
-# is a re-run, not a rewrite, once a `stable` channel exists.
+# Default channel is `stable` (tracks main). --beta tracks the
+# migration/go-rails-react branch instead, for whoever wants unreleased
+# work; --channel/--stable/--beta exist so switching is a re-run, not a
+# rewrite.
 
 set -Eeuo pipefail
 
@@ -39,7 +40,7 @@ default_install_dir() {
 
 REPO="${SC_REPO:-Slicit/stream-composer}"
 INSTALL_DIR="${SC_INSTALL_DIR:-$(default_install_dir)}"
-CHANNEL="${SC_CHANNEL:-beta}" # beta | stable
+CHANNEL="${SC_CHANNEL:-stable}" # beta | stable
 CHANNEL_EXPLICIT="no"
 
 DOMAIN=""
@@ -156,9 +157,9 @@ Usage: install-go-rails-react.sh [options]
   --dir <path>             Install directory (default: /opt/stream-composer-next,
                             or wherever this script itself is, when run
                             as a local copy from inside an existing install)
-  --channel <beta|stable>  Image channel (default: beta — the only one
-                            published while this stack lives on the
-                            migration/go-rails-react branch)
+  --channel <beta|stable>  Image channel (default: stable, tracks main;
+                            beta tracks the migration/go-rails-react
+                            branch's unreleased work)
   --beta                   Shorthand for --channel beta
   --stable                 Shorthand for --channel stable
   --yes                    Accept every default and do not ask anything

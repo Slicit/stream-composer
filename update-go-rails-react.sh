@@ -10,7 +10,7 @@
 #
 # or, without a local checkout:
 #
-#   curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/migration/go-rails-react/update-go-rails-react.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/update-go-rails-react.sh | bash
 #
 # At a real terminal this asks "Review the settings again? [y/N]" —
 # Enter (or no reply at all, e.g. piped with no tty attached) takes the
@@ -31,9 +31,12 @@ fi
 # local install-go-rails-react.sh sitting next to this script to exec —
 # fetch it and hand off. It reads the existing .env (channel, domain,
 # secrets) itself and decides what to ask, if anything; nothing here
-# decides that.
+# decides that channel — only which branch to fetch the installer *script*
+# itself from, which mirrors install-go-rails-react.sh's own channel_ref().
 REPO="${SC_REPO:-Slicit/stream-composer}"
-url="https://raw.githubusercontent.com/$REPO/migration/go-rails-react/install-go-rails-react.sh"
+ref="main"
+[ "${SC_CHANNEL:-}" = "beta" ] && ref="migration/go-rails-react"
+url="https://raw.githubusercontent.com/$REPO/$ref/install-go-rails-react.sh"
 if command -v curl >/dev/null 2>&1; then
   curl -fsSL "$url" | bash -s -- "$@"
 else
