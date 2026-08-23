@@ -67,7 +67,16 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
 
   return (
     <div className="absolute overflow-hidden rounded-md bg-black" style={style}>
-      <video ref={videoRef} playsInline autoPlay muted className="h-full w-full object-contain" />
+      {/* object-cover, not object-contain: a cell rarely matches the
+          source's exact aspect ratio (clientLayout.ts's "auto" grid picks
+          the cell shape that crops least, but some mismatch is normal),
+          and object-contain would letterbox that mismatch as blank space
+          inside the cell — pushing the name caption below, away from the
+          visible picture, since it's still anchored to the cell's own
+          bottom edge. Cropping instead of letterboxing keeps the cell
+          and the visible picture the same box, so the caption always
+          sits right at the bottom of what's actually shown. */}
+      <video ref={videoRef} playsInline autoPlay muted className="h-full w-full object-cover" />
       {state !== 'playing' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-2 text-center text-xs text-white/80">
           {state === 'offline' ? 'Not on air' : state === 'error' ? message || 'Playback error' : 'Connecting…'}

@@ -41,4 +41,31 @@ describe('computeClientLayout', () => {
   it('returns nothing for a non-positive count', () => {
     expect(computeClientLayout(0, { width: 1920, height: 1080, gap: 4 }, null)).toEqual([])
   })
+
+  it('stacks a portrait-ish canvas into a single column instead of a 2-across row that leaves it half empty', () => {
+    // Narrow and tall — e.g. a "maximize" stage on a phone-width window.
+    const cells = computeClientLayout(2, { width: 700, height: 1400, gap: 4 }, null)
+    expect(cells).toHaveLength(2)
+    // Stacked: both cells span (close to) the full width, and the second
+    // sits below the first rather than beside it.
+    expect(cells[0].x).toBe(cells[1].x)
+    expect(cells[0].y).toBeLessThan(cells[1].y)
+    expect(cells[0].w).toBeGreaterThan(600)
+  })
+
+  it('still lays a landscape canvas out side by side, not stacked', () => {
+    const cells = computeClientLayout(2, { width: 1920, height: 1080, gap: 4 }, null)
+    expect(cells).toHaveLength(2)
+    expect(cells[0].y).toBe(cells[1].y)
+    expect(cells[0].x).toBeLessThan(cells[1].x)
+  })
+
+  it('picks whichever grid leaves the least of each 16:9-ish cell unused, not a fixed ceil(sqrt(count)) guess', () => {
+    // 3 sources on a very wide, short canvas: a naive sqrt(3)->2 columns
+    // grid would need 2 rows (half the canvas height each), when a
+    // single row of 3 already fits and uses the width far better.
+    const cells = computeClientLayout(3, { width: 3000, height: 500, gap: 4 }, null)
+    expect(cells).toHaveLength(3)
+    expect(new Set(cells.map((c) => c.y)).size).toBe(1)
+  })
 })

@@ -114,7 +114,46 @@ export function computeClientLayout(count: number, opts: Options, spotlightIndex
     return byOriginalIndex
   }
 
-  const cols = Math.ceil(Math.sqrt(count))
-  const rows = Math.ceil(count / cols)
+  const { rows } = bestGrid(count, width, height)
   return gridCells(count, o, rows)
+}
+
+// A source is typically ~16:9 — used only to score candidate grids, never
+// to distort a cell's own shape (cells stay uniform rectangles; ViewerTile
+// crops with object-cover rather than letterboxing).
+const SOURCE_ASPECT = 16 / 9
+
+// Picks cols/rows for an "auto" grid by the same idea video-conferencing
+// gallery views use: try every (cols, rows) that fits `count` cells with
+// no wasted full row, and keep whichever gives the largest picture once a
+// ~16:9 source is cropped to fill its cell — i.e. the grid an actual
+// video is biggest and least-cropped in, not a fixed ceil(sqrt(count))
+// guess. That guess only ever suits a landscape canvas; on a canvas
+// that's actually taller than it is wide (a "maximize" stage on a narrow
+// or portrait-ish window) it can leave a 2-across grid mostly empty
+// where a single column would fill the space. Deliberately not shared
+// with go-service/internal/layout's own "auto" case: that Go code is a
+// golden-master port of the legacy Node layout.js (see its own test),
+// pinned to match that reference exactly — this is a client-only
+// refinement with no such constraint.
+function bestGrid(count: number, width: number, height: number): { cols: number; rows: number } {
+  let best = { cols: count, rows: 1, area: -1 }
+  for (let cols = 1; cols <= count; cols++) {
+    const rows = Math.ceil(count / cols)
+    // A full row would go unused with fewer columns — skip it, it can
+    // only ever be a worse packing of the same count.
+    if (cols > 1 && (cols - 1) * rows >= count) continue
+    const cellW = width / cols
+    const cellH = height / rows
+    const pictureW = Math.min(cellW, cellH * SOURCE_ASPECT)
+    const pictureH = pictureW / SOURCE_ASPECT
+    const area = pictureW * pictureH
+    // >= , not >: on an exact tie (e.g. 2 items on a plain 16:9 canvas —
+    // stacked and side-by-side both crop identically), prefer the later,
+    // wider candidate. Columns are tried in ascending order, so this
+    // favours the more landscape-leaning of two equally-good options,
+    // matching what a landscape canvas is conventionally expected to do.
+    if (area >= best.area) best = { cols, rows, area }
+  }
+  return best
 }

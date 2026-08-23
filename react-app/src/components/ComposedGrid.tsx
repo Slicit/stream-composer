@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ViewerTile } from '@/components/ViewerTile'
 import { PlayerOverlay } from '@/components/PlayerOverlay'
 import { Card, CardContent } from '@/components/ui/card'
@@ -45,22 +45,35 @@ export function ComposedGrid({
   spotlightKey = null,
   fill = false,
 }: ComposedGridProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  // A plain useRef + a mount-only useEffect only ever gets one chance to
+  // observe: if this render's return is still the empty-state <Card>
+  // below (nothing on air yet), the ref'd div doesn't exist yet, the
+  // effect finds containerRef.current null and bails, and since `fill`
+  // never changes afterward, the effect never re-runs once the real grid
+  // div later mounts — measured then stays null forever and canvasWidth/
+  // canvasHeight silently fall back to the fixed 1920x1080 canvas even in
+  // fill mode. A callback ref re-fires on every attach, including that
+  // later one, so it's threaded into the effect's own dependencies here
+  // instead of a plain ref.
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null)
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    containerRef.current = node
+    setGridEl(node)
+  }, [])
   const [paused, setPaused] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [statsByKey, setStatsByKey] = useState<Record<string, WhepStats>>({})
   const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
-    if (!fill) return
-    const el = containerRef.current
-    if (!el) return
+    if (!fill || !gridEl) return
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setMeasured({ width: entry.contentRect.width, height: entry.contentRect.height })
     })
-    observer.observe(el)
+    observer.observe(gridEl)
     return () => observer.disconnect()
-  }, [fill])
+  }, [fill, gridEl])
 
   const onAirAll = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
   const onAir = hiddenKeys ? onAirAll.filter((s) => !hiddenKeys.has(s.key)) : onAirAll
@@ -99,7 +112,7 @@ export function ComposedGrid({
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainerRef}
       className={cn('group relative overflow-hidden rounded-lg border bg-black', fill ? 'h-full w-full' : 'w-full')}
       style={fill ? undefined : { aspectRatio: `${layout.width} / ${layout.height}` }}
     >
