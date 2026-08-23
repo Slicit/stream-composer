@@ -62,7 +62,16 @@ Create a channel to curate which streams show up together on their own page.
 - **Channels.** A named, sluggable, curated list of streams at its own URL
   (`/c/your-channel`). Public or private, with per-channel access grants,
   an optional background image, and one channel can be set as the site's
-  homepage.
+  homepage. Give it a description, a current topic, and a featured game,
+  and edit all of it — including which layout mode it uses — from its own
+  full edit page.
+- **Two grid layouts.** Fixed locks a 16:9 canvas that scales with the
+  page — the original behavior. Maximize instead fits the grid to
+  whatever space is actually available, always leaving room for the
+  title and description. Pick a site-wide default in Admin → Settings, or
+  override it per channel.
+- **Games.** Tag a channel with what's being played. Admin → Games
+  manages the list, seeded with 100+ common titles to start from.
 - **Per-stream visibility.** Streams are private by default; make one
   public, or share it with specific users. A private stream inside a
   channel you can otherwise see renders as a locked placeholder, never a
@@ -100,6 +109,12 @@ everyone else's just play.
 
 <img src="docs/screenshots/channel-viewer.png" alt="A channel's own page with a live grid and the Streams favorites panel in the left nav" width="820">
 
+**"Maximize" layout mode** fits the grid to the streams themselves instead
+of a locked canvas, packing tiles into whatever space the page actually
+has while keeping the title and description visible below it.
+
+<img src="docs/screenshots/channel-viewer-maximize.png" alt="A channel in Maximize layout mode: two tiles sized to fill the available page space, stacked to fit, each with its own name caption at the bottom" width="820">
+
 **Admin → Users** is where accounts and roles live, including the
 impersonate action on each row (only available to admins).
 
@@ -119,6 +134,22 @@ source, pick a destination (or paste any RTMP URL), and switch it on.
 public, private, or shared with specific users.
 
 <img src="docs/screenshots/admin-channels.png" alt="The admin Channels tab listing channels with their visibility and member streams" width="820">
+
+**A channel's full edit page** (opened from either Admin → Channels or a
+user's own "My channels") covers everything about it in one place: name,
+slug, description, topic, featured game, visibility, grid layout mode,
+owner, member streams, and its background image.
+
+<img src="docs/screenshots/admin-channel-edit.png" alt="A channel's full edit page with fields for name, slug, description, current topic, featured game, visibility, grid layout mode, owner, member streams, and background image" width="820">
+
+**Admin → Games** manages the list channels pick their featured game from.
+
+<img src="docs/screenshots/admin-games.png" alt="The admin Games tab: an add-game form over a list of games, each editable inline with a delete action" width="820">
+
+**Admin → Settings** holds the site-wide defaults: which grid layout new
+channels start with, and whether anonymous viewing is allowed at all.
+
+<img src="docs/screenshots/admin-settings.png" alt="The admin Settings tab with a default grid layout dropdown and an allow-public-viewing toggle" width="820">
 
 **Admin → Server & Stats** shows what the box is actually doing: CPU,
 memory, uptime, service health, and a real bandwidth chart you can hover

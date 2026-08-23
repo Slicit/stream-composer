@@ -12,11 +12,15 @@
 //   BASE_URL=http://localhost:15173 \
 //   ADMIN_USERNAME=... ADMIN_PASSWORD=... \
 //   CHANNEL_SLUG=demo-channel \
+//   MAXIMIZE_CHANNEL_SLUG=community-room \
+//   EDIT_CHANNEL_ID=<uuid of the channel MAXIMIZE_CHANNEL_SLUG names> \
 //   node capture.mjs
 //
 // Requires: an admin user, at least one enabled stream, and ideally one
 // public channel with a couple of live members so the grid/live-dot shots
-// aren't empty placeholders.
+// aren't empty placeholders. MAXIMIZE_CHANNEL_SLUG/EDIT_CHANNEL_ID are
+// optional — a channel using "maximize" layout mode, to show that grid
+// mode and the full channel edit page alongside CHANNEL_SLUG's "fixed" one.
 import { chromium } from 'playwright'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -26,6 +30,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:15173'
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
 const CHANNEL_SLUG = process.env.CHANNEL_SLUG || ''
+const MAXIMIZE_CHANNEL_SLUG = process.env.MAXIMIZE_CHANNEL_SLUG || ''
+const EDIT_CHANNEL_ID = process.env.EDIT_CHANNEL_ID || ''
 const OUT_DIR = process.env.OUT_DIR || path.resolve(fileURLToPath(import.meta.url), '../../../docs/screenshots')
 
 if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
@@ -58,6 +64,11 @@ async function main() {
     await shoot(page, 'channel-viewer')
   }
 
+  if (MAXIMIZE_CHANNEL_SLUG) {
+    await page.goto(`${BASE_URL}/c/${MAXIMIZE_CHANNEL_SLUG}`)
+    await shoot(page, 'channel-viewer-maximize')
+  }
+
   await page.goto(`${BASE_URL}/admin`)
   await shoot(page, 'admin-users')
 
@@ -69,6 +80,17 @@ async function main() {
 
   await page.goto(`${BASE_URL}/admin/channels`)
   await shoot(page, 'admin-channels')
+
+  if (EDIT_CHANNEL_ID) {
+    await page.goto(`${BASE_URL}/admin/channels/${EDIT_CHANNEL_ID}`)
+    await shoot(page, 'admin-channel-edit')
+  }
+
+  await page.goto(`${BASE_URL}/admin/games`)
+  await shoot(page, 'admin-games')
+
+  await page.goto(`${BASE_URL}/admin/settings`)
+  await shoot(page, 'admin-settings')
 
   await page.goto(`${BASE_URL}/admin/stats`)
   await shoot(page, 'admin-stats')
