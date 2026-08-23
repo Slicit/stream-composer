@@ -31,8 +31,11 @@ function loadVideoWithIntrinsicSize(width: number, height: number) {
 describe('ViewerTile', () => {
   it('keeps the caption at the plain bottom-1 gap when nothing is letterboxed (video ratio unknown yet)', () => {
     render(<ViewerTile path="s/p1" name="Cam" cell={{ x: 0, y: 0, w: 960, h: 540 }} canvasWidth={1920} canvasHeight={1080} />)
-    const caption = screen.getByText('Cam')
-    expect(caption.style.bottom).toBe('calc(0% + 0.25rem)')
+    // bottom lives on the outer positioning wrapper, not the text node
+    // itself — that node is the badge, sized to its own content (see the
+    // "black badge" test below), not the thing being positioned.
+    const wrapper = screen.getByText('Cam').parentElement as HTMLElement
+    expect(wrapper.style.bottom).toBe('calc(0% + 0.25rem)')
   })
 
   it('leaves the caption alone when the source is relatively taller than its cell (height-constrained, no vertical letterboxing)', () => {
@@ -40,7 +43,7 @@ describe('ViewerTile', () => {
     // the cell's full height, letterboxes left/right only.
     render(<ViewerTile path="s/p1" name="Cam" cell={{ x: 0, y: 0, w: 2000, h: 1000 }} canvasWidth={1920} canvasHeight={1080} />)
     loadVideoWithIntrinsicSize(1920, 1080)
-    expect(screen.getByText('Cam').style.bottom).toBe('calc(0% + 0.25rem)')
+    expect((screen.getByText('Cam').parentElement as HTMLElement).style.bottom).toBe('calc(0% + 0.25rem)')
   })
 
   it('lifts the caption by half the vertical letterbox when the source is relatively wider than its cell', () => {
@@ -53,7 +56,19 @@ describe('ViewerTile', () => {
     const videoRatio = 16 / 9
     const letterboxFraction = 1 - cellAspect / videoRatio
     const expected = `calc(${(letterboxFraction / 2) * 100}% + 0.25rem)`
-    expect(screen.getByText('Cam').style.bottom).toBe(expected)
+    expect((screen.getByText('Cam').parentElement as HTMLElement).style.bottom).toBe(expected)
+  })
+
+  it('gives the caption a near-opaque black badge background, not a full-width bar', () => {
+    render(<ViewerTile path="s/p1" name="Cam" cell={{ x: 0, y: 0, w: 500, h: 500 }} canvasWidth={1920} canvasHeight={1080} />)
+    const badge = screen.getByText('Cam')
+    expect(badge.style.backgroundColor).toBe('rgba(0, 0, 0, 0.9)')
+    expect(badge.style.padding).toBe('2px 10px')
+    expect(badge.style.borderRadius).toBe('4px')
+    // The badge itself must not be the full-width element — that's its
+    // parent (which centers it) — or the background would stretch edge
+    // to edge instead of hugging the name.
+    expect(badge.className).not.toMatch(/\binset-x-0\b/)
   })
 
   it('renders the video with object-contain so the picture is always fully visible, never cropped', () => {

@@ -107,12 +107,27 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
           {stats.width}×{stats.height} · {stats.fps}fps · {stats.kbps}kb/s
         </div>
       )}
-      {/* Literal spec values (2vw, 20% down from the original 2.5vw/#1a8900), not design-system tokens — see UI_CONVENTIONS.md. */}
-      <div
-        className="pointer-events-none absolute inset-x-0 truncate px-2 text-center"
-        style={{ bottom: captionBottom, fontSize: '2vw', lineHeight: '2vw', color: '#1a8900', fontWeight: 'bold' }}
-      >
-        {name}
+      {/* Literal spec values (2vw, 20% down from the original 2.5vw/#1a8900), not design-system tokens — see UI_CONVENTIONS.md.
+          Two-part on purpose: the outer div only positions/centers (full
+          cell width, so it tracks captionBottom regardless of name
+          length); the inner one is the actual badge, sized to its own
+          text so the background hugs the name rather than stretching
+          edge to edge. */}
+      <div className="pointer-events-none absolute inset-x-0 flex justify-center px-2" style={{ bottom: captionBottom }}>
+        <div
+          className="max-w-full truncate"
+          style={{
+            fontSize: '2vw',
+            lineHeight: '2vw',
+            color: '#1a8900',
+            fontWeight: 'bold',
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
+            padding: '2px 10px',
+            borderRadius: '4px',
+          }}
+        >
+          {name}
+        </div>
       </div>
     </div>
   )
