@@ -21,6 +21,12 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
   const [state, setState] = useState<WhepState>('connecting')
   const [message, setMessage] = useState<string | null>(null)
   const [stats, setStats] = useState<WhepStats | null>(null)
+  // The source's own width/height, once its metadata loads — needed to
+  // work out how much of the cell object-contain actually letterboxes,
+  // so the name caption can be pushed up to sit at the bottom of the
+  // real, visible picture instead of the cell's own (possibly taller)
+  // bottom edge. null until then, treated as "no letterboxing yet".
+  const [videoRatio, setVideoRatio] = useState<number | null>(null)
 
   useEffect(() => {
     const client = new WhepClient(`/mtx/webrtc/${path}/whep`, { video: true, audio: false })
@@ -65,18 +71,32 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
     height: `${(cell.h / canvasHeight) * 100}%`,
   }
 
+  // object-contain must never crop the picture, which means it letterboxes
+  // whenever the cell's shape doesn't exactly match the source's own — the
+  // "auto" grid (clientLayout.ts) picks cell shapes that minimize this for
+  // an assumed ~16:9 source, but a real source can be any ratio, and even
+  // a good-fit cell is rarely a pixel-exact match. Work out how much of the
+  // cell's height that leaves blank (only possible once the source's real
+  // dimensions are known, hence videoRatio), and lift the caption by
+  // exactly that much so it still sits right at the bottom of the visible
+  // picture instead of the cell's own, possibly-taller, bottom edge.
+  const cellAspect = cell.w / cell.h
+  const letterboxFraction = videoRatio && videoRatio >= cellAspect ? 1 - cellAspect / videoRatio : 0
+  const captionBottom = `calc(${(letterboxFraction / 2) * 100}% + 0.25rem)`
+
   return (
     <div className="absolute overflow-hidden rounded-md bg-black" style={style}>
-      {/* object-cover, not object-contain: a cell rarely matches the
-          source's exact aspect ratio (clientLayout.ts's "auto" grid picks
-          the cell shape that crops least, but some mismatch is normal),
-          and object-contain would letterbox that mismatch as blank space
-          inside the cell — pushing the name caption below, away from the
-          visible picture, since it's still anchored to the cell's own
-          bottom edge. Cropping instead of letterboxing keeps the cell
-          and the visible picture the same box, so the caption always
-          sits right at the bottom of what's actually shown. */}
-      <video ref={videoRef} playsInline autoPlay muted className="h-full w-full object-cover" />
+      <video
+        ref={videoRef}
+        playsInline
+        autoPlay
+        muted
+        className="h-full w-full object-contain"
+        onLoadedMetadata={(e) => {
+          const v = e.currentTarget
+          if (v.videoWidth && v.videoHeight) setVideoRatio(v.videoWidth / v.videoHeight)
+        }}
+      />
       {state !== 'playing' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-2 text-center text-xs text-white/80">
           {state === 'offline' ? 'Not on air' : state === 'error' ? message || 'Playback error' : 'Connecting…'}
@@ -89,8 +109,8 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
       )}
       {/* Literal spec values (2.5vw/#1a8900), not design-system tokens — see UI_CONVENTIONS.md. */}
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-1 truncate px-2 text-center"
-        style={{ fontSize: '2.5vw', lineHeight: '2.5vw', color: '#1a8900', fontWeight: 'bold' }}
+        className="pointer-events-none absolute inset-x-0 truncate px-2 text-center"
+        style={{ bottom: captionBottom, fontSize: '2.5vw', lineHeight: '2.5vw', color: '#1a8900', fontWeight: 'bold' }}
       >
         {name}
       </div>

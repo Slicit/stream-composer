@@ -119,8 +119,10 @@ export function computeClientLayout(count: number, opts: Options, spotlightIndex
 }
 
 // A source is typically ~16:9 — used only to score candidate grids, never
-// to distort a cell's own shape (cells stay uniform rectangles; ViewerTile
-// crops with object-cover rather than letterboxing).
+// to distort a cell's own shape (cells stay uniform rectangles). A real
+// source is never cropped to fit one (see ViewerTile's object-contain);
+// this is only about picking the cell shape that leaves the least of it
+// letterboxed on average.
 const SOURCE_ASPECT = 16 / 9
 
 // Picks cols/rows for an "auto" grid by the same idea video-conferencing
