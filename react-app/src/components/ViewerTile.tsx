@@ -120,7 +120,6 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
             fontSize: '2vw',
             lineHeight: '2vw',
             color: '#1a8900',
-            fontWeight: 'bold',
             backgroundColor: 'rgba(0, 0, 0, 0.9)',
             padding: '2px 10px',
             borderRadius: '4px',
