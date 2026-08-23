@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ViewerTile } from '@/components/ViewerTile'
 import { PlayerOverlay } from '@/components/PlayerOverlay'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
-import { computeClientLayout } from '@/lib/clientLayout'
+import { useElementSize } from '@/hooks/useElementSize'
+import { computeClientLayout, naturalFillHeight } from '@/lib/clientLayout'
 import type { ViewerState } from '@/api/viewerState'
 import type { WhepStats } from '@/lib/whep'
 
@@ -18,12 +18,15 @@ interface ComposedGridProps {
   // global viewer.
   hiddenKeys?: Set<string>
   spotlightKey?: string | null
-  // "maximize" layout mode: pack tiles into whatever box this component
-  // actually renders at (measured via ResizeObserver) instead of the
-  // server's fixed 1920x1080 canvas locked to a 16:9 aspect ratio. The
-  // caller (ChannelViewerPage) is responsible for giving that box a real
-  // height — this component only measures, it never claims one itself.
+  // "maximize" layout mode: pack tiles at whatever width this component
+  // actually renders at (measured), sized only as tall as the videos
+  // themselves need (naturalFillHeight) rather than stretched to fill
+  // available space — capped at `maxHeight` (the caller's own budget, so
+  // it never grows past whatever the caller needs to keep visible below
+  // it, e.g. a channel's title/description). Undefined/0 falls back to
+  // the fixed 1920x1080 canvas's own height.
   fill?: boolean
+  maxHeight?: number
 }
 
 // The browser-composed grid, shared by the global viewer and a channel's
@@ -44,36 +47,13 @@ export function ComposedGrid({
   hiddenKeys,
   spotlightKey = null,
   fill = false,
+  maxHeight,
 }: ComposedGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  // A plain useRef + a mount-only useEffect only ever gets one chance to
-  // observe: if this render's return is still the empty-state <Card>
-  // below (nothing on air yet), the ref'd div doesn't exist yet, the
-  // effect finds containerRef.current null and bails, and since `fill`
-  // never changes afterward, the effect never re-runs once the real grid
-  // div later mounts — measured then stays null forever and canvasWidth/
-  // canvasHeight silently fall back to the fixed 1920x1080 canvas even in
-  // fill mode. A callback ref re-fires on every attach, including that
-  // later one, so it's threaded into the effect's own dependencies here
-  // instead of a plain ref.
-  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null)
-  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
-    containerRef.current = node
-    setGridEl(node)
-  }, [])
+  const [setSizeRef, measured] = useElementSize<HTMLDivElement>(fill)
   const [paused, setPaused] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [statsByKey, setStatsByKey] = useState<Record<string, WhepStats>>({})
-  const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null)
-
-  useEffect(() => {
-    if (!fill || !gridEl) return
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setMeasured({ width: entry.contentRect.width, height: entry.contentRect.height })
-    })
-    observer.observe(gridEl)
-    return () => observer.disconnect()
-  }, [fill, gridEl])
 
   const onAirAll = state.onAir.filter((s): s is { key: string; name: string } => s.key !== null)
   const onAir = hiddenKeys ? onAirAll.filter((s) => !hiddenKeys.has(s.key)) : onAirAll
@@ -98,23 +78,27 @@ export function ComposedGrid({
 
   const layout = state.layout
   const spotlightIndex = spotlightKey ? onAir.findIndex((s) => s.key === spotlightKey) : -1
-  // "fixed" packs into the server's 1920x1080-ish canvas, aspect-ratio
-  // locked; "maximize" packs into whatever this component is actually
-  // rendered at, falling back to the fixed canvas size for the one frame
-  // before ResizeObserver's first measurement lands.
+  const hasSpotlight = spotlightIndex >= 0
+  // "fixed" packs into the server's 1920x1080-ish canvas; "maximize"
+  // packs at this component's own real (measured) width, falling back to
+  // the fixed canvas width for the one frame before that measurement
+  // lands. Height only shrinks to fit content for a plain "auto" grid —
+  // a spotlight's main+side-stack shape doesn't reduce to a single cell
+  // aspect ratio, so it keeps the old "stretch to the given budget"
+  // behaviour (see naturalFillHeight's own doc comment).
   const canvasWidth = fill ? measured?.width || layout.width : layout.width
-  const canvasHeight = fill ? measured?.height || layout.height : layout.height
-  const cells = computeClientLayout(
-    onAir.length,
-    { width: canvasWidth, height: canvasHeight, gap: state.program.gapPx },
-    spotlightIndex >= 0 ? spotlightIndex : null,
-  )
+  const fillBudget = maxHeight || layout.height
+  const canvasHeight = fill ? (hasSpotlight ? fillBudget : naturalFillHeight(onAir.length, canvasWidth, fillBudget, state.program.gapPx)) : layout.height
+  const cells = computeClientLayout(onAir.length, { width: canvasWidth, height: canvasHeight, gap: state.program.gapPx }, hasSpotlight ? spotlightIndex : null)
 
   return (
     <div
-      ref={setContainerRef}
-      className={cn('group relative overflow-hidden rounded-lg border bg-black', fill ? 'h-full w-full' : 'w-full')}
-      style={fill ? undefined : { aspectRatio: `${layout.width} / ${layout.height}` }}
+      ref={(node) => {
+        containerRef.current = node
+        setSizeRef(node)
+      }}
+      className="group relative w-full overflow-hidden rounded-lg border bg-black"
+      style={{ aspectRatio: `${canvasWidth} / ${canvasHeight}` }}
     >
       {onAir.map((source, i) => {
         const cell = cells[i]

@@ -90,30 +90,45 @@ describe('ChannelViewerPage', () => {
     expect(nameEl.closest('span')?.querySelector('[role="status"]')).toHaveAccessibleName('Live')
   })
 
-  it('bounds the page to the available viewport height in "maximize" layout mode, unlike "fixed"', async () => {
+  it('caps the grid\'s height budget to leave room for the title in "maximize" mode, unlike "fixed"', async () => {
+    // The stage itself no longer carries a forced height (that changed
+    // when the grid switched to sizing itself to its content rather than
+    // stretching) — what "maximize" actually does now is pass
+    // ComposedGrid a maxHeight budget (viewport space minus the title
+    // block's own measured height), which shows up as a bounded
+    // aspect-ratio on the grid box. Fixed mode ignores the viewport
+    // entirely and always renders the plain 1920/1080 ratio.
+    const problem = { code: 'b-frames', summary: 'x', fix: 'y' }
     function channelState(layoutMode: 'fixed' | 'maximize') {
       return jsonResponse({
         settings: { publicViewing: false, homepageChannelSlug: '' },
-        program: { mode: 'web', ready: false, width: 1920, height: 1080, gapPx: 4 },
-        layout: null,
-        onAir: [],
-        streams: [],
+        program: { mode: 'web', ready: true, width: 1920, height: 1080, gapPx: 4 },
+        layout: { name: 'auto', cols: 2, rows: 1, cells: [], width: 1920, height: 1080 },
+        onAir: [
+          { key: 'pid-1', name: 'Cam One' },
+          { key: 'pid-2', name: 'Cam Two' },
+        ],
+        streams: [
+          { key: 'pid-1', name: 'Cam One', live: true, hasAudio: false, problem, path: null, audioPath: null, restricted: false },
+          { key: 'pid-2', name: 'Cam Two', live: true, hasAudio: false, problem, path: null, audioPath: null, restricted: false },
+        ],
         serverTime: '2026-01-01T00:00:00Z',
-        channel: { name: 'Solo', slug: 'solo', backgroundImage: '', description: '', currentTopic: '', featuredGame: '', layoutMode },
+        channel: { name: 'Duo', slug: 'duo', backgroundImage: '', description: '', currentTopic: '', featuredGame: '', layoutMode },
       })
     }
 
-    vi.stubGlobal('fetch', vi.fn(() => channelState('maximize')))
-    const maximized = renderAtSlug('solo')
-    await waitFor(() => expect(screen.getByText('Solo')).toBeInTheDocument())
-    const maximizedStage = maximized.container.firstElementChild as HTMLElement
-    await waitFor(() => expect(maximizedStage.style.height).not.toBe(''))
-    maximized.unmount()
-
     vi.stubGlobal('fetch', vi.fn(() => channelState('fixed')))
-    const fixed = renderAtSlug('solo')
-    await waitFor(() => expect(screen.getByText('Solo')).toBeInTheDocument())
-    const fixedStage = fixed.container.firstElementChild as HTMLElement
-    expect(fixedStage.style.height).toBe('')
+    const fixed = renderAtSlug('duo')
+    await waitFor(() => expect(screen.getByText('Duo')).toBeInTheDocument())
+    const fixedBox = fixed.container.querySelector('.bg-black') as HTMLElement
+    expect(fixedBox.style.aspectRatio).toBe('1920 / 1080')
+    fixed.unmount()
+
+    vi.stubGlobal('fetch', vi.fn(() => channelState('maximize')))
+    const maximized = renderAtSlug('duo')
+    await waitFor(() => expect(screen.getByText('Duo')).toBeInTheDocument())
+    const maximizedBox = maximized.container.querySelector('.bg-black') as HTMLElement
+    await waitFor(() => expect(maximizedBox.style.aspectRatio).not.toBe(''))
+    expect(maximizedBox.style.aspectRatio).not.toBe('1920 / 1080')
   })
 })

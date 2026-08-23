@@ -107,10 +107,10 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
           {stats.width}×{stats.height} · {stats.fps}fps · {stats.kbps}kb/s
         </div>
       )}
-      {/* Literal spec values (2.5vw/#1a8900), not design-system tokens — see UI_CONVENTIONS.md. */}
+      {/* Literal spec values (2vw, 20% down from the original 2.5vw/#1a8900), not design-system tokens — see UI_CONVENTIONS.md. */}
       <div
         className="pointer-events-none absolute inset-x-0 truncate px-2 text-center"
-        style={{ bottom: captionBottom, fontSize: '2.5vw', lineHeight: '2.5vw', color: '#1a8900', fontWeight: 'bold' }}
+        style={{ bottom: captionBottom, fontSize: '2vw', lineHeight: '2vw', color: '#1a8900', fontWeight: 'bold' }}
       >
         {name}
       </div>

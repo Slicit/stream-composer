@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeClientLayout } from './clientLayout'
+import { computeClientLayout, naturalFillHeight } from './clientLayout'
 
 describe('computeClientLayout', () => {
   it('gives a single stream the full canvas', () => {
@@ -67,5 +67,34 @@ describe('computeClientLayout', () => {
     const cells = computeClientLayout(3, { width: 3000, height: 500, gap: 4 }, null)
     expect(cells).toHaveLength(3)
     expect(new Set(cells.map((c) => c.y)).size).toBe(1)
+  })
+})
+
+describe('naturalFillHeight', () => {
+  it('returns 0 for a non-positive count', () => {
+    expect(naturalFillHeight(0, 1920, 1080, 4)).toBe(0)
+  })
+
+  it('sizes a single video to its own ~16:9 height, not the full budget, when width is the binding constraint', () => {
+    const height = naturalFillHeight(1, 800, 2000, 4)
+    expect(height).toBeLessThan(2000)
+    expect(height).toBeCloseTo(800 / (16 / 9), 0)
+  })
+
+  it('never exceeds the given budget even when the natural height would want more', () => {
+    const height = naturalFillHeight(1, 3000, 300, 4)
+    expect(height).toBeLessThanOrEqual(300)
+  })
+
+  it('shrinks well below a generous budget for a narrow stacked pair, instead of always claiming the whole thing', () => {
+    // Matches computeClientLayout's own choice for this shape: narrow and
+    // tall stacks 2 items into a single column.
+    const height = naturalFillHeight(2, 444, 2000, 4)
+    expect(height).toBeLessThan(600)
+  })
+
+  it('uses the full budget when the canvas is wide enough that height, not width, is the binding constraint', () => {
+    const height = naturalFillHeight(2, 2000, 300, 4)
+    expect(height).toBe(300)
   })
 })

@@ -54,28 +54,34 @@ describe('ComposedGrid', () => {
     expect(box.className).not.toMatch(/\bh-full\b/)
   })
 
-  it('fill mode: drops the aspect-ratio lock in favor of filling its container', () => {
-    const { container } = render(<ComposedGrid state={stateWithTwoTiles()} fill />)
-    const box = container.firstElementChild as HTMLElement
-    expect(box.style.aspectRatio).toBe('')
-    expect(box.className).toMatch(/\bh-full\b/)
-    expect(box.className).toMatch(/\bw-full\b/)
-  })
-
-  it('packs cells against the measured container in fill mode, not the server\'s 1920x1080 canvas', () => {
-    // setupTests.ts's ResizeObserverStub reports a 600x240 contentRect, a
-    // much wider-relative-to-height box than the server's 1920x1080 — the
-    // gap-to-height ratio differs enough that the resulting cell height
-    // (as a percentage of its own canvas) must differ between the two
-    // modes if fill mode is really packing against the real measurement.
+  it('fill mode still uses the aspect-ratio box (like fixed mode), just computed to fit content instead of the fixed 1920x1080 canvas', () => {
     const fixed = render(<ComposedGrid state={stateWithTwoTiles()} />)
-    const fixedHeight = screen.getAllByText('Cannot play here')[0].closest('div[style]') as HTMLElement
-    const fixedPct = fixedHeight.style.height
+    const fixedRatio = (fixed.container.firstElementChild as HTMLElement).style.aspectRatio
     fixed.unmount()
 
-    render(<ComposedGrid state={stateWithTwoTiles()} fill />)
-    const fillHeight = screen.getAllByText('Cannot play here')[0].closest('div[style]') as HTMLElement
-    expect(fillHeight.style.height).not.toBe(fixedPct)
+    const { container } = render(<ComposedGrid state={stateWithTwoTiles()} fill />)
+    const box = container.firstElementChild as HTMLElement
+    expect(box.style.aspectRatio).not.toBe('')
+    expect(box.className).not.toMatch(/\bh-full\b/)
+    expect(box.className).toMatch(/\bw-full\b/)
+    // Different canvas (measured width, content-fit height) must produce
+    // a different ratio than the fixed 1920/1080 one.
+    expect(box.style.aspectRatio).not.toBe(fixedRatio)
+  })
+
+  it('caps the fill-mode height at maxHeight when the content would naturally want more', () => {
+    // setupTests.ts's ResizeObserverStub reports a 600-wide contentRect.
+    // Two side-by-side cells at 600 wide want real height; capping the
+    // budget tightly must show up as a much shorter aspect-ratio box.
+    const generous = render(<ComposedGrid state={stateWithTwoTiles()} fill maxHeight={2000} />)
+    const [, genH] = (generous.container.firstElementChild as HTMLElement).style.aspectRatio.split(' / ').map(Number)
+    generous.unmount()
+
+    const capped = render(<ComposedGrid state={stateWithTwoTiles()} fill maxHeight={100} />)
+    const [, capH] = (capped.container.firstElementChild as HTMLElement).style.aspectRatio.split(' / ').map(Number)
+
+    expect(capH).toBeLessThan(genH)
+    expect(capH).toBeLessThanOrEqual(100)
   })
 
   it('measures the real container in fill mode even when the grid div only mounts after an earlier empty-state render', () => {

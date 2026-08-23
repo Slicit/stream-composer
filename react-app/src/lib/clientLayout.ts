@@ -159,3 +159,37 @@ function bestGrid(count: number, width: number, height: number): { cols: number;
   }
   return best
 }
+
+/**
+ * How tall a "maximize"-mode stage actually needs to be for `count`
+ * cells at `availableWidth` — not `maxHeight` itself. gridCells always
+ * stretches cells to fill whatever height it's given (by design, for a
+ * fixed 1920x1080 canvas that's exactly what you want), but "maximize"
+ * mode's whole point is the opposite: the video area should be only as
+ * tall as its content actually needs, so it never claims more of the
+ * page than that, leaving the title/description below it always visible
+ * rather than pushed down past `maxHeight`'s own budget. Each cell is
+ * capped at the natural ~16:9 height its (stretched-to-fill-width) width
+ * implies, falling back to the stretched height only when that's
+ * actually shorter (a tall, narrow canvas where height, not width, is
+ * the binding constraint).
+ *
+ * Spotlight layouts aren't covered here (callers should just use
+ * `maxHeight` directly for those) — the main+side-stack shape doesn't
+ * reduce to a single per-cell aspect ratio the way a uniform grid does.
+ */
+export function naturalFillHeight(count: number, availableWidth: number, maxHeight: number, gap: number): number {
+  const width = even(availableWidth || 1920, 2)
+  const height = even(maxHeight || 1080, 2)
+  const g = Math.max(gap, 0)
+  if (count <= 0) return 0
+  if (count === 1) return Math.min(even(width / SOURCE_ASPECT, 2), height)
+
+  const { rows } = bestGrid(count, width, height)
+  const cells = gridCells(count, { width, height, gap: g }, rows)
+  if (cells.length === 0) return height
+
+  const maxCellH = cells[0].h
+  const naturalCellH = Math.min(even(cells[0].w / SOURCE_ASPECT, 2), maxCellH)
+  return Math.min(naturalCellH * rows + g * (rows + 1), height)
+}
