@@ -58,6 +58,9 @@ type Channel struct {
 	SharedWith      []string
 	StreamIDs       []string // ordered — defines membership AND layout order
 	BackgroundImage string
+	Description     string
+	CurrentTopic    string
+	FeaturedGame    string // resolved game name, or "" — Rails owns the games table
 }
 
 // Store is read-only from the data plane's perspective — nothing here ever

@@ -112,4 +112,34 @@ RSpec.describe "Api::Auth", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  describe "PUT /api/auth/me/avatar" do
+    after { FileUtils.rm_rf(Rails.public_path.join("uploads", "avatars")) }
+
+    it "stores the cropped image and records its URL on the caller's own account" do
+      sign_in_as(user, password: "correct-horse-1")
+      put "/api/auth/me/avatar", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)["user"]
+      expect(body["avatar"]).to eq("/uploads/avatars/#{user.id}.png")
+      expect(File.exist?(Rails.public_path.join("uploads", "avatars", "#{user.id}.png"))).to be true
+    end
+
+    it "refuses a disallowed content type" do
+      sign_in_as(user, password: "correct-horse-1")
+      put "/api/auth/me/avatar", params: "not an image", headers: { "CONTENT_TYPE" => "text/plain" }
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "refuses a file larger than 5MB" do
+      sign_in_as(user, password: "correct-horse-1")
+      put "/api/auth/me/avatar", params: ("a" * (5 * 1024 * 1024 + 1)), headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:bad_request)
+    end
+
+    it "refuses an anonymous caller" do
+      put "/api/auth/me/avatar", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

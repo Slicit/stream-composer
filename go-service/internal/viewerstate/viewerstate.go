@@ -81,6 +81,9 @@ type ChannelInfo struct {
 	Name            string `json:"name"`
 	Slug            string `json:"slug"`
 	BackgroundImage string `json:"backgroundImage"`
+	Description     string `json:"description"`
+	CurrentTopic    string `json:"currentTopic"`
+	FeaturedGame    string `json:"featuredGame"`
 }
 
 type State struct {

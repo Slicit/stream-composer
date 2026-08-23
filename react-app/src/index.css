@@ -2,41 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens lifted directly from server/public/assets/style.css's
+/* Theme tokens originally lifted from server/public/assets/style.css's
    :root block (the vanilla app's "control-room UI" palette), converted to
    the bare "H S% L%" triples shadcn/Tailwind expects. The app is dark-only
    (color-scheme: dark, no toggle) — same as the app it is replacing — so
-   there is a single :root palette, no .light/.dark split. */
+   there is a single :root palette, no .light/.dark split.
+
+   The neutrals carry a small blue-grey tint (hue ~222°, low saturation)
+   rather than true 0-saturation grey — same lightness steps as the
+   original palette, so contrast/hierarchy is unchanged, just less
+   clinical. primary/success/warning/destructive are untouched. */
 @layer base {
   :root {
     color-scheme: dark;
 
-    --background: 0 0% 5%; /* --plane #0d0d0d */
-    --foreground: 0 0% 100%; /* --ink #ffffff */
+    --background: 222 15% 6%;
+    --foreground: 210 20% 98%;
 
-    --card: 0 0% 10%; /* --surface #1a1a19 */
-    --card-foreground: 0 0% 100%;
+    --card: 222 14% 11%;
+    --card-foreground: 210 20% 98%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 100%;
+    --popover: 222 14% 11%;
+    --popover-foreground: 210 20% 98%;
 
     --primary: 213 77% 56%; /* --accent #3987e5 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 13%; /* --surface-2 #211f1f */
-    --secondary-foreground: 0 0% 100%;
+    --secondary: 222 13% 14%;
+    --secondary-foreground: 210 20% 98%;
 
-    --muted: 0 0% 13%; /* --surface-2 */
-    --muted-foreground: 45 3% 52%; /* --ink-muted #898781 */
+    --muted: 222 13% 14%;
+    --muted-foreground: 218 8% 58%;
 
-    --accent: 0 0% 16%; /* --surface-3 #2a2827, shadcn's "accent" = a hover surface */
-    --accent-foreground: 0 0% 100%;
+    --accent: 222 12% 18%; /* shadcn's "accent" = a hover surface */
+    --accent-foreground: 210 20% 98%;
 
     --destructive: 0 61% 52%; /* --critical #d03b3b */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 60 3% 21%; /* --line-strong #383835 (the closest solid equivalent to the source's translucent border) */
-    --input: 60 3% 21%;
+    --border: 220 12% 22%;
+    --input: 220 12% 22%;
     --ring: 213 77% 56%; /* --accent, same as primary */
 
     --success: 120 86% 34%; /* --good #0ca30c, used for the "live" status only */

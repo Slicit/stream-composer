@@ -30,6 +30,7 @@ class User < ApplicationRecord
   validate :cannot_change_an_admins_role, on: :update, if: :role_changed?
 
   before_destroy :refuse_to_delete_the_last_admin
+  after_destroy :remove_avatar_file
 
   attr_reader :password
 
@@ -59,9 +60,18 @@ class User < ApplicationRecord
       username: username,
       role: role,
       streamQuota: stream_quota,
+      avatar: avatar.presence,
       createdAt: created_at.iso8601,
       lastLoginAt: last_login_at&.iso8601,
     }
+  end
+
+  def remove_avatar_file
+    return if avatar.blank?
+    path = Rails.public_path.join(avatar.delete_prefix("/"))
+    File.delete(path) if File.exist?(path)
+  rescue StandardError
+    nil # already gone, or never existed
   end
 
   class << self

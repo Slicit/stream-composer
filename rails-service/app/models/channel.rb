@@ -14,6 +14,7 @@ class Channel < ApplicationRecord
   MAX_SHARED_WITH = 200
 
   belongs_to :owner, class_name: "User"
+  belongs_to :featured_game, class_name: "Game", optional: true
 
   before_validation :assign_slug, on: :create
   before_validation { self.slug = slug.to_s.strip.downcase if slug.present? }
@@ -25,6 +26,8 @@ class Channel < ApplicationRecord
   validates :slug, presence: true, format: { with: SLUG_FORMAT, message: "may only contain lowercase letters, digits and dashes (2-64 characters), and cannot start or end with a dash" }
   validates :slug, uniqueness: { case_sensitive: false, message: "is already in use" }
   validates :visibility, inclusion: { in: VISIBILITIES }
+  validates :description, length: { maximum: 500 }
+  validates :current_topic, length: { maximum: 255 }
   validate :stream_ids_are_sane
   validate :shared_with_is_sane
 
@@ -74,6 +77,10 @@ class Channel < ApplicationRecord
       backgroundImage: background_image.presence,
       streamIds: stream_ids,
       sharedWith: shared_with,
+      description: description,
+      currentTopic: current_topic,
+      featuredGameId: featured_game_id,
+      featuredGameName: featured_game&.name,
       createdAt: created_at.iso8601,
     }
   end

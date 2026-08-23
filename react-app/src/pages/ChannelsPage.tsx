@@ -2,10 +2,12 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
-import type { AvailableStream, Channel } from '@/api/types'
+import type { AvailableStream, Channel, Game } from '@/api/types'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
@@ -16,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 export function ChannelsPage() {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [available, setAvailable] = useState<AvailableStream[]>([])
+  const [games, setGames] = useState<Game[]>([])
   const [error, setError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
@@ -25,12 +28,14 @@ export function ChannelsPage() {
 
   async function load() {
     try {
-      const [channelsData, availableData] = await Promise.all([
+      const [channelsData, availableData, gamesData] = await Promise.all([
         api.get<{ channels: Channel[] }>('/api/channels/mine'),
         api.get<{ streams: AvailableStream[] }>('/api/streams/available'),
+        api.get<{ games: Game[] }>('/api/games'),
       ])
       setChannels(channelsData.channels)
       setAvailable(availableData.streams)
+      setGames(gamesData.games)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load channels.')
     }
@@ -62,6 +67,16 @@ export function ChannelsPage() {
       await load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not update visibility.')
+    }
+  }
+
+  async function updateChannel(id: string, patch: Record<string, unknown>) {
+    setError(null)
+    try {
+      await api.patch(`/api/channels/mine/${id}`, patch)
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not update the channel.')
     }
   }
 
@@ -163,6 +178,47 @@ export function ChannelsPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor={`description-${c.id}`}>Description</Label>
+                      <Textarea
+                        id={`description-${c.id}`}
+                        defaultValue={c.description}
+                        maxLength={500}
+                        placeholder="What is this channel about?"
+                        onBlur={(e) => {
+                          if (e.target.value !== c.description) updateChannel(c.id, { description: e.target.value })
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor={`topic-${c.id}`}>Current topic</Label>
+                        <Input
+                          id={`topic-${c.id}`}
+                          defaultValue={c.currentTopic}
+                          maxLength={255}
+                          placeholder="What's on right now?"
+                          className="w-64"
+                          onBlur={(e) => {
+                            if (e.target.value !== c.currentTopic) updateChannel(c.id, { currentTopic: e.target.value })
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <Label htmlFor={`game-${c.id}`}>Featured game</Label>
+                        <Combobox
+                          id={`game-${c.id}`}
+                          aria-label={`Featured game for ${c.name}`}
+                          className="w-56"
+                          options={[{ value: '', label: 'None' }, ...games.map((g) => ({ value: g.id, label: g.name }))]}
+                          value={c.featuredGameId ?? ''}
+                          onValueChange={(v) => updateChannel(c.id, { featuredGameId: v || null })}
+                          placeholder="None"
+                          searchPlaceholder="Search games…"
+                          emptyText="No games match."
+                        />
+                      </div>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {available.map((s) => {
                         const included = c.streamIds.includes(s.id)

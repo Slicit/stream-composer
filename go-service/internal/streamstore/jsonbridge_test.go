@@ -22,7 +22,11 @@ func TestJSONBridgeLoad(t *testing.T) {
 			{"id": "r1", "streamId": "s1", "provider": "twitch", "name": "Twitch", "url": "rtmp://live.twitch.tv/app", "key": "relay-key", "audio": "copy", "enabled": true},
 		},
 		"channels": []map[string]any{
-			{"id": "c1", "name": "Community Room", "slug": "community-room", "visibility": "public", "ownerId": "u1", "sharedWith": []string{}, "streamIds": []string{"s1"}, "backgroundImage": ""},
+			{
+				"id": "c1", "name": "Community Room", "slug": "community-room", "visibility": "public", "ownerId": "u1",
+				"sharedWith": []string{}, "streamIds": []string{"s1"}, "backgroundImage": "",
+				"description": "A cozy corner", "currentTopic": "Farming", "featuredGame": "Stardew Valley",
+			},
 		},
 		"settings": map[string]any{"publicViewing": true, "homepageChannelSlug": "community-room"},
 	}
@@ -64,6 +68,9 @@ func TestJSONBridgeLoad(t *testing.T) {
 	channel, ok := store.FindChannelBySlug("community-room")
 	if !ok || channel.Name != "Community Room" || len(channel.StreamIDs) != 1 || channel.StreamIDs[0] != "s1" {
 		t.Errorf("channel: got %+v, ok=%v", channel, ok)
+	}
+	if channel.Description != "A cozy corner" || channel.CurrentTopic != "Farming" || channel.FeaturedGame != "Stardew Valley" {
+		t.Errorf("channel description/currentTopic/featuredGame: got %+v", channel)
 	}
 	if store.HomepageChannelSlug() != "community-room" {
 		t.Errorf("HomepageChannelSlug() = %q, want community-room", store.HomepageChannelSlug())

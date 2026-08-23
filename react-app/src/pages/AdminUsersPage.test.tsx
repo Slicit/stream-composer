@@ -10,8 +10,8 @@ function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 }
 
-const admin: User = { id: 'admin-1', username: 'admin', role: 'admin', streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
-const viewer: User = { id: 'viewer-1', username: 'viewer-1', role: 'viewer', streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+const admin: User = { id: 'admin-1', username: 'admin', role: 'admin', streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const viewer: User = { id: 'viewer-1', username: 'viewer-1', role: 'viewer', streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
 
 function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
@@ -60,7 +60,7 @@ describe('AdminUsersPage', () => {
       if (url === '/api/auth/me') return jsonResponse({ user: admin })
       if (url === '/api/admin/users' && (!init || init.method === undefined)) return jsonResponse({ users })
       if (url === '/api/admin/users' && init?.method === 'POST') {
-        const created: User = { id: 'new-1', username: 'newperson', role: 'viewer', streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+        const created: User = { id: 'new-1', username: 'newperson', role: 'viewer', streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
         users = [...users, created]
         return jsonResponse({ user: created }, 201)
       }

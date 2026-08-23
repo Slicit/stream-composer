@@ -17,6 +17,7 @@ Rails.application.routes.draw do
     get "auth/me", to: "auth#me"
     patch "auth/me", to: "auth#update_me"
     delete "auth/impersonate", to: "auth#stop_impersonating"
+    put "auth/me/avatar", to: "auth#avatar"
 
     scope path: "streams/mine", controller: "streams" do
       get "", action: :index
@@ -35,6 +36,7 @@ Rails.application.routes.draw do
     end
 
     get "streams/available", to: "streams_available#index"
+    get "games", to: "games#index"
 
     # Every channel the signed-in user can view (public, owned, or
     # explicitly shared) — the left nav's "Channels" list. Distinct from

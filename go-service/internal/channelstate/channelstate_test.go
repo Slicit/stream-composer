@@ -188,7 +188,10 @@ func TestBuildOmitsAnOfflineMemberFromOnAirButKeepsItInStreams(t *testing.T) {
 
 func TestBuildIncludesTheChannelInfo(t *testing.T) {
 	store := &fakeStore{channels: []streamstore.Channel{
-		{ID: "c1", Slug: "info-test", Name: "Info Test", Visibility: "public", BackgroundImage: "/uploads/x.png"},
+		{
+			ID: "c1", Slug: "info-test", Name: "Info Test", Visibility: "public", BackgroundImage: "/uploads/x.png",
+			Description: "A cozy corner", CurrentTopic: "Farming", FeaturedGame: "Stardew Valley",
+		},
 	}}
 	state, found, err := Build(context.Background(), store, &fakeLister{}, nil, nil, testComp, "live", "info-test", nil)
 	if err != nil {
@@ -199,6 +202,9 @@ func TestBuildIncludesTheChannelInfo(t *testing.T) {
 	}
 	if state.Channel == nil || state.Channel.Name != "Info Test" || state.Channel.Slug != "info-test" || state.Channel.BackgroundImage != "/uploads/x.png" {
 		t.Errorf("Channel = %+v, want the channel's own name/slug/backgroundImage", state.Channel)
+	}
+	if state.Channel.Description != "A cozy corner" || state.Channel.CurrentTopic != "Farming" || state.Channel.FeaturedGame != "Stardew Valley" {
+		t.Errorf("Channel = %+v, want the channel's own description/currentTopic/featuredGame", state.Channel)
 	}
 }
 

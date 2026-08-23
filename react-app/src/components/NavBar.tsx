@@ -10,11 +10,6 @@ export function NavBar() {
       <span className="font-semibold tracking-tight">Stream Composer</span>
       <span className="flex-1" />
       <nav className="flex items-center gap-3 text-sm">
-        {user?.role === 'admin' && (
-          <Link to="/admin" className="text-muted-foreground hover:text-foreground">
-            Admin
-          </Link>
-        )}
         {(user?.role === 'streamer' || user?.role === 'admin') && (
           <Link to="/streamer" className="text-muted-foreground hover:text-foreground">
             My streams

@@ -58,7 +58,14 @@ describe('ChannelViewerPage', () => {
             },
           ],
           serverTime: '2026-01-01T00:00:00Z',
-          channel: { name: 'Mixed Channel', slug: 'mixed', backgroundImage: '' },
+          channel: {
+            name: 'Mixed Channel',
+            slug: 'mixed',
+            backgroundImage: '',
+            description: 'A place for mixed streams',
+            currentTopic: 'Just chatting',
+            featuredGame: 'Stardew Valley',
+          },
         })
       }),
     )
@@ -67,9 +74,18 @@ describe('ChannelViewerPage', () => {
     await waitFor(() => expect(screen.getByText('Mixed Channel')).toBeInTheDocument())
     expect(screen.getByText('This stream is private')).toBeInTheDocument()
     expect(document.querySelector('video')).toBeNull()
+
+    // The description replaces the old top title; the channel name now
+    // sits alongside the featured game and current topic instead.
+    expect(screen.getByText('A place for mixed streams')).toBeInTheDocument()
+    expect(screen.getByText('Playing Stardew Valley')).toBeInTheDocument()
+    expect(screen.getByText('Just chatting')).toBeInTheDocument()
+
+    const nameEl = screen.getByText('Mixed Channel')
+
     // The one member is live (even though restricted), so the channel
     // itself counts as live — matches ComposedGrid's own "restricted
     // still occupies a cell" treatment.
-    expect(screen.getByRole('heading').querySelector('[role="status"]')).toHaveAccessibleName('Live')
+    expect(nameEl.closest('span')?.querySelector('[role="status"]')).toHaveAccessibleName('Live')
   })
 })

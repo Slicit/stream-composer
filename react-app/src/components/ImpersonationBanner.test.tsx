@@ -8,8 +8,8 @@ function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 }
 
-const admin = { id: 'u1', username: 'admin', role: 'admin' as const, streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
-const viewer = { id: 'u2', username: 'viewer-1', role: 'viewer' as const, streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+const admin = { id: 'u1', username: 'admin', role: 'admin' as const, streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const viewer = { id: 'u2', username: 'viewer-1', role: 'viewer' as const, streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
 
 describe('ImpersonationBanner', () => {
   beforeEach(() => {

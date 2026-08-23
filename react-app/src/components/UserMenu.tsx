@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Pencil, LogOut } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,6 +31,7 @@ export function UserMenu() {
         <DropdownMenuTrigger asChild>
           <button type="button" className="flex items-center gap-2 rounded-md border px-2 py-1 text-sm hover:bg-accent">
             <Avatar className="h-7 w-7">
+              <AvatarImage src={user.avatar ?? undefined} alt="" />
               <AvatarFallback>{initials(user.username)}</AvatarFallback>
             </Avatar>
             <span className="max-w-32 truncate">{user.username}</span>
@@ -39,6 +40,7 @@ export function UserMenu() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel className="flex items-center gap-3 py-2 font-normal">
             <Avatar className="h-9 w-9">
+              <AvatarImage src={user.avatar ?? undefined} alt="" />
               <AvatarFallback>{initials(user.username)}</AvatarFallback>
             </Avatar>
             <div className="flex min-w-0 flex-col">

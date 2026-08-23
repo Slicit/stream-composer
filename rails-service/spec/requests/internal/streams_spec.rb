@@ -49,7 +49,11 @@ RSpec.describe "Internal::Streams", type: :request do
   end
 
   it "returns every channel's own configuration, not its live state" do
-    channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [stream.id])
+    game = Game.create!(name: "Stardew Valley")
+    channel = owner.owned_channels.create!(
+      name: "Community Room", visibility: "public", stream_ids: [stream.id],
+      description: "A cozy corner", current_topic: "Farming", featured_game: game,
+    )
     get "/internal/test-internal-secret/streams", as: :json
     entry = JSON.parse(response.body)["channels"].find { |c| c["id"] == channel.id }
     expect(entry).to include(
@@ -60,6 +64,9 @@ RSpec.describe "Internal::Streams", type: :request do
       "sharedWith" => [],
       "streamIds" => [stream.id],
       "backgroundImage" => nil,
+      "description" => "A cozy corner",
+      "currentTopic" => "Farming",
+      "featuredGame" => "Stardew Valley",
     )
   end
 

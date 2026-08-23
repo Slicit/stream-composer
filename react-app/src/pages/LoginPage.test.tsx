@@ -28,7 +28,7 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByLabelText('Username')).toBeInTheDocument())
 
     fetchMock.mockImplementationOnce(() =>
-      jsonResponse({ user: { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null } }),
+      jsonResponse({ user: { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null } }),
     )
     await userEvent.type(screen.getByLabelText('Username'), 'alice')
     await userEvent.type(screen.getByLabelText('Password'), 'correct-horse-1')

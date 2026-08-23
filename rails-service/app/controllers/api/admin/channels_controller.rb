@@ -8,7 +8,7 @@ module Api
       end
 
       def create
-        body = params.permit(:name, :slug, :visibility, :ownerId, streamIds: [], sharedWith: [])
+        body = params.permit(:name, :slug, :visibility, :ownerId, :description, :currentTopic, :featuredGameId, streamIds: [], sharedWith: [])
         channel = Channel.new(channel_attrs(body, default_owner_id: current_user.id))
         if channel.save
           render json: { channel: channel.as_public_json }, status: :created
@@ -19,7 +19,7 @@ module Api
 
       def update
         channel = Channel.find(params[:id])
-        body = params.permit(:name, :slug, :visibility, streamIds: [], sharedWith: [])
+        body = params.permit(:name, :slug, :visibility, :description, :currentTopic, :featuredGameId, streamIds: [], sharedWith: [])
         if channel.update(channel_attrs(body))
           render json: { channel: channel.as_public_json }
         else
@@ -46,7 +46,10 @@ module Api
       private
 
       def channel_attrs(body, default_owner_id: nil)
-        attrs = body.to_h.transform_keys { |k| { "ownerId" => "owner_id", "streamIds" => "stream_ids", "sharedWith" => "shared_with" }.fetch(k, k) }
+        attrs = body.to_h.transform_keys do |k|
+          { "ownerId" => "owner_id", "streamIds" => "stream_ids", "sharedWith" => "shared_with",
+            "currentTopic" => "current_topic", "featuredGameId" => "featured_game_id" }.fetch(k, k)
+        end
         attrs["owner_id"] ||= default_owner_id if default_owner_id
         attrs
       end

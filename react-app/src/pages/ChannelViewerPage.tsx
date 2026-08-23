@@ -16,7 +16,10 @@ import { Card, CardContent } from '@/components/ui/card'
 // page — see ChannelPrefsContext, which this page feeds every poll tick
 // and clears on unmount, and LeftNav, which renders it. Favoriting/
 // hiding a source is per-viewer only: it never reaches the server and
-// recomposes ComposedGrid's layout locally.
+// recomposes ComposedGrid's layout locally. The background image works
+// the same way: this page only ever reports it into context, App.tsx's
+// <main> is what actually paints it, since that's the element it needs
+// to cover.
 export function ChannelViewerPage() {
   const { slug = '' } = useParams<{ slug: string }>()
   const { state, notFound, error } = useChannelState(slug)
@@ -26,7 +29,7 @@ export function ChannelViewerPage() {
     if (!state) return
     const liveByKey: Record<string, boolean> = {}
     for (const s of state.streams) liveByKey[s.key] = s.live
-    setChannelStreams(slug, state.channel?.name ?? slug, state.onAir, liveByKey)
+    setChannelStreams(slug, state.channel?.name ?? slug, state.onAir, liveByKey, state.channel?.backgroundImage || null)
   }, [slug, state, setChannelStreams])
 
   useEffect(() => {
@@ -54,17 +57,21 @@ export function ChannelViewerPage() {
   }
 
   return (
-    <div
-      className="flex w-full flex-col gap-4"
-      style={state.channel?.backgroundImage ? { backgroundImage: `url(${state.channel.backgroundImage})`, backgroundSize: 'cover' } : undefined}
-    >
-      {state.channel && (
-        <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-          <LiveDot live={state.streams.some((s) => s.live)} className="h-2.5 w-2.5" />
-          {state.channel.name}
-        </h1>
-      )}
+    <div className="flex w-full flex-col gap-3">
       <ComposedGrid state={state} hiddenKeys={hiddenKeys} spotlightKey={spotlightKey} />
+      {state.channel && (
+        <div className="flex flex-col gap-1">
+          {state.channel.description && <p className="text-lg font-medium">{state.channel.description}</p>}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2 font-medium text-foreground">
+              <LiveDot live={state.streams.some((s) => s.live)} className="h-2.5 w-2.5" />
+              {state.channel.name}
+            </span>
+            {state.channel.featuredGame && <span>Playing {state.channel.featuredGame}</span>}
+            {state.channel.currentTopic && <span>{state.channel.currentTopic}</span>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

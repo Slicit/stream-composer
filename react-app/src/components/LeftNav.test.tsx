@@ -10,7 +10,8 @@ function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 }
 
-const user = { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+const user = { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const admin = { ...user, id: 'u2', username: 'admin-1', role: 'admin' as const }
 
 // Seeds ChannelPrefsContext the way ChannelViewerPage would, so LeftNav's
 // "Streams" section has something to render without needing a full page.
@@ -27,7 +28,7 @@ const EMPTY_LIVE_MAP: Record<string, boolean> = {}
 function SeedChannel({ onAir, liveByKey = EMPTY_LIVE_MAP }: { onAir: { key: string; name: string }[]; liveByKey?: Record<string, boolean> }) {
   const { setChannelStreams } = useChannelPrefs()
   useEffect(() => {
-    setChannelStreams('community-room', 'Community Room', onAir, liveByKey)
+    setChannelStreams('community-room', 'Community Room', onAir, liveByKey, null)
   }, [onAir, liveByKey, setChannelStreams])
   return null
 }
@@ -57,7 +58,21 @@ describe('LeftNav', () => {
       if (url === '/api/channels') {
         return jsonResponse({
           channels: [
-            { id: 'c1', name: 'Community Room', slug: 'community-room', visibility: 'public', ownerId: 'u2', backgroundImage: null, streamIds: [], sharedWith: [], createdAt: '2026-01-01' },
+            {
+              id: 'c1',
+              name: 'Community Room',
+              slug: 'community-room',
+              visibility: 'public',
+              ownerId: 'u2',
+              backgroundImage: null,
+              streamIds: [],
+              sharedWith: [],
+              description: '',
+              currentTopic: '',
+              featuredGameId: null,
+              featuredGameName: null,
+              createdAt: '2026-01-01',
+            },
           ],
         })
       }
@@ -109,7 +124,21 @@ describe('LeftNav', () => {
       if (url === '/api/channels') {
         return jsonResponse({
           channels: [
-            { id: 'c1', name: 'Community Room', slug: 'community-room', visibility: 'public', ownerId: 'u2', backgroundImage: null, streamIds: [], sharedWith: [], createdAt: '2026-01-01' },
+            {
+              id: 'c1',
+              name: 'Community Room',
+              slug: 'community-room',
+              visibility: 'public',
+              ownerId: 'u2',
+              backgroundImage: null,
+              streamIds: [],
+              sharedWith: [],
+              description: '',
+              currentTopic: '',
+              featuredGameId: null,
+              featuredGameName: null,
+              createdAt: '2026-01-01',
+            },
           ],
         })
       }
@@ -130,5 +159,45 @@ describe('LeftNav', () => {
 
     const link = await screen.findByRole('link', { name: /Community Room/i })
     await waitFor(() => expect(within(link).getByRole('status')).toHaveAccessibleName('Live'))
+  })
+
+  it('shows an Admin link at the bottom for an admin, but not for a plain viewer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => (url === '/api/channels' ? jsonResponse({ channels: [] }) : jsonResponse({ user: admin }))),
+    )
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <ChannelPrefsProvider>
+            <LeftNav />
+          </ChannelPrefsProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    const adminLink = await screen.findByRole('link', { name: 'Admin' })
+    expect(adminLink).toHaveAttribute('href', '/admin')
+  })
+
+  it('does not show an Admin link for a plain viewer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => (url === '/api/channels' ? jsonResponse({ channels: [] }) : jsonResponse({ user }))),
+    )
+
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <ChannelPrefsProvider>
+            <LeftNav />
+          </ChannelPrefsProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(screen.queryByText('No channels yet.')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
   })
 })

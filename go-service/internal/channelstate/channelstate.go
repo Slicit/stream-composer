@@ -172,6 +172,7 @@ func Build(ctx context.Context, store streamstore.Store, mtx IngestLister, check
 		ServerTime: time.Now().UTC().Format(time.RFC3339),
 		Channel: &viewerstate.ChannelInfo{
 			Name: channel.Name, Slug: channel.Slug, BackgroundImage: channel.BackgroundImage,
+			Description: channel.Description, CurrentTopic: channel.CurrentTopic, FeaturedGame: channel.FeaturedGame,
 		},
 	}, true, nil
 }

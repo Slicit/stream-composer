@@ -14,8 +14,8 @@ function noContentResponse() {
   return Promise.resolve(new Response(null, { status: 204 }))
 }
 
-const adminUser = { id: 'u1', username: 'admin', role: 'admin', streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
-const viewerUser = { id: 'u2', username: 'viewer', role: 'viewer', streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+const adminUser = { id: 'u1', username: 'admin', role: 'admin', streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const viewerUser = { id: 'u2', username: 'viewer', role: 'viewer', streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
 
 function Probe() {
   const { user, impersonatedBy, loading, login, logout, stopImpersonating } = useAuth()

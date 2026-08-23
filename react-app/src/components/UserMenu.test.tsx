@@ -9,7 +9,7 @@ function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 }
 
-const user = { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, createdAt: '2026-01-01', lastLoginAt: null }
+const user = { id: 'u1', username: 'alice', role: 'viewer' as const, streamQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
 
 describe('UserMenu', () => {
   beforeEach(() => {
@@ -50,7 +50,7 @@ describe('UserMenu', () => {
     await userEvent.click(screen.getByRole('button', { name: /alice/i }))
     await userEvent.click(await screen.findByRole('menuitem', { name: /edit/i }))
 
-    expect(await screen.findByRole('dialog', { name: /change password/i })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: /edit profile/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Current password')).toBeInTheDocument()
   })
 

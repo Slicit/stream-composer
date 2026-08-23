@@ -42,6 +42,9 @@ type jsonConfig struct {
 		SharedWith      []string `json:"sharedWith"`
 		StreamIDs       []string `json:"streamIds"`
 		BackgroundImage string   `json:"backgroundImage"`
+		Description     string   `json:"description"`
+		CurrentTopic    string   `json:"currentTopic"`
+		FeaturedGame    string   `json:"featuredGame"`
 	} `json:"channels"`
 	Settings struct {
 		PublicViewing       bool   `json:"publicViewing"`
@@ -96,6 +99,9 @@ func (cfg jsonConfig) toChannels() []Channel {
 			SharedWith:      c.SharedWith,
 			StreamIDs:       c.StreamIDs,
 			BackgroundImage: c.BackgroundImage,
+			Description:     c.Description,
+			CurrentTopic:    c.CurrentTopic,
+			FeaturedGame:    c.FeaturedGame,
 		})
 	}
 	return channels

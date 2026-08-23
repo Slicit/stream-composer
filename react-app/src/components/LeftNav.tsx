@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { ShieldCheck } from 'lucide-react'
 import { api } from '@/api/client'
 import { useAuth } from '@/auth/AuthContext'
 import { useChannelPrefs } from '@/contexts/ChannelPrefsContext'
@@ -71,7 +72,7 @@ export function LeftNav() {
   if (!user) return null
 
   return (
-    <aside className="hidden w-56 shrink-0 border-r px-3 py-4 sm:block">
+    <aside className="hidden w-56 shrink-0 flex-col border-r px-3 py-4 sm:flex">
       <div className="flex flex-col gap-1">
         <h2 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Channels</h2>
         {channels === null ? (
@@ -110,6 +111,24 @@ export function LeftNav() {
             onReset={reset}
           />
         </>
+      )}
+
+      {user.role === 'admin' && (
+        <div className="mt-auto">
+          <Separator className="mb-2 mt-4" />
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                isActive ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )
+            }
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Admin
+          </NavLink>
+        </div>
       )}
     </aside>
   )

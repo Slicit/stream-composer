@@ -58,6 +58,40 @@ RSpec.describe Channel, type: :model do
     end
   end
 
+  describe "description, current_topic and featured_game" do
+    it "defaults description and current_topic to empty strings" do
+      channel = build_channel.tap(&:save!)
+      expect(channel.description).to eq("")
+      expect(channel.current_topic).to eq("")
+      expect(channel.featured_game).to be_nil
+    end
+
+    it "rejects a current_topic longer than 255 characters" do
+      expect(build_channel(current_topic: "a" * 256)).not_to be_valid
+    end
+
+    it "accepts a current_topic at exactly 255 characters" do
+      expect(build_channel(current_topic: "a" * 255)).to be_valid
+    end
+
+    it "rejects a description longer than 500 characters" do
+      expect(build_channel(description: "a" * 501)).not_to be_valid
+    end
+
+    it "associates with a real game and serializes its name" do
+      game = Game.create!(name: "Stardew Valley")
+      channel = build_channel(featured_game: game).tap(&:save!)
+      expect(channel.as_public_json[:featuredGameId]).to eq(game.id)
+      expect(channel.as_public_json[:featuredGameName]).to eq("Stardew Valley")
+    end
+
+    it "leaves featured_game nil when unset, without erroring the serializer" do
+      channel = build_channel.tap(&:save!)
+      expect(channel.as_public_json[:featuredGameId]).to be_nil
+      expect(channel.as_public_json[:featuredGameName]).to be_nil
+    end
+  end
+
   describe "deleting a channel" do
     it "clears itself as the homepage channel" do
       channel = build_channel.tap(&:save!)

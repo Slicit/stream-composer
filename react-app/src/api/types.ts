@@ -9,6 +9,7 @@ export interface User {
   username: string
   role: Role
   streamQuota: number
+  avatar: string | null
   createdAt: string
   lastLoginAt: string | null
 }
@@ -62,7 +63,17 @@ export interface Channel {
   backgroundImage: string | null
   streamIds: string[]
   sharedWith: string[]
+  description: string
+  currentTopic: string
+  featuredGameId: string | null
+  featuredGameName: string | null
   createdAt: string
+}
+
+// GET /api/games — the featured-game picker's option list.
+export interface Game {
+  id: string
+  name: string
 }
 
 // The streamer self-service relay picker's source list — GET /api/relays/mine.

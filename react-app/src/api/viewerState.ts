@@ -47,6 +47,13 @@ export interface ChannelInfo {
   name: string
   slug: string
   backgroundImage: string
+  description: string
+  currentTopic: string
+  // The resolved game name, or "" when none is set — the data plane only
+  // ever hands back a plain string here; the id/game-catalog relationship
+  // is a Rails-side concern (see api/types.ts's Channel for the editable
+  // featuredGameId/featuredGameName pair used by the admin/mine forms).
+  featuredGame: string
 }
 
 export interface ViewerState {

@@ -27,10 +27,11 @@ module Internal
         # Channels' own configuration only (name/slug/membership/access) —
         # viewing a channel's live state is entirely the Go data plane's
         # concern (layout, live status), same split as streams above.
-        channels: Channel.all.map do |c|
+        channels: Channel.includes(:featured_game).all.map do |c|
           { id: c.id, name: c.name, slug: c.slug, visibility: c.visibility,
             ownerId: c.owner_id, sharedWith: c.shared_with, streamIds: c.stream_ids,
-            backgroundImage: c.background_image.presence }
+            backgroundImage: c.background_image.presence, description: c.description,
+            currentTopic: c.current_topic, featuredGame: c.featured_game&.name }
         end,
         settings: {
           publicViewing: setting.public_viewing,

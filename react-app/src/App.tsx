@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
-import { ChannelPrefsProvider } from './contexts/ChannelPrefsContext'
+import { ChannelPrefsProvider, useChannelPrefs } from './contexts/ChannelPrefsContext'
 import { NavBar } from './components/NavBar'
 import { LeftNav } from './components/LeftNav'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
@@ -17,6 +18,25 @@ import { ChannelViewerPage } from './pages/ChannelViewerPage'
 import { StreamerPage } from './pages/StreamerPage'
 import { ChannelsPage } from './pages/ChannelsPage'
 
+// A channel's background image must cover <main> itself — the actual
+// content area next to the left nav — not just whatever box a page's own
+// markup happens to draw, or it sits behind opaque page content and is
+// never seen (the bug this replaced). ChannelViewerPage only ever reports
+// the image into ChannelPrefsContext; this is the one place that paints
+// it, since <main> is a sibling of that page in the tree, not an
+// ancestor it could reach directly.
+function AppMain({ children }: { children: ReactNode }) {
+  const { backgroundImage } = useChannelPrefs()
+  return (
+    <main
+      className="min-w-0 flex-1 bg-cover bg-center px-4 py-6 md:px-6"
+      style={backgroundImage ? { backgroundImage: `url(${backgroundImage})` } : undefined}
+    >
+      {children}
+    </main>
+  )
+}
+
 export function App() {
   return (
     <AuthProvider>
@@ -25,7 +45,7 @@ export function App() {
           <NavBar />
           <div className="flex flex-1 items-stretch">
             <LeftNav />
-            <main className="min-w-0 flex-1 px-4 py-6 md:px-6">
+            <AppMain>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/" element={<ViewerPage />} />
@@ -61,7 +81,7 @@ export function App() {
                   }
                 />
               </Routes>
-            </main>
+            </AppMain>
           </div>
         </div>
         <ImpersonationBanner />
