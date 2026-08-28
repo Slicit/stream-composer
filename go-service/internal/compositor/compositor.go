@@ -18,6 +18,7 @@ package compositor
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -282,19 +283,34 @@ func (r *Runner) statusLocked(id string) *Status {
 	return s
 }
 
+// ErrTooManyJobs is returned by StartJob when Config.MaxCompositorJobs is
+// already reached and id would be a genuinely new job, not a
+// reconfiguration of one already running. The safety valve against a
+// single box being asked to composite more than it realistically can —
+// see the package comment and go-service/README.md.
+var ErrTooManyJobs = errors.New("too many compositor jobs already running")
+
 // StartJob (re)starts a job with the given sources/options — if one is
-// already running under this ID, it is stopped first. The caller (the Go
-// data plane, or a human validating this service directly) decides when
-// that's warranted; this package does not diff configs itself.
-func (r *Runner) StartJob(id string, sources []Source, opts Options) {
+// already running under this ID, it is stopped first (this never counts
+// against MaxCompositorJobs: it's a reconfiguration, not growth). The
+// caller (the Go data plane, or a human validating this service directly)
+// decides when starting is warranted; this package does not diff configs
+// itself, only enforces the concurrency cap.
+func (r *Runner) StartJob(id string, sources []Source, opts Options) error {
 	r.mu.Lock()
-	if _, running := r.running[id]; running {
+	_, alreadyRunning := r.running[id]
+	if !alreadyRunning && r.Config.MaxCompositorJobs > 0 && len(r.running) >= r.Config.MaxCompositorJobs {
+		r.mu.Unlock()
+		return ErrTooManyJobs
+	}
+	if alreadyRunning {
 		r.stopLocked(id, "restarting with new configuration")
 	}
 	delete(r.backoff, id)
 	r.mu.Unlock()
 
 	r.startOne(id, sources, opts)
+	return nil
 }
 
 // StopJob halts a job. A no-op if nothing is running under this ID.

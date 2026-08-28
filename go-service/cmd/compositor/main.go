@@ -156,7 +156,11 @@ func main() {
 		}
 
 		log.Info("starting compositor job via API", "id", req.ID, "sources", len(sources))
-		runner.StartJob(req.ID, sources, opts)
+		if err := runner.StartJob(req.ID, sources, opts); err != nil {
+			log.Warn("refused to start a compositor job", "id", req.ID, "error", err.Error())
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusAccepted, toStatusResponse(runner.StatusOf(req.ID)))
 	})
 

@@ -87,6 +87,14 @@ Create a channel to curate which streams show up together on their own page.
 - **Restream anywhere.** Forward any incoming source to Twitch, YouTube, or
   any RTMP endpoint, as many destinations per source as you like, each
   switched on independently. Nothing is re-encoded.
+- **Restream a whole channel, composed.** Opt-in, for accounts an admin
+  grants it to: an actual server-side ffmpeg compositor (the one thing the
+  browser-only design above deliberately doesn't do) flattens a channel's
+  on-air sources into a single feed — horizontal, vertical, or both at
+  once — and relays it out, so you can go live on YouTube or TikTok with
+  the same multi-cam grid viewers see here. Runs as its own service, only
+  while it's actually needed (an enabled composition, a live member, an
+  enabled destination), so it never costs anything when it's off.
 - **Admin impersonation.** See the app exactly as another user does, with a
   fixed banner naming who you're impersonating and a one-click way back.
 - **Server & Stats.** CPU, memory, host and data-plane uptime, MediaMTX and

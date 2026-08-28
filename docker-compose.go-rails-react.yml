@@ -110,9 +110,44 @@ services:
       MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
       DATA_DIR: /data
       ENCODER: ${ENCODER:-}
+      COMPOSITOR_API: http://compositor:8080
     volumes:
       - dataplane-data:/data
     # Uncomment to give ffmpeg access to an Intel/AMD GPU for VA-API.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    networks: [streamnet]
+    logging: *logging
+
+  # A channel's server-side compositor (opt-in restream to YouTube/TikTok/
+  # etc. — see go-service/internal/compositor's package comment). A
+  # separate service from `dataplane` on purpose: a heavy or misbehaving
+  # composition job must never affect ordinary viewers' WHEP proxying or
+  # the MediaMTX auth hook's latency, which is why it also gets its own
+  # cpus/mem_limit here, independent of dataplane's. No public routes at
+  # all (see docker-compose.go-rails-react.tls.yml, which never mentions
+  # it) — `dataplane`'s own compositionscheduler is its only caller,
+  # reaching it over the internal network exactly like it reaches Rails.
+  compositor:
+    build:
+      context: ./go-service
+      dockerfile: Dockerfile.compositor
+    image: ${COMPOSITOR_IMAGE:-sc-compositor}:${COMPOSITOR_TAG:-latest}
+    container_name: sc-compositor
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    environment:
+      MEDIAMTX_RTSP_HOST: mediamtx
+      MEDIAMTX_INTERNAL_USER: composer
+      MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:?set INTERNAL_SECRET in .env}
+      MAX_COMPOSITOR_JOBS: ${MAX_COMPOSITOR_JOBS:-4}
+    # Real, ongoing CPU cost per active job (unlike browser composition) —
+    # sized for a couple of software-encoded jobs on a modest box; raise
+    # alongside MAX_COMPOSITOR_JOBS if the host actually has the headroom.
+    cpus: "2.0"
+    mem_limit: 1g
+    # Uncomment (with MAX_COMPOSITOR_JOBS raised to match) to give ffmpeg
+    # access to an Intel/AMD GPU for VA-API/Quick Sync encoding.
     # devices:
     #   - /dev/dri:/dev/dri
     networks: [streamnet]

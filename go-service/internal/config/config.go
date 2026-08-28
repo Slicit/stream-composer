@@ -31,6 +31,14 @@ type Config struct {
 	// comment on why that's a separate service, not a Go import).
 	CompositorAPI string
 
+	// MaxCompositorJobs caps how many composition jobs the compositor
+	// service will run at once — the safety valve against a single box
+	// being asked to composite more than it realistically can (each job is
+	// real, ongoing CPU cost, unlike browser composition). 0 means no cap;
+	// read only by the compositor service itself (internal/compositor),
+	// but part of the shared Config since every service loads the same env.
+	MaxCompositorJobs int
+
 	FFmpegPath  string // "ffmpeg" unless overridden
 	FFprobePath string // "ffprobe" unless overridden
 	VAAPIDevice string // the render node a vaapi/qsv encode uploads into, e.g. /dev/dri/renderD128
@@ -96,6 +104,7 @@ func Load() Config {
 		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
 		ComposedPrefix:    env("COMPOSED_PREFIX", "composed"),
 		CompositorAPI:     env("COMPOSITOR_API", "http://compositor:8080"),
+		MaxCompositorJobs: envInt("MAX_COMPOSITOR_JOBS", 4),
 		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:       env("FFPROBE_PATH", "ffprobe"),
 		VAAPIDevice:       env("VAAPI_DEVICE", "/dev/dri/renderD128"),

@@ -1,6 +1,7 @@
 package compositor
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -232,4 +233,72 @@ func TestRunnerStartJobRestartsAnAlreadyRunningJob(t *testing.T) {
 	})
 
 	r.StopAll()
+}
+
+func TestStartJobRefusesANewJobPastTheCap(t *testing.T) {
+	cfg := testConfig()
+	cfg.FFmpegPath = fakeFFmpeg(t, "trap '' TERM; sleep 5")
+	cfg.MaxCompositorJobs = 1
+	r := New(cfg, encoder.Caps{Encoders: map[string]bool{"libx264": true}}, silentLog())
+	defer r.StopAll()
+
+	if err := r.StartJob("chan-1/horizontal", []Source{{Path: "live/cam-1"}}, Options{Width: 1920, Height: 1080, OutputPath: "composed/chan-1/horizontal"}); err != nil {
+		t.Fatalf("the first job (at the cap) should be allowed, got: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		_, running := r.running["chan-1/horizontal"]
+		return running
+	})
+
+	err := r.StartJob("chan-2/horizontal", []Source{{Path: "live/cam-2"}}, Options{Width: 1920, Height: 1080, OutputPath: "composed/chan-2/horizontal"})
+	if !errors.Is(err, ErrTooManyJobs) {
+		t.Errorf("expected ErrTooManyJobs for a second, distinct job past the cap, got: %v", err)
+	}
+	r.mu.Lock()
+	_, secondStarted := r.running["chan-2/horizontal"]
+	r.mu.Unlock()
+	if secondStarted {
+		t.Error("the refused job must not actually be running")
+	}
+}
+
+func TestStartJobAllowsReconfiguringAnExistingJobEvenAtTheCap(t *testing.T) {
+	cfg := testConfig()
+	cfg.FFmpegPath = fakeFFmpeg(t, "trap '' TERM; sleep 5")
+	cfg.MaxCompositorJobs = 1
+	r := New(cfg, encoder.Caps{Encoders: map[string]bool{"libx264": true}}, silentLog())
+	defer r.StopAll()
+
+	if err := r.StartJob("chan-1/horizontal", []Source{{Path: "live/cam-1"}}, Options{Width: 1920, Height: 1080, OutputPath: "composed/chan-1/horizontal"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	waitFor(t, time.Second, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		_, running := r.running["chan-1/horizontal"]
+		return running
+	})
+
+	// Reconfiguring the *same* job at the cap must not be refused — it
+	// doesn't grow the running count.
+	err := r.StartJob("chan-1/horizontal", []Source{{Path: "live/cam-1"}, {Path: "live/cam-2"}}, Options{Width: 1920, Height: 1080, OutputPath: "composed/chan-1/horizontal"})
+	if err != nil {
+		t.Errorf("reconfiguring an already-running job at the cap should be allowed, got: %v", err)
+	}
+}
+
+func TestZeroMaxCompositorJobsMeansNoCap(t *testing.T) {
+	cfg := testConfig()
+	cfg.FFmpegPath = fakeFFmpeg(t, "trap '' TERM; sleep 5")
+	cfg.MaxCompositorJobs = 0
+	r := New(cfg, encoder.Caps{Encoders: map[string]bool{"libx264": true}}, silentLog())
+	defer r.StopAll()
+
+	for _, id := range []string{"chan-1/horizontal", "chan-2/horizontal", "chan-3/horizontal"} {
+		if err := r.StartJob(id, []Source{{Path: "live/cam-1"}}, Options{Width: 1920, Height: 1080, OutputPath: "composed/" + id}); err != nil {
+			t.Errorf("StartJob(%q) with no cap configured should never be refused, got: %v", id, err)
+		}
+	}
 }

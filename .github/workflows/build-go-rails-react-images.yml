@@ -1,19 +1,20 @@
 name: Build Go/Rails/React images
 
-# Publishes the two images the go-rails-react stack actually builds from
-# source (rails — which bundles the React SPA into its own public/ — and
-# dataplane). mediamtx is pulled from its own upstream image and never
-# built here. Unlike release.yml (the pre-migration single-container app,
-# still the one main/install.sh installs), this only targets linux/amd64:
-# the deploy targets seen so far are all x86_64, and Ruby's native gems
-# make QEMU-emulated arm64 builds disproportionately slow for a workflow
-# whose whole point is build time.
+# Publishes the three images the go-rails-react stack actually builds from
+# source (rails — which bundles the React SPA into its own public/ —
+# dataplane, and compositor, the opt-in ffmpeg restream service). mediamtx
+# is pulled from its own upstream image and never built here. Unlike
+# release.yml (the pre-migration single-container app, still the one
+# main/install.sh installs), this only targets linux/amd64: the deploy
+# targets seen so far are all x86_64, and Ruby's native gems make
+# QEMU-emulated arm64 builds disproportionately slow for a workflow whose
+# whole point is build time.
 #
 # Tag scheme: pushes to migration/go-rails-react publish the `beta`
 # channel; pushes to main (once this stack is merged) publish `stable`.
 # Both also get an immutable `<channel>-<short-sha>` tag so a specific
 # build can be pinned. install-go-rails-react.sh/update-go-rails-react.sh
-# consume these tags via RAILS_TAG/DATAPLANE_TAG in .env.
+# consume these tags via RAILS_TAG/DATAPLANE_TAG/COMPOSITOR_TAG in .env.
 
 on:
   push:
@@ -37,13 +38,18 @@ env:
   REGISTRY: ghcr.io
   RAILS_IMAGE: ghcr.io/${{ github.repository_owner }}/stream-composer-rails
   DATAPLANE_IMAGE: ghcr.io/${{ github.repository_owner }}/stream-composer-dataplane
+  COMPOSITOR_IMAGE: ghcr.io/${{ github.repository_owner }}/stream-composer-compositor
   CHANNEL: ${{ github.ref == 'refs/heads/main' && 'stable' || 'beta' }}
 
 jobs:
   # Each image only rebuilds (and only republishes) when its own inputs
   # actually changed — a dataplane-only commit does not touch the rails
   # image's tags at all, and vice versa. react-app counts toward rails
-  # since the Rails image's react-build stage bundles it.
+  # since the Rails image's react-build stage bundles it. dataplane and
+  # compositor share one filter output: both build from the same
+  # go-service/ source tree (see go-service/Dockerfile vs
+  # Dockerfile.compositor), so anything that would rebuild one should
+  # rebuild the other.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -163,6 +169,54 @@ jobs:
       - name: Report what was published
         run: |
           echo "### Published dataplane image" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  compositor:
+    name: Build and publish compositor
+    needs: changes
+    if: needs.changes.outputs.dataplane == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Work out tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.COMPOSITOR_IMAGE }}
+          tags: |
+            type=raw,value=${{ env.CHANNEL }}
+            type=sha,prefix=${{ env.CHANNEL }}-,format=short
+          labels: |
+            org.opencontainers.image.title=Stream Composer (compositor)
+            org.opencontainers.image.description=Opt-in ffmpeg service that composites a channel's on-air sources and relays the result out
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./go-service
+          file: go-service/Dockerfile.compositor
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=compositor
+          cache-to: type=gha,mode=max,scope=compositor
+
+      - name: Report what was published
+        run: |
+          echo "### Published compositor image" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

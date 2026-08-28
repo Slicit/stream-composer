@@ -280,9 +280,10 @@ random_password() {
 # ------------------------------------------------------------- image tags
 
 # Everything published from a single ref: the compose/config files this
-# installer fetches directly, and the images RAILS_TAG/DATAPLANE_TAG
-# select, must always come from the same commit — otherwise "beta" could
-# mean a docker-compose.yml from one build and images from another.
+# installer fetches directly, and the images RAILS_TAG/DATAPLANE_TAG/
+# COMPOSITOR_TAG select, must always come from the same commit —
+# otherwise "beta" could mean a docker-compose.yml from one build and
+# images from another.
 channel_ref() { [ "$CHANNEL" = "stable" ] && echo "main" || echo "migration/go-rails-react"; }
 channel_tag() { [ "$CHANNEL" = "stable" ] && echo "stable" || echo "beta"; }
 
@@ -469,6 +470,8 @@ RAILS_IMAGE=ghcr.io/${REPO,,}-rails
 RAILS_TAG=$tag
 DATAPLANE_IMAGE=ghcr.io/${REPO,,}-dataplane
 DATAPLANE_TAG=$tag
+COMPOSITOR_IMAGE=ghcr.io/${REPO,,}-compositor
+COMPOSITOR_TAG=$tag
 MEDIAMTX_VERSION=1.19.1
 TRAEFIK_VERSION=v3.7
 
