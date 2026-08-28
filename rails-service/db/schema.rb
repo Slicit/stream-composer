@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_28_000003) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -21,7 +21,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
     t.uuid "homepage_channel_id"
     t.boolean "public_viewing", default: false, null: false
     t.datetime "updated_at", null: false
-    t.check_constraint "default_layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "app_settings_default_layout_mode_check"
+    t.check_constraint "default_layout_mode::text = ANY (ARRAY['fixed'::character varying::text, 'maximize'::character varying::text])", name: "app_settings_default_layout_mode_check"
+  end
+
+  create_table "channel_compositions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "background_color", default: "#0b1220", null: false
+    t.integer "bitrate_kbps", default: 4500, null: false
+    t.uuid "channel_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: false, null: false
+    t.string "encoder", default: "auto", null: false
+    t.integer "fps", default: 30, null: false
+    t.integer "height", default: 1080, null: false
+    t.integer "label_size", default: 22, null: false
+    t.boolean "labels", default: true, null: false
+    t.string "orientation", null: false
+    t.string "preset", default: "veryfast", null: false
+    t.datetime "updated_at", null: false
+    t.integer "width", default: 1920, null: false
+    t.index ["channel_id", "orientation"], name: "index_channel_compositions_on_channel_id_and_orientation", unique: true
+    t.index ["channel_id"], name: "index_channel_compositions_on_channel_id"
+    t.check_constraint "bitrate_kbps > 0 AND bitrate_kbps <= 51000", name: "channel_compositions_bitrate_check"
+    t.check_constraint "encoder::text = ANY (ARRAY['auto'::character varying, 'software'::character varying, 'vaapi'::character varying, 'qsv'::character varying]::text[])", name: "channel_compositions_encoder_check"
+    t.check_constraint "height > 0 AND height <= 3840", name: "channel_compositions_height_check"
+    t.check_constraint "orientation::text = ANY (ARRAY['horizontal'::character varying, 'vertical'::character varying]::text[])", name: "channel_compositions_orientation_check"
+    t.check_constraint "width > 0 AND width <= 3840", name: "channel_compositions_width_check"
+  end
+
+  create_table "channel_relay_destinations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "channel_composition_id", null: false
+    t.datetime "created_at", null: false
+    t.boolean "enabled", default: true, null: false
+    t.string "key", default: "", null: false
+    t.string "name", null: false
+    t.string "provider", default: "custom", null: false
+    t.datetime "updated_at", null: false
+    t.string "url", null: false
+    t.index ["channel_composition_id"], name: "index_channel_relay_destinations_on_channel_composition_id"
   end
 
   create_table "channels", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -43,8 +79,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
     t.index ["owner_id"], name: "index_channels_on_owner_id"
     t.index ["shared_with"], name: "index_channels_on_shared_with", using: :gin
     t.index ["stream_ids"], name: "index_channels_on_stream_ids", using: :gin
-    t.check_constraint "layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "channels_layout_mode_check"
-    t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying, 'private'::character varying]::text[])", name: "channels_visibility_check"
+    t.check_constraint "layout_mode::text = ANY (ARRAY['fixed'::character varying::text, 'maximize'::character varying::text])", name: "channels_layout_mode_check"
+    t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying::text, 'private'::character varying::text])", name: "channels_visibility_check"
   end
 
   create_table "games", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -65,7 +101,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
     t.datetime "updated_at", null: false
     t.string "url", null: false
     t.index ["stream_id"], name: "index_relay_destinations_on_stream_id"
-    t.check_constraint "audio::text = ANY (ARRAY['copy'::character varying, 'aac'::character varying]::text[])", name: "relay_destinations_audio_check"
+    t.check_constraint "audio::text = ANY (ARRAY['copy'::character varying::text, 'aac'::character varying::text])", name: "relay_destinations_audio_check"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -101,6 +137,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "avatar", default: "", null: false
+    t.boolean "can_use_compositor", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "last_login_at"
     t.datetime "password_changed_at"
@@ -115,6 +152,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_23_000005) do
     t.check_constraint "stream_quota >= 0 AND stream_quota <= 1000", name: "users_stream_quota_range"
   end
 
+  add_foreign_key "channel_compositions", "channels", on_delete: :cascade
+  add_foreign_key "channel_relay_destinations", "channel_compositions", on_delete: :cascade
   add_foreign_key "channels", "games", column: "featured_game_id", on_delete: :nullify
   add_foreign_key "channels", "users", column: "owner_id", on_delete: :cascade
   add_foreign_key "relay_destinations", "streams", on_delete: :cascade

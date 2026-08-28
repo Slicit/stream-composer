@@ -52,6 +52,14 @@ Rails.application.routes.draw do
       put ":id/background", action: :background
     end
 
+    scope path: "channels/mine/:channel_id/compositions", controller: "channel_compositions" do
+      get "", action: :index
+      patch ":orientation", action: :update
+      post ":orientation/destinations", action: :create_destination
+      patch ":orientation/destinations/:id", action: :update_destination
+      delete ":orientation/destinations/:id", action: :destroy_destination
+    end
+
     namespace :admin do
       resources :users, only: %i[index create update destroy] do
         post "impersonate", on: :member
@@ -87,6 +95,14 @@ Rails.application.routes.draw do
         put ":id/homepage", action: :set_homepage
         delete ":id/homepage", action: :clear_homepage
         put ":id/background", action: :background
+      end
+
+      scope path: "channels/:channel_id/compositions", controller: "channel_compositions" do
+        get "", action: :index
+        patch ":orientation", action: :update
+        post ":orientation/destinations", action: :create_destination
+        patch ":orientation/destinations/:id", action: :update_destination
+        delete ":orientation/destinations/:id", action: :destroy_destination
       end
 
       scope path: "games", controller: "games" do

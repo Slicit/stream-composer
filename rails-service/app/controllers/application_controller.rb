@@ -34,6 +34,11 @@ class ApplicationController < ActionController::API
     end
   end
 
+  def require_compositor_access!
+    return require_user! unless current_user
+    render_forbidden("Compositor access is required.") unless current_user.can_use_compositor? || current_user.role == "admin"
+  end
+
   def sign_in(user, impersonator: nil)
     session = Session.start_for(user, impersonator: impersonator)
     cookies[SESSION_COOKIE] = {

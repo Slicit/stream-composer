@@ -32,6 +32,10 @@ module Api
           user.stream_quota = params[:streamQuota]
           changed = true
         end
+        unless params[:canUseCompositor].nil?
+          user.can_use_compositor = ActiveModel::Type::Boolean.new.cast(params[:canUseCompositor])
+          changed = true
+        end
 
         return render_error(:bad_request, "Nothing to change.") unless changed
 

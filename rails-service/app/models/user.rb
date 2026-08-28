@@ -60,6 +60,7 @@ class User < ApplicationRecord
       username: username,
       role: role,
       streamQuota: stream_quota,
+      canUseCompositor: can_use_compositor,
       avatar: avatar.presence,
       createdAt: created_at.iso8601,
       lastLoginAt: last_login_at&.iso8601,

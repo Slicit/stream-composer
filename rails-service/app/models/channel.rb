@@ -15,6 +15,7 @@ class Channel < ApplicationRecord
 
   belongs_to :owner, class_name: "User"
   belongs_to :featured_game, class_name: "Game", optional: true
+  has_many :channel_compositions, dependent: :destroy
 
   before_validation :assign_slug, on: :create
   before_validation { self.slug = slug.to_s.strip.downcase if slug.present? }
