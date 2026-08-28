@@ -32,8 +32,8 @@ module Api
           user.stream_quota = params[:streamQuota]
           changed = true
         end
-        unless params[:canUseCompositor].nil?
-          user.can_use_compositor = ActiveModel::Type::Boolean.new.cast(params[:canUseCompositor])
+        unless params[:compositorQuota].nil?
+          user.compositor_quota = params[:compositorQuota]
           changed = true
         end
 
@@ -79,8 +79,8 @@ module Api
       private
 
       def user_create_params
-        params.permit(:username, :password, :role, :streamQuota).to_h.transform_keys do |k|
-          k == "streamQuota" ? :stream_quota : k
+        params.permit(:username, :password, :role, :streamQuota, :compositorQuota).to_h.transform_keys do |k|
+          { "streamQuota" => :stream_quota, "compositorQuota" => :compositor_quota }.fetch(k, k)
         end
       end
     end

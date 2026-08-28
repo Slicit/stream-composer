@@ -17,12 +17,24 @@ third-party RTMP ingest (YouTube, TikTok, etc.), because those platforms
 need one encoded feed, not N independent streams a browser could assemble.
 
 This adds that capability back, scoped narrowly: opt-in (admin-granted,
-`users.can_use_compositor`), per channel, for streamers who want to
-simulcast their composed channel outward. Supports both horizontal and
-vertical (portrait) orientations, independently, at once if wanted.
+`users.compositor_quota` — how many compositions this account may have
+enabled at once, default 0, same shape as the existing `stream_quota`),
+per channel, for streamers who want to simulcast their composed channel
+outward. Supports both horizontal and vertical (portrait) orientations,
+independently, at once if wanted.
 
 ## Decisions
 
+- **A quota (`compositor_quota`), not a boolean.** Shipped first as
+  `can_use_compositor` (a plain on/off), then changed to a numeric quota —
+  same shape as `stream_quota` — mirroring the existing self-service
+  precedent exactly: `Api::ChannelCompositionsController#update` refuses
+  to newly *enable* a composition once the caller already has
+  `compositor_quota` compositions enabled across all their channels
+  (re-saving or disabling one already enabled never counts against it),
+  admin bypassing the check entirely — the identical rule
+  `Api::StreamsController#create` already applies to `stream_quota`. Lets
+  an admin grant "up to N at once" rather than only all-or-nothing.
 - **A separate service (`compositor`), not folded into `dataplane`.**
   `dataplane` is on the critical path for every viewer's WHEP proxying and
   the MediaMTX auth hook — low-latency, always-on, must stay lean. A

@@ -1,7 +1,7 @@
 module Api
   module Admin
     # Admin equivalent of Api::ChannelCompositionsController — same
-    # behavior, minus the ownership/can_use_compositor gates (admin
+    # behavior, minus the ownership/compositor_quota gates (admin
     # access already implies both), so the admin channel edit page can
     # manage any channel's compositor config regardless of who owns it
     # or whether that owner has been granted compositor access.

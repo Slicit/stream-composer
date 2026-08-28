@@ -2,7 +2,7 @@ module Api
   # Self-service compositor config: /api/channels/mine/:channel_id/compositions.
   # Ownership follows the channel (mirrors Api::ChannelsController's
   # owned_channel!, admin bypass included), and every action additionally
-  # requires can_use_compositor — this is the "heavy streamer" opt-in
+  # requires compositor_quota > 0 — this is the "heavy streamer" opt-in
   # gate, admin excepted. Nested under the channel rather than a flat
   # /compositions/mine like relays/mine: a composition isn't an
   # independently-creatable row the way a relay is, it's exactly one
@@ -18,6 +18,7 @@ module Api
       render json: {
         compositions: ChannelComposition::ORIENTATIONS.map { |o| composition_for(channel, o).as_public_json },
         providers: ChannelRelayDestination::PROVIDERS,
+        quota: current_user.compositor_quota,
       }
     end
 
@@ -27,7 +28,13 @@ module Api
       return render_error(:bad_request, "Unknown orientation.") unless ChannelComposition::ORIENTATIONS.include?(params[:orientation])
 
       composition = composition_for(channel, params[:orientation])
-      if composition.update(composition_params)
+      patch = composition_params
+
+      if enabling?(composition, patch) && current_user.role != "admin" && enabled_composition_count(exclude: composition) >= current_user.compositor_quota
+        return render_error(:forbidden, "You have reached your limit of #{current_user.compositor_quota} composition(s). Ask an admin to raise it.")
+      end
+
+      if composition.update(patch)
         render json: { composition: composition.as_public_json }
       else
         render_error :bad_request, composition.errors.full_messages.join(", ")
@@ -69,6 +76,22 @@ module Api
 
     def composition_for(channel, orientation)
       channel.channel_compositions.find_or_create_by!(orientation: orientation)
+    end
+
+    # True only when this update would newly enable a composition that
+    # wasn't already enabled — flipping an already-enabled one, or
+    # changing anything else about it, doesn't grow the count and so
+    # never needs a quota check.
+    def enabling?(composition, patch)
+      return false unless patch.key?("enabled")
+      ActiveModel::Type::Boolean.new.cast(patch["enabled"]) && !composition.enabled
+    end
+
+    def enabled_composition_count(exclude:)
+      ChannelComposition.joins(:channel)
+                         .where(channels: { owner_id: current_user.id }, enabled: true)
+                         .where.not(id: exclude.id)
+                         .count
     end
 
     def composition_params

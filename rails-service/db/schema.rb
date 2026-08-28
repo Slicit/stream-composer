@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_28_000003) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -42,9 +42,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000003) do
     t.index ["channel_id", "orientation"], name: "index_channel_compositions_on_channel_id_and_orientation", unique: true
     t.index ["channel_id"], name: "index_channel_compositions_on_channel_id"
     t.check_constraint "bitrate_kbps > 0 AND bitrate_kbps <= 51000", name: "channel_compositions_bitrate_check"
-    t.check_constraint "encoder::text = ANY (ARRAY['auto'::character varying, 'software'::character varying, 'vaapi'::character varying, 'qsv'::character varying]::text[])", name: "channel_compositions_encoder_check"
+    t.check_constraint "encoder::text = ANY (ARRAY['auto'::character varying::text, 'software'::character varying::text, 'vaapi'::character varying::text, 'qsv'::character varying::text])", name: "channel_compositions_encoder_check"
     t.check_constraint "height > 0 AND height <= 3840", name: "channel_compositions_height_check"
-    t.check_constraint "orientation::text = ANY (ARRAY['horizontal'::character varying, 'vertical'::character varying]::text[])", name: "channel_compositions_orientation_check"
+    t.check_constraint "orientation::text = ANY (ARRAY['horizontal'::character varying::text, 'vertical'::character varying::text])", name: "channel_compositions_orientation_check"
     t.check_constraint "width > 0 AND width <= 3840", name: "channel_compositions_width_check"
   end
 
@@ -137,7 +137,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000003) do
 
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "avatar", default: "", null: false
-    t.boolean "can_use_compositor", default: false, null: false
+    t.integer "compositor_quota", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "last_login_at"
     t.datetime "password_changed_at"
@@ -148,6 +148,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000003) do
     t.datetime "updated_at", null: false
     t.string "username", null: false
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true
+    t.check_constraint "compositor_quota >= 0 AND compositor_quota <= 20", name: "users_compositor_quota_range"
     t.check_constraint "role::text = ANY (ARRAY['admin'::character varying::text, 'viewer'::character varying::text, 'streamer'::character varying::text])", name: "users_role_check"
     t.check_constraint "stream_quota >= 0 AND stream_quota <= 1000", name: "users_stream_quota_range"
   end

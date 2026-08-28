@@ -36,7 +36,7 @@ class ApplicationController < ActionController::API
 
   def require_compositor_access!
     return require_user! unless current_user
-    render_forbidden("Compositor access is required.") unless current_user.can_use_compositor? || current_user.role == "admin"
+    render_forbidden("Compositor access is required.") unless current_user.compositor_quota.positive? || current_user.role == "admin"
   end
 
   def sign_in(user, impersonator: nil)

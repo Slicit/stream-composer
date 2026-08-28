@@ -34,7 +34,7 @@ interface ChannelCompositionSectionProps {
 
 // A channel's server-side compositor config: whether to run a horizontal
 // and/or vertical composed feed, at what resolution/bitrate, and where to
-// relay each one. Opt-in, gated server-side by can_use_compositor — the
+// relay each one. Opt-in, gated server-side by compositor_quota > 0 — the
 // caller decides whether to render this at all (see ChannelEditPage/
 // AdminChannelEditPage). Config only: nothing here starts an ffmpeg
 // process, that's a later data-plane slice.
@@ -68,7 +68,12 @@ export function ChannelCompositionSection({ apiBase }: ChannelCompositionSection
     }
   }
 
-  if (error) {
+  // Only replace the whole section with the error when there's nothing
+  // else to show yet (the initial load failed) — once compositions have
+  // loaded, a later failure (e.g. a quota refusal enabling one) should
+  // show inline and leave the rest of the section right where it was,
+  // not wipe it out from under the person still looking at it.
+  if (!compositions && error) {
     return (
       <p className="text-sm text-destructive" role="alert">
         {error}
@@ -82,6 +87,11 @@ export function ChannelCompositionSection({ apiBase }: ChannelCompositionSection
 
   return (
     <div className="flex flex-col gap-6">
+      {error && (
+        <p className="text-sm text-destructive" role="alert">
+          {error}
+        </p>
+      )}
       {(['horizontal', 'vertical'] as const).map((orientation) => {
         const composition = compositions.find((c) => c.orientation === orientation)
         if (!composition) return null

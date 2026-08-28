@@ -80,6 +80,28 @@ describe('ChannelCompositionSection', () => {
     expect(patched).toEqual([{ enabled: true }])
   })
 
+  it('shows the quota error when enabling a composition is refused', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === apiBase && (!init || init.method === undefined)) return jsonResponse({ compositions: [composition(), composition({ orientation: 'vertical' })], providers })
+        if (url === `${apiBase}/horizontal` && init?.method === 'PATCH') {
+          return jsonResponse({ error: 'You have reached your limit of 2 composition(s). Ask an admin to raise it.' }, 403)
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      }),
+    )
+    const user = userEvent.setup()
+
+    render(<ChannelCompositionSection apiBase={apiBase} />)
+    await user.click(await screen.findByRole('switch', { name: 'Enable horizontal composition' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('reached your limit of 2')
+    // The refusal must not wipe out the rest of the section — the person
+    // is still looking at it and should be able to try something else.
+    expect(screen.getByRole('switch', { name: 'Enable vertical composition' })).toBeInTheDocument()
+  })
+
   it('applies a resolution preset by setting width and height together', async () => {
     const patched: unknown[] = []
     vi.stubGlobal(

@@ -25,8 +25,8 @@ const channel = {
 }
 
 const users = [
-  { id: 'owner-1', username: 'alice', role: 'viewer', streamQuota: 0, canUseCompositor: false, avatar: null, createdAt: '2026-01-01', lastLoginAt: null },
-  { id: 'owner-2', username: 'bob', role: 'admin', streamQuota: 0, canUseCompositor: false, avatar: null, createdAt: '2026-01-01', lastLoginAt: null },
+  { id: 'owner-1', username: 'alice', role: 'viewer', streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null },
+  { id: 'owner-2', username: 'bob', role: 'admin', streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null },
 ]
 
 function renderAt(id: string) {

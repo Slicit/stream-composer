@@ -5,7 +5,7 @@
 # process supervision is a data-plane concern, ported from
 # server/src/compositor.js. See docs/ARCHITECTURE.md once that lands.
 #
-# Opt-in and admin-gated (User#can_use_compositor) — unlike browser
+# Opt-in and admin-gated (User#compositor_quota) — unlike browser
 # composition, an active job here is real, ongoing server CPU cost.
 class ChannelComposition < ApplicationRecord
   ORIENTATIONS = %w[horizontal vertical].freeze

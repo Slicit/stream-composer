@@ -17,7 +17,7 @@ const signedInUser: User = {
   username: 'owner',
   role: 'streamer',
   streamQuota: 5,
-  canUseCompositor: false,
+  compositorQuota: 0,
   avatar: null,
   createdAt: '2026-01-01',
   lastLoginAt: null,

@@ -15,7 +15,7 @@ export function ChannelEditPage() {
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const canUseCompositor = user?.role === 'admin' || user?.canUseCompositor === true
+  const canUseCompositor = user?.role === 'admin' || (user?.compositorQuota ?? 0) > 0
   const [channel, setChannel] = useState<Channel | null>(null)
   const [streams, setStreams] = useState<AvailableStream[]>([])
   const [games, setGames] = useState<Game[]>([])

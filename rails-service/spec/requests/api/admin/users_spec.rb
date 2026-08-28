@@ -43,6 +43,13 @@ RSpec.describe "Api::Admin::Users", type: :request do
       expect(body["user"]["streamQuota"]).to eq(2)
     end
 
+    it "updates a user's compositor quota, defaulting to 0" do
+      expect(viewer.compositor_quota).to eq(0)
+      patch "/api/admin/users/#{viewer.id}", params: { compositorQuota: 3 }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["user"]["compositorQuota"]).to eq(3)
+    end
+
     it "refuses to change an administrator's role" do
       patch "/api/admin/users/#{admin.id}", params: { role: "viewer" }, as: :json
       expect(response).to have_http_status(:bad_request)

@@ -9,7 +9,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const ROLES: Role[] = ['viewer', 'streamer', 'admin']
@@ -41,6 +40,7 @@ export function AdminUsersPage() {
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<Role>('viewer')
   const [streamQuota, setStreamQuota] = useState(0)
+  const [compositorQuota, setCompositorQuota] = useState(0)
   const [creating, setCreating] = useState(false)
 
   async function load() {
@@ -61,11 +61,18 @@ export function AdminUsersPage() {
     setError(null)
     setCreating(true)
     try {
-      await api.post('/api/admin/users', { username, password, role, streamQuota: role === 'streamer' ? streamQuota : undefined })
+      await api.post('/api/admin/users', {
+        username,
+        password,
+        role,
+        streamQuota: role === 'streamer' ? streamQuota : undefined,
+        compositorQuota,
+      })
       setUsername('')
       setPassword('')
       setRole('viewer')
       setStreamQuota(0)
+      setCompositorQuota(0)
       await load()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create the user.')
@@ -94,13 +101,13 @@ export function AdminUsersPage() {
     }
   }
 
-  async function toggleCompositor(id: string, canUseCompositor: boolean) {
+  async function updateCompositorQuota(id: string, quota: number) {
     setError(null)
     try {
-      await api.patch(`/api/admin/users/${id}`, { canUseCompositor })
+      await api.patch(`/api/admin/users/${id}`, { compositorQuota: quota })
       await load()
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change compositor access.')
+      setError(err instanceof ApiError ? err.message : 'Could not change the compositor quota.')
     }
   }
 
@@ -165,6 +172,18 @@ export function AdminUsersPage() {
               />
             </div>
           )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="new-compositor-quota">Compositor quota</Label>
+            <Input
+              id="new-compositor-quota"
+              type="number"
+              min={0}
+              max={20}
+              className="w-24"
+              value={compositorQuota}
+              onChange={(e) => setCompositorQuota(Number(e.target.value))}
+            />
+          </div>
           <Button type="submit" variant="outline" disabled={creating}>
             Add user
           </Button>
@@ -179,7 +198,7 @@ export function AdminUsersPage() {
                 <TableHead>Username</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Stream quota</TableHead>
-                <TableHead>Compositor</TableHead>
+                <TableHead>Compositor quota</TableHead>
                 <TableHead>Last signed in</TableHead>
                 <TableHead />
               </TableRow>
@@ -210,10 +229,17 @@ export function AdminUsersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Switch
-                      checked={u.canUseCompositor}
-                      onCheckedChange={(checked) => toggleCompositor(u.id, checked)}
-                      aria-label={`Compositor access for ${u.username}`}
+                    <Input
+                      type="number"
+                      min={0}
+                      max={20}
+                      className="w-24"
+                      defaultValue={u.compositorQuota}
+                      onBlur={(e) => {
+                        const next = Number(e.target.value)
+                        if (next !== u.compositorQuota) updateCompositorQuota(u.id, next)
+                      }}
+                      aria-label={`Compositor quota for ${u.username}`}
                     />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>

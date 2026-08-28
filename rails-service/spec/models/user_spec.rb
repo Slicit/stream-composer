@@ -48,6 +48,13 @@ RSpec.describe User, type: :model do
       expect(build_user(stream_quota: 5)).to be_valid
     end
 
+    it "defaults compositor_quota to 0 and clamps it to 0..20" do
+      expect(build_user.compositor_quota).to eq(0)
+      expect(build_user(compositor_quota: -1)).not_to be_valid
+      expect(build_user(compositor_quota: 21)).not_to be_valid
+      expect(build_user(compositor_quota: 5)).to be_valid
+    end
+
     it "requires a password on create" do
       user = User.new(username: "nopass", role: "viewer")
       expect(user).not_to be_valid

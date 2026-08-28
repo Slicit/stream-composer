@@ -9,7 +9,7 @@ export interface User {
   username: string
   role: Role
   streamQuota: number
-  canUseCompositor: boolean
+  compositorQuota: number
   avatar: string | null
   createdAt: string
   lastLoginAt: string | null

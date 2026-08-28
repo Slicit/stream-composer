@@ -24,6 +24,7 @@ class User < ApplicationRecord
   validates :username, uniqueness: { case_sensitive: false, message: "is already taken" }
   validates :role, inclusion: { in: ROLES, message: "must be admin, viewer or streamer" }
   validates :stream_quota, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 1000 }
+  validates :compositor_quota, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 20 }
 
   validates :password, presence: true, on: :create, unless: -> { @password_assignment_attempted || @importing_legacy_hash }
   validate :password_is_strong, if: -> { @password_assignment_attempted }
@@ -60,7 +61,7 @@ class User < ApplicationRecord
       username: username,
       role: role,
       streamQuota: stream_quota,
-      canUseCompositor: can_use_compositor,
+      compositorQuota: compositor_quota,
       avatar: avatar.presence,
       createdAt: created_at.iso8601,
       lastLoginAt: last_login_at&.iso8601,
