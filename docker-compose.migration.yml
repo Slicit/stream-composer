@@ -80,6 +80,28 @@ services:
       - "18080:8080"
     networks: [scmig-net]
 
+  # The dedicated ffmpeg compositor — see go-service/internal/compositor's
+  # package comment. A separate container on purpose: a heavy or
+  # misbehaving composition job must never affect dataplane's own
+  # low-latency work (the MediaMTX auth hook, WHEP proxying for ordinary
+  # viewers). Nothing yet tells it to actually run a job (that's the data
+  # plane's orchestration, a later phase) — for now it's reachable
+  # directly for manual validation, see go-service/README.md.
+  compositor:
+    build:
+      context: ./go-service
+      dockerfile: Dockerfile.compositor
+    container_name: scmig-compositor
+    restart: unless-stopped
+    depends_on: [mediamtx]
+    environment:
+      PORT: 8080
+      MEDIAMTX_INTERNAL_USER: composer
+      MEDIAMTX_INTERNAL_PASSWORD: ${INTERNAL_SECRET:-migration-dev-secret}
+    ports:
+      - "18081:8080"
+    networks: [scmig-net]
+
   postgres:
     image: postgres:16-alpine
     container_name: scmig-postgres

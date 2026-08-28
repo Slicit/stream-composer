@@ -59,7 +59,57 @@ on its own within a few seconds. Worth a real healthcheck later.
   `server/src/routes/hooks.js`.
 - `internal/mediaproxy` — the WHEP/HLS reverse proxy, ported from
   `server/src/proxy.js`.
-- `cmd/dataplane` — wires the above into an HTTP server.
+- `internal/relayrunner` — per-stream restream supervision, ported from
+  `server/src/relays.js`.
+- `internal/layout` — the grid-shape math, ported field-for-field from
+  `server/src/layout.js` (golden-master tested against its exact output —
+  see `layout_test.go` before touching it).
+- `internal/encoder` — hardware/software encoder capability detection,
+  ported from `server/src/encoder.js`.
+- `internal/compositor` — the ffmpeg filtergraph builder and job
+  supervisor a channel's composed restream runs on, ported from
+  `server/src/compositor.js`. See "Compositor service" below.
+- `cmd/dataplane` — wires everything above except `compositor` into the
+  main data-plane HTTP server.
+- `cmd/compositor` — a separate binary/container wiring `internal/compositor`
+  + `internal/encoder` into their own small HTTP server (`Dockerfile.compositor`).
 
-Not yet ported: compositor/ffmpeg supervision, the restream relay, the audio
-monitor relay, bandwidth history. Those are later slices of the same phase.
+## Compositor service
+
+A channel's server-side compositor (composite N sources into one encoded
+feed, publish it back into MediaMTX, relay it to YouTube/TikTok/etc. — see
+the plan in `LOGBOOK` once it lands there) runs as its own container,
+deliberately separate from `dataplane`: a heavy or misbehaving composition
+job must never affect ordinary viewers' WHEP proxying or the MediaMTX auth
+hook's latency. `cmd/compositor` exposes a small job API; nothing calls it
+automatically yet (that orchestration — deciding *which* channels should
+currently be compositing, from Rails config + live status — is a later
+phase, owned by `dataplane`), but it's directly reachable for manual
+validation once the dev stack is up:
+
+```bash
+curl http://localhost:18081/healthz
+curl http://localhost:18081/caps   # what this machine can actually encode with
+
+curl -X POST http://localhost:18081/jobs -H 'Content-Type: application/json' -d '{
+  "id": "manual-test",
+  "sources": [{"path": "live/<a real, currently-publishing stream key>", "label": "Cam"}],
+  "options": {"width": 1920, "height": 1080, "fps": 30, "bitrateKbps": 4500, "outputPath": "composed/manual-test"}
+}'
+curl http://localhost:18081/jobs/manual-test   # state, restarts, the exact ffmpeg command in use
+# then, in MediaMTX's own API: the composed/manual-test path should show up ready
+
+curl -X DELETE http://localhost:18081/jobs/manual-test
+```
+
+**Known gap, expected until the next phase:** the job above reads its
+source fine but MediaMTX's auth hook (`internal/authhook`) currently
+returns `401 Unauthorized` on the actual publish — it only recognizes
+`ProgramPath` (the old single global "program") and `AudioPrefix/*` as
+authorized publish targets, nothing yet allows an arbitrary
+`composed/<channelId>/<orientation>` path. Confirmed by running the exact
+same command by hand: filtergraph, encoder args and the RTSP input all
+work correctly; only the final ANNOUNCE is refused. Teaching the auth hook
+about composed paths (authorized only when that specific composition is
+actually supposed to be running, per Rails config) is exactly what the
+data-plane orchestration phase adds.

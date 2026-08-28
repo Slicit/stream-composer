@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.23-alpine AS build
+WORKDIR /app
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 go build -o /compositor ./cmd/compositor
+
+FROM debian:12-slim
+# Fonts for drawtext captions (see internal/encoder's font-candidate list)
+# — fonts-dejavu-core is small and covers the first candidate path.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg ca-certificates fonts-dejavu-core \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& useradd --create-home --shell /bin/false compositor
+COPY --from=build /compositor /compositor
+USER compositor
+EXPOSE 8080
+ENTRYPOINT ["/compositor"]

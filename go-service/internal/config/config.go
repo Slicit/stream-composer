@@ -26,6 +26,7 @@ type Config struct {
 
 	FFmpegPath  string // "ffmpeg" unless overridden
 	FFprobePath string // "ffprobe" unless overridden
+	VAAPIDevice string // the render node a vaapi/qsv encode uploads into, e.g. /dev/dri/renderD128
 
 	// Restream backoff. Not yet a Rails-side setting (see AppSetting's own
 	// comment on staying deliberately small) — these are the same numeric
@@ -88,6 +89,7 @@ func Load() Config {
 		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
 		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:       env("FFPROBE_PATH", "ffprobe"),
+		VAAPIDevice:       env("VAAPI_DEVICE", "/dev/dri/renderD128"),
 		RestartDelayMs:    envInt("RESTART_DELAY_MS", 2000),
 		MaxRestartDelayMs: envInt("MAX_RESTART_DELAY_MS", 15000),
 		PollIntervalMs:    envInt("POLL_INTERVAL_MS", 2000),
