@@ -9,6 +9,7 @@ export interface User {
   username: string
   role: Role
   streamQuota: number
+  canUseCompositor: boolean
   avatar: string | null
   createdAt: string
   lastLoginAt: string | null
@@ -91,6 +92,46 @@ export interface RelaySource {
   id: string
   name: string
   enabled: boolean
+}
+
+export type Orientation = 'horizontal' | 'vertical'
+
+// A channel's composed-output relay destination — same shape as
+// RelayDestination, minus streamId/sourceName/audio (there is no raw
+// source to point at or transcode audio for; it forwards a channel's
+// already-composed program instead). Providers are the same RelayProvider
+// list shape, just a different set of rows.
+export interface ChannelCompositionDestination {
+  id: string
+  channelCompositionId: string
+  provider: string
+  providerLabel: string
+  name: string
+  url: string
+  keyMasked: string
+  hasKey: boolean
+  enabled: boolean
+  createdAt: string
+}
+
+// GET/PATCH /api/channels/mine/:id/compositions — one row per orientation,
+// always both present (lazily created server-side).
+export interface ChannelComposition {
+  id: string
+  channelId: string
+  orientation: Orientation
+  enabled: boolean
+  width: number
+  height: number
+  fps: number
+  bitrateKbps: number
+  preset: string
+  encoder: 'auto' | 'software' | 'vaapi' | 'qsv'
+  backgroundColor: string
+  labels: boolean
+  labelSize: number
+  destinations: ChannelCompositionDestination[]
+  createdAt: string
 }
 
 // GET /api/streams/available — the pool a user may build a channel from.

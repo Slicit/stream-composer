@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 
 const ROLES: Role[] = ['viewer', 'streamer', 'admin']
@@ -93,6 +94,16 @@ export function AdminUsersPage() {
     }
   }
 
+  async function toggleCompositor(id: string, canUseCompositor: boolean) {
+    setError(null)
+    try {
+      await api.patch(`/api/admin/users/${id}`, { canUseCompositor })
+      await load()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not change compositor access.')
+    }
+  }
+
   async function remove(id: string) {
     if (!confirm('Delete this user?')) return
     setError(null)
@@ -168,6 +179,7 @@ export function AdminUsersPage() {
                 <TableHead>Username</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Stream quota</TableHead>
+                <TableHead>Compositor</TableHead>
                 <TableHead>Last signed in</TableHead>
                 <TableHead />
               </TableRow>
@@ -196,6 +208,13 @@ export function AdminUsersPage() {
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={u.canUseCompositor}
+                      onCheckedChange={(checked) => toggleCompositor(u.id, checked)}
+                      aria-label={`Compositor access for ${u.username}`}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
                   <TableCell className="text-right space-x-2">

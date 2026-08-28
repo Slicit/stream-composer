@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { Channel, Game, Stream, User } from '@/api/types'
 import { ChannelEditForm } from '@/components/ChannelEditForm'
+import { ChannelCompositionSection } from '@/components/ChannelCompositionSection'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 // The admin full edit page for any channel — /admin/channels/:id. Shares
@@ -90,17 +91,23 @@ export function AdminChannelEditPage() {
         {!channel ? (
           <p className="text-muted-foreground">Loading…</p>
         ) : (
-          <ChannelEditForm
-            channel={channel}
-            streams={streams}
-            games={games}
-            users={users}
-            onUpdate={update}
-            onUploadBackground={uploadBackground}
-            uploadingBackground={uploading}
-            onDelete={remove}
-            listPath="/admin/channels"
-          />
+          <div className="flex flex-col gap-8">
+            <ChannelEditForm
+              channel={channel}
+              streams={streams}
+              games={games}
+              users={users}
+              onUpdate={update}
+              onUploadBackground={uploadBackground}
+              uploadingBackground={uploading}
+              onDelete={remove}
+              listPath="/admin/channels"
+            />
+            <div className="flex flex-col gap-3">
+              <h3 className="text-lg font-semibold">Compositor & restream</h3>
+              <ChannelCompositionSection apiBase={`/api/admin/channels/${channel.id}/compositions`} />
+            </div>
+          </div>
         )}
       </CardContent>
     </Card>

@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, ApiError } from '@/api/client'
 import type { AvailableStream, Channel, Game } from '@/api/types'
+import { useAuth } from '@/auth/AuthContext'
 import { ChannelEditForm } from '@/components/ChannelEditForm'
+import { ChannelCompositionSection } from '@/components/ChannelCompositionSection'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 // The self-service full edit page for one of the signed-in user's own
@@ -12,6 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 export function ChannelEditPage() {
   const { id = '' } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const canUseCompositor = user?.role === 'admin' || user?.canUseCompositor === true
   const [channel, setChannel] = useState<Channel | null>(null)
   const [streams, setStreams] = useState<AvailableStream[]>([])
   const [games, setGames] = useState<Game[]>([])
@@ -86,16 +90,24 @@ export function ChannelEditPage() {
         {!channel ? (
           <p className="text-muted-foreground">Loading…</p>
         ) : (
-          <ChannelEditForm
-            channel={channel}
-            streams={streams}
-            games={games}
-            onUpdate={update}
-            onUploadBackground={uploadBackground}
-            uploadingBackground={uploading}
-            onDelete={remove}
-            listPath="/channels"
-          />
+          <div className="flex flex-col gap-8">
+            <ChannelEditForm
+              channel={channel}
+              streams={streams}
+              games={games}
+              onUpdate={update}
+              onUploadBackground={uploadBackground}
+              uploadingBackground={uploading}
+              onDelete={remove}
+              listPath="/channels"
+            />
+            {canUseCompositor && (
+              <div className="flex flex-col gap-3">
+                <h3 className="text-lg font-semibold">Compositor & restream</h3>
+                <ChannelCompositionSection apiBase={`/api/channels/mine/${channel.id}/compositions`} />
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
