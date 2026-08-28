@@ -28,15 +28,43 @@ type Stream struct {
 // internal/relayrunner needs to decide whether and how to forward a
 // source. The key here is the real, unmasked credential (server-to-server
 // only, same as streams.js's own internal callers always saw it).
+//
+// A relay forwards exactly one of a raw stream or a channel composition's
+// output, never both — StreamID is set for the former, ChannelCompositionID
+// for the latter. Two different Rails tables feed this one shape
+// (RelayDestination and ChannelRelayDestination — see each model's own
+// comment for why they stay separate there); relayrunner is what unifies
+// them, since ffmpeg-process supervision is identical either way.
 type Relay struct {
-	ID       string
-	StreamID string
-	Provider string
-	Name     string
-	URL      string
-	Key      string
-	Audio    string // "copy" or "aac"
-	Enabled  bool
+	ID                   string
+	StreamID             string // set when forwarding a raw stream
+	ChannelCompositionID string // set when forwarding a channel composition's output
+	Provider             string
+	Name                 string
+	URL                  string
+	Key                  string
+	Audio                string // "copy" or "aac" — meaningless (and ignored) for a ChannelCompositionID relay: the composed source has no audio track at all
+	Enabled              bool
+}
+
+// ChannelComposition is one channel's compositor config for one
+// orientation — config only, matching Rails' ChannelComposition model.
+// internal/compositionscheduler is what decides, from this plus live
+// status, whether a job should actually be running right now.
+type ChannelComposition struct {
+	ID          string
+	ChannelID   string
+	Orientation string // "horizontal" or "vertical"
+	Enabled     bool
+	Width       int
+	Height      int
+	FPS         int
+	BitrateKbps int
+	Preset      string
+	Encoder     string // "auto" | "software" | "vaapi" | "qsv"
+	Background  string
+	Labels      bool
+	LabelSize   int
 }
 
 // User is the subset of a user record access decisions need.
@@ -90,7 +118,9 @@ type Store interface {
 	PublicViewingEnabled() bool
 
 	// Relays lists every configured restream destination, regardless of
-	// whether its source stream is currently live.
+	// whether its source (a raw stream or a channel composition) is
+	// currently live — a StreamID relay and a ChannelCompositionID relay
+	// both come back through here, see Relay's own comment.
 	Relays() []Relay
 
 	// Streams lists every configured stream, live or not — what a
@@ -114,4 +144,21 @@ type Store interface {
 	// DefaultLayoutMode is the site-wide fallback ("fixed" or "maximize")
 	// a channel uses when it has no LayoutMode override of its own.
 	DefaultLayoutMode() string
+
+	// ChannelCompositions lists every configured composition, regardless
+	// of whether it's enabled or currently has a live member —
+	// internal/compositionscheduler's reconciliation needs the full set,
+	// same as Relays() above.
+	ChannelCompositions() []ChannelComposition
+
+	// FindChannelComposition looks up one composition by its channel id
+	// and orientation — what the auth hook needs to authorize a publish
+	// to composed/<channelId>/<orientation>. Returns (nil, false) when
+	// unknown.
+	FindChannelComposition(channelID, orientation string) (*ChannelComposition, bool)
+
+	// FindChannelCompositionByID looks up one composition by its own id —
+	// what a ChannelCompositionID relay resolves against, mirroring
+	// FindByID for a StreamID relay. Returns (nil, false) when unknown.
+	FindChannelCompositionByID(id string) (*ChannelComposition, bool)
 }

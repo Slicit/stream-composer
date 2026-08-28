@@ -47,6 +47,30 @@ type jsonConfig struct {
 		FeaturedGame    string   `json:"featuredGame"`
 		LayoutMode      string   `json:"layoutMode"`
 	} `json:"channels"`
+	ChannelCompositions []struct {
+		ID          string `json:"id"`
+		ChannelID   string `json:"channelId"`
+		Orientation string `json:"orientation"`
+		Enabled     bool   `json:"enabled"`
+		Width       int    `json:"width"`
+		Height      int    `json:"height"`
+		FPS         int    `json:"fps"`
+		BitrateKbps int    `json:"bitrateKbps"`
+		Preset      string `json:"preset"`
+		Encoder     string `json:"encoder"`
+		Background  string `json:"background"`
+		Labels      bool   `json:"labels"`
+		LabelSize   int    `json:"labelSize"`
+	} `json:"channelCompositions"`
+	ChannelRelays []struct {
+		ID                   string `json:"id"`
+		ChannelCompositionID string `json:"channelCompositionId"`
+		Provider             string `json:"provider"`
+		Name                 string `json:"name"`
+		URL                  string `json:"url"`
+		Key                  string `json:"key"`
+		Enabled              bool   `json:"enabled"`
+	} `json:"channelRelays"`
 	Settings struct {
 		PublicViewing       bool   `json:"publicViewing"`
 		HomepageChannelSlug string `json:"homepageChannelSlug"`
@@ -72,8 +96,11 @@ func (cfg jsonConfig) toStreams() []Stream {
 	return streams
 }
 
+// toRelays merges both kinds of relay Rails knows about — RelayDestination
+// (StreamID set) and ChannelRelayDestination (ChannelCompositionID set) —
+// into the one shape relayrunner iterates. See Relay's own comment.
 func (cfg jsonConfig) toRelays() []Relay {
-	relays := make([]Relay, 0, len(cfg.Relays))
+	relays := make([]Relay, 0, len(cfg.Relays)+len(cfg.ChannelRelays))
 	for _, r := range cfg.Relays {
 		relays = append(relays, Relay{
 			ID:       r.ID,
@@ -86,7 +113,31 @@ func (cfg jsonConfig) toRelays() []Relay {
 			Enabled:  r.Enabled,
 		})
 	}
+	for _, r := range cfg.ChannelRelays {
+		relays = append(relays, Relay{
+			ID:                   r.ID,
+			ChannelCompositionID: r.ChannelCompositionID,
+			Provider:             r.Provider,
+			Name:                 r.Name,
+			URL:                  r.URL,
+			Key:                  r.Key,
+			Enabled:              r.Enabled,
+		})
+	}
 	return relays
+}
+
+func (cfg jsonConfig) toChannelCompositions() []ChannelComposition {
+	out := make([]ChannelComposition, 0, len(cfg.ChannelCompositions))
+	for _, c := range cfg.ChannelCompositions {
+		out = append(out, ChannelComposition{
+			ID: c.ID, ChannelID: c.ChannelID, Orientation: c.Orientation, Enabled: c.Enabled,
+			Width: c.Width, Height: c.Height, FPS: c.FPS, BitrateKbps: c.BitrateKbps,
+			Preset: c.Preset, Encoder: c.Encoder, Background: c.Background,
+			Labels: c.Labels, LabelSize: c.LabelSize,
+		})
+	}
+	return out
 }
 
 func (cfg jsonConfig) toChannels() []Channel {
@@ -136,7 +187,7 @@ func (b *JSONBridge) Load() error {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse %s: %w", b.Path, err)
 	}
-	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug, cfg.Settings.DefaultLayoutMode)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.toChannelCompositions(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug, cfg.Settings.DefaultLayoutMode)
 	return nil
 }
 

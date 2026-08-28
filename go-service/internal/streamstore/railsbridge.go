@@ -61,7 +61,7 @@ func (b *RailsBridge) Load() error {
 		return fmt.Errorf("decode response: %w", err)
 	}
 
-	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug, cfg.Settings.DefaultLayoutMode)
+	b.Store.Replace(cfg.toStreams(), cfg.toRelays(), cfg.toChannels(), cfg.toChannelCompositions(), cfg.Settings.PublicViewing, cfg.Settings.HomepageChannelSlug, cfg.Settings.DefaultLayoutMode)
 	return nil
 }
 

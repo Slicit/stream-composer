@@ -78,23 +78,33 @@ func (r *Runner) Tick(ctx context.Context) {
 		}
 	}
 
+	channelByID := make(map[string]streamstore.Channel)
+	for _, c := range r.Store.Channels() {
+		channelByID[c.ID] = c
+	}
+	streamByID := make(map[string]streamstore.Stream)
+	for _, st := range r.Store.Streams() {
+		streamByID[st.ID] = st
+	}
+
 	for id, rl := range wanted {
-		stream, ok := r.Store.FindByID(rl.StreamID)
+		sourcePath, unavailableReason, waitingReason := r.resolveSource(rl, channelByID, streamByID, liveKeys)
 
 		r.mu.Lock()
 		s := r.statusLocked(id)
 
-		if !ok || !stream.Enabled {
-			r.stopLocked(id, "the source stream is unavailable")
+		if unavailableReason != "" {
+			r.stopLocked(id, unavailableReason)
 			s.State = "off"
 			r.mu.Unlock()
 			continue
 		}
-		if !liveKeys[stream.Key] {
-			// The source is not publishing. Not a failure, so no backoff —
-			// OBS reconnecting should resume immediately.
+		if waitingReason != "" {
+			// The source is not publishing (or, for a composition relay,
+			// none of the channel's members are). Not a failure, so no
+			// backoff — a reconnect should resume immediately.
 			if _, running := r.running[id]; running {
-				r.stopLocked(id, "the source stopped publishing")
+				r.stopLocked(id, waitingReason)
 			}
 			s.State = "waiting"
 			s.Since = time.Time{}
@@ -112,8 +122,49 @@ func (r *Runner) Tick(ctx context.Context) {
 		}
 		r.mu.Unlock()
 
-		r.startOne(rl, r.Config.IngestPrefix+"/"+stream.Key)
+		r.startOne(rl, sourcePath)
 	}
+}
+
+// resolveSource works out the RTSP path a relay should read from, and
+// whether it can right now — a raw stream (StreamID set) reads its own
+// ingest path; a channel composition's output (ChannelCompositionID set)
+// reads the compositor's composed/<channelId>/<orientation> path, "live"
+// meaning the channel has at least one live member (the compositor
+// service itself decides, independently, whether to actually be
+// publishing there — see internal/compositionscheduler; this only decides
+// whether relaying it onward is worth attempting).
+func (r *Runner) resolveSource(rl streamstore.Relay, channelByID map[string]streamstore.Channel, streamByID map[string]streamstore.Stream, liveKeys map[string]bool) (sourcePath, unavailableReason, waitingReason string) {
+	if rl.StreamID != "" {
+		stream, ok := streamByID[rl.StreamID]
+		if !ok || !stream.Enabled {
+			return "", "the source stream is unavailable", ""
+		}
+		if !liveKeys[stream.Key] {
+			return "", "", "the source stopped publishing"
+		}
+		return r.Config.IngestPrefix + "/" + stream.Key, "", ""
+	}
+
+	comp, ok := r.Store.FindChannelCompositionByID(rl.ChannelCompositionID)
+	if !ok || !comp.Enabled {
+		return "", "the channel composition is unavailable", ""
+	}
+	channel, ok := channelByID[comp.ChannelID]
+	if !ok || !channelHasLiveMember(channel, streamByID, liveKeys) {
+		return "", "", "the channel has no live member"
+	}
+	return r.Config.ComposedPrefix + "/" + comp.ChannelID + "/" + comp.Orientation, "", ""
+}
+
+func channelHasLiveMember(channel streamstore.Channel, streamByID map[string]streamstore.Stream, liveKeys map[string]bool) bool {
+	for _, sid := range channel.StreamIDs {
+		st, ok := streamByID[sid]
+		if ok && st.Enabled && liveKeys[st.Key] {
+			return true
+		}
+	}
+	return false
 }
 
 // retryAtLocked and the map it reads live alongside backoff (delay), since

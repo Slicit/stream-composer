@@ -28,6 +28,7 @@ import (
 	"github.com/Slicit/stream-composer/go-service/internal/authhook"
 	"github.com/Slicit/stream-composer/go-service/internal/bandwidthhistory"
 	"github.com/Slicit/stream-composer/go-service/internal/channelstate"
+	"github.com/Slicit/stream-composer/go-service/internal/compositionscheduler"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/hoststats"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
@@ -126,6 +127,11 @@ func main() {
 	defer close(audioStop)
 	go audio.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, audioStop)
 	defer audio.StopAll()
+
+	compositions := compositionscheduler.New(store, mtxClient, cfg, log)
+	compositionStop := make(chan struct{})
+	defer close(compositionStop)
+	go compositions.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, compositionStop)
 
 	bandwidth := bandwidthhistory.New(mtxClient, cfg.IngestPrefix, filepath.Join(cfg.DataDir, "bandwidth-history.json"), log)
 	bandwidthStop := make(chan struct{})

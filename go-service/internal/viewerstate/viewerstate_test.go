@@ -35,6 +35,13 @@ func (f *fakeStore) FindChannelBySlug(slug string) (*streamstore.Channel, bool) 
 	}
 	return nil, false
 }
+func (f *fakeStore) ChannelCompositions() []streamstore.ChannelComposition { return nil }
+func (f *fakeStore) FindChannelComposition(string, string) (*streamstore.ChannelComposition, bool) {
+	return nil, false
+}
+func (f *fakeStore) FindChannelCompositionByID(string) (*streamstore.ChannelComposition, bool) {
+	return nil, false
+}
 
 type fakeLister struct{ live []mediamtx.IngestPath }
 

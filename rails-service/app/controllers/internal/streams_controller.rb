@@ -34,6 +34,23 @@ module Internal
             currentTopic: c.current_topic, featuredGame: c.featured_game&.name,
             layoutMode: c.layout_mode }
         end,
+        # The compositor's own config — see go-service/internal/
+        # compositionscheduler, which turns "enabled + a live member + an
+        # enabled destination" into start/stop calls against the
+        # compositor service. destinations travel as a flat, separate
+        # list (channelRelays) rather than nested under each composition:
+        # internal/streamstore.Relay unifies both a stream's and a
+        # composition's destinations into one shape relayrunner iterates.
+        channelCompositions: ChannelComposition.all.map do |cc|
+          { id: cc.id, channelId: cc.channel_id, orientation: cc.orientation, enabled: cc.enabled,
+            width: cc.width, height: cc.height, fps: cc.fps, bitrateKbps: cc.bitrate_kbps,
+            preset: cc.preset, encoder: cc.encoder, background: cc.background_color,
+            labels: cc.labels, labelSize: cc.label_size }
+        end,
+        channelRelays: ChannelRelayDestination.all.map do |d|
+          { id: d.id, channelCompositionId: d.channel_composition_id, provider: d.provider,
+            name: d.name, url: d.url, key: d.key, enabled: d.enabled }
+        end,
         settings: {
           publicViewing: setting.public_viewing,
           # Resolved to a slug here rather than handing the Go side a bare

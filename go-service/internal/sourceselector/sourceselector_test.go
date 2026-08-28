@@ -21,6 +21,13 @@ func (f *fakeStore) Streams() []streamstore.Stream                         { ret
 func (f *fakeStore) FindChannelBySlug(string) (*streamstore.Channel, bool) { return nil, false }
 func (f *fakeStore) Channels() []streamstore.Channel                       { return nil }
 func (f *fakeStore) HomepageChannelSlug() string                           { return "" }
+func (f *fakeStore) ChannelCompositions() []streamstore.ChannelComposition { return nil }
+func (f *fakeStore) FindChannelComposition(string, string) (*streamstore.ChannelComposition, bool) {
+	return nil, false
+}
+func (f *fakeStore) FindChannelCompositionByID(string) (*streamstore.ChannelComposition, bool) {
+	return nil, false
+}
 
 func TestSelectOrdersManualModeByOperatorOrderOnly(t *testing.T) {
 	store := &fakeStore{streams: []streamstore.Stream{

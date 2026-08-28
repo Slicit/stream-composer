@@ -116,7 +116,10 @@ func main() {
 		writeJSON(w, http.StatusOK, map[string]any{"jobs": out})
 	})
 
-	mux.HandleFunc("GET /jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	// {id...} (not {id}): job ids are "<channelId>/<orientation>", so the
+	// id itself contains a slash — a plain {id} pattern only ever matches
+	// one path segment.
+	mux.HandleFunc("GET /jobs/{id...}", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, toStatusResponse(runner.StatusOf(r.PathValue("id"))))
 	})
 
@@ -155,7 +158,7 @@ func main() {
 		writeJSON(w, http.StatusAccepted, toStatusResponse(runner.StatusOf(req.ID)))
 	})
 
-	mux.HandleFunc("DELETE /jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("DELETE /jobs/{id...}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		log.Info("stopping compositor job via API", "id", id)
 		runner.StopJob(id)

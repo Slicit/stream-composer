@@ -120,6 +120,20 @@ func (h *Hook) Decide(b Body) Verdict {
 			}
 			return Verdict{false, "the audio path is written by the audio relay only"}
 		}
+		if strings.HasPrefix(path, h.Config.ComposedPrefix+"/") {
+			if !internal {
+				return Verdict{false, "the composed path is written by the compositor service only"}
+			}
+			channelID, orientation, ok := splitComposedPath(strings.TrimPrefix(path, h.Config.ComposedPrefix+"/"))
+			if !ok {
+				return Verdict{false, "malformed composed path"}
+			}
+			comp, ok := h.Store.FindChannelComposition(channelID, orientation)
+			if !ok || !comp.Enabled {
+				return Verdict{false, "unknown or disabled channel composition"}
+			}
+			return Verdict{true, "compositor"}
+		}
 		if !strings.HasPrefix(path, prefix) {
 			return Verdict{false, `publish to "` + h.Config.IngestPrefix + `/<stream key>"`}
 		}
@@ -157,6 +171,12 @@ func (h *Hook) Decide(b Body) Verdict {
 			}
 			return Verdict{false, "unknown or disabled stream key"}
 		}
+		if strings.HasPrefix(path, h.Config.ComposedPrefix+"/") {
+			// Already behind the internal-only gate above — the relay
+			// runner reading a composed output to forward it externally
+			// is the only caller, same posture as the programme path.
+			return Verdict{true, "composed output relay"}
+		}
 		return Verdict{false, "unknown path"}
 	}
 
@@ -171,6 +191,20 @@ func firstSegment(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// splitComposedPath splits "<channelId>/<orientation>" — exactly two
+// segments, neither empty, no further nesting.
+func splitComposedPath(rest string) (channelID, orientation string, ok bool) {
+	i := strings.IndexByte(rest, '/')
+	if i <= 0 || i == len(rest)-1 {
+		return "", "", false
+	}
+	channelID, orientation = rest[:i], rest[i+1:]
+	if strings.Contains(orientation, "/") {
+		return "", "", false
+	}
+	return channelID, orientation, true
 }
 
 // logDenial rate-limits repeated denials of the same shape so a scanner

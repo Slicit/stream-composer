@@ -16,16 +16,20 @@ func testHook() (*Hook, *streamstore.Memory) {
 	store.Replace([]streamstore.Stream{
 		{Key: "good-key", Enabled: true},
 		{Key: "disabled-key", Enabled: false},
-	}, nil, nil, false, "", "")
+	}, nil, nil, []streamstore.ChannelComposition{
+		{ChannelID: "chan-1", Orientation: "horizontal", Enabled: true},
+		{ChannelID: "chan-1", Orientation: "vertical", Enabled: false},
+	}, false, "", "")
 
 	cfg := config.Config{
 		MediaMTX: config.MediaMTX{
 			InternalUser:     "composer",
 			InternalPassword: "internal-secret",
 		},
-		IngestPrefix: "live",
-		ProgramPath:  "program",
-		AudioPrefix:  "audio",
+		IngestPrefix:   "live",
+		ProgramPath:    "program",
+		AudioPrefix:    "audio",
+		ComposedPrefix: "composed",
 	}
 	log := slog.New(slog.NewTextHandler(nopWriter{}, nil))
 	return New(store, cfg, log), store
@@ -58,6 +62,11 @@ func TestDecidePublish(t *testing.T) {
 		{"an unknown stream key may not publish", Body{Action: "publish", Path: "live/no-such-key"}, false},
 		{"a nested publish path is refused", Body{Action: "publish", Path: "live/good-key/extra"}, false},
 		{"publish outside the ingest prefix is refused", Body{Action: "publish", Path: "elsewhere/good-key"}, false},
+		{"the compositor may publish an enabled composition's path", internalBody(Body{Action: "publish", Path: "composed/chan-1/horizontal"}), true},
+		{"nobody else may publish a composed path", Body{Action: "publish", Path: "composed/chan-1/horizontal"}, false},
+		{"a disabled composition may not be published to, even internally", internalBody(Body{Action: "publish", Path: "composed/chan-1/vertical"}), false},
+		{"an unknown channel id may not be published to", internalBody(Body{Action: "publish", Path: "composed/no-such-channel/horizontal"}), false},
+		{"a malformed composed path (missing orientation) is refused", internalBody(Body{Action: "publish", Path: "composed/chan-1"}), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -83,6 +92,7 @@ func TestDecideRead(t *testing.T) {
 		{"the internal caller may not read a disabled stream key", internalBody(Body{Action: "read", Path: "live/disabled-key"}), false},
 		{"the internal caller may read an audio path for a valid key", internalBody(Body{Action: "read", Path: "audio/good-key"}), true},
 		{"an unknown path is refused even internally", internalBody(Body{Action: "read", Path: "nonsense/path"}), false},
+		{"the internal caller may read a composed path — the relay runner forwarding it externally", internalBody(Body{Action: "read", Path: "composed/chan-1/horizontal"}), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

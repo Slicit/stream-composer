@@ -90,6 +90,29 @@ RSpec.describe "Internal::Streams", type: :request do
     expect(JSON.parse(response.body)["settings"]["defaultLayoutMode"]).to eq("maximize")
   end
 
+  it "returns every channel composition's config" do
+    channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [stream.id])
+    composition = channel.channel_compositions.create!(orientation: "horizontal", enabled: true, bitrate_kbps: 5000)
+    get "/internal/test-internal-secret/streams", as: :json
+    entry = JSON.parse(response.body)["channelCompositions"].find { |c| c["id"] == composition.id }
+    expect(entry).to include(
+      "channelId" => channel.id,
+      "orientation" => "horizontal",
+      "enabled" => true,
+      "bitrateKbps" => 5000,
+      "encoder" => "auto",
+    )
+  end
+
+  it "returns every channel composition's relay destinations with their real (unmasked) key" do
+    channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [stream.id])
+    composition = channel.channel_compositions.create!(orientation: "horizontal")
+    destination = composition.channel_relay_destinations.create!(provider: "youtube", key: "real-key-value")
+    get "/internal/test-internal-secret/streams", as: :json
+    entry = JSON.parse(response.body)["channelRelays"].find { |r| r["id"] == destination.id }
+    expect(entry).to include("channelCompositionId" => composition.id, "provider" => "youtube", "key" => "real-key-value", "enabled" => true)
+  end
+
   it "resolves the homepage channel to its slug" do
     channel = owner.owned_channels.create!(name: "Community Room", visibility: "public", stream_ids: [])
     AppSetting.instance.update!(homepage_channel_id: channel.id)

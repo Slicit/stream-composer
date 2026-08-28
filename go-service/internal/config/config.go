@@ -20,9 +20,16 @@ type Config struct {
 	Port     string
 	MediaMTX MediaMTX
 
-	IngestPrefix string // e.g. "live" -> live/<key>
-	ProgramPath  string // e.g. "program"
-	AudioPrefix  string // e.g. "audio" -> audio/<key>
+	IngestPrefix   string // e.g. "live" -> live/<key>
+	ProgramPath    string // e.g. "program"
+	AudioPrefix    string // e.g. "audio" -> audio/<key>
+	ComposedPrefix string // e.g. "composed" -> composed/<channelId>/<orientation>, see internal/compositionscheduler
+
+	// CompositorAPI is the compositor service's base URL, e.g.
+	// http://compositor:8080 — internal/compositionscheduler's only way of
+	// telling it to start/stop a job (see internal/compositor's package
+	// comment on why that's a separate service, not a Go import).
+	CompositorAPI string
 
 	FFmpegPath  string // "ffmpeg" unless overridden
 	FFprobePath string // "ffprobe" unless overridden
@@ -87,6 +94,8 @@ func Load() Config {
 		IngestPrefix:      env("INGEST_PREFIX", "live"),
 		ProgramPath:       env("PROGRAM_PATH", "program"),
 		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
+		ComposedPrefix:    env("COMPOSED_PREFIX", "composed"),
+		CompositorAPI:     env("COMPOSITOR_API", "http://compositor:8080"),
 		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:       env("FFPROBE_PATH", "ffprobe"),
 		VAAPIDevice:       env("VAAPI_DEVICE", "/dev/dri/renderD128"),

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +71,7 @@ func TestTickDoesNotStartADisabledRelay(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: false, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -84,7 +85,7 @@ func TestTickWaitsWhenSourceIsNotLive(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -98,7 +99,7 @@ func TestTickStopsARelayWhoseSourceStreamIsGone(t *testing.T) {
 	store := streamstore.NewMemory()
 	// No matching stream for r1's StreamID at all.
 	relay := streamstore.Relay{ID: "r1", StreamID: "missing", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace(nil, []streamstore.Relay{relay}, nil, false, "", "")
+	store.Replace(nil, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
 	r.Tick(context.Background())
@@ -112,7 +113,7 @@ func TestTickStartsAndStopsALiveRelay(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live", Audio: "copy"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	lister := &fakeIngestLister{live: map[string]bool{"src-key": true}}
 	r := New(store, lister, testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5")), silentLog())
@@ -145,7 +146,7 @@ func TestFailingFFmpegSchedulesABackoffThatGrows(t *testing.T) {
 	store := streamstore.NewMemory()
 	stream := streamstore.Stream{ID: "s1", Key: "src-key", Enabled: true}
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, false, "", "")
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "exit 1")), silentLog())
 	r.Tick(context.Background())
@@ -177,6 +178,67 @@ func TestFailingFFmpegSchedulesABackoffThatGrows(t *testing.T) {
 	second := r.StatusOf("r1")
 	if !second.RetryAt.After(first.RetryAt) {
 		t.Error("the retry delay should grow between consecutive failures")
+	}
+}
+
+func TestTickStartsAChannelCompositionRelayFromTheComposedPath(t *testing.T) {
+	store := streamstore.NewMemory()
+	channel := streamstore.Channel{ID: "chan-1", StreamIDs: []string{"s1"}}
+	stream := streamstore.Stream{ID: "s1", Key: "cam-1", Enabled: true}
+	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
+	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: "comp-1", Enabled: true, URL: "rtmp://example.test/live"}
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
+
+	cfg := testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5"))
+	cfg.ComposedPrefix = "composed"
+	lister := &fakeIngestLister{live: map[string]bool{"cam-1": true}}
+	r := New(store, lister, cfg, silentLog())
+	r.Tick(context.Background())
+
+	waitFor(t, time.Second, func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		_, running := r.running["r1"]
+		return running
+	})
+	r.mu.Lock()
+	args := strings.Join(r.running["r1"].cmd.Args, " ")
+	r.mu.Unlock()
+	if !strings.Contains(args, "rtsp://mediamtx:8554/composed/chan-1/horizontal") {
+		t.Errorf("expected the composed path as the actual ffmpeg source, got: %s", args)
+	}
+}
+
+func TestTickWaitsWhenAChannelCompositionHasNoLiveMember(t *testing.T) {
+	store := streamstore.NewMemory()
+	channel := streamstore.Channel{ID: "chan-1", StreamIDs: []string{"s1"}}
+	stream := streamstore.Stream{ID: "s1", Key: "cam-1", Enabled: true}
+	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
+	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: "comp-1", Enabled: true, URL: "rtmp://example.test/live"}
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
+
+	cfg := testConfig(fakeFFmpeg(t, "sleep 5"))
+	r := New(store, &fakeIngestLister{live: map[string]bool{}}, cfg, silentLog())
+	r.Tick(context.Background())
+
+	if got := r.StatusOf("r1").State; got != "waiting" {
+		t.Errorf("a composition relay with no live channel member should be 'waiting', got %q", got)
+	}
+}
+
+func TestTickStopsAChannelCompositionRelayWhenTheCompositionIsDisabled(t *testing.T) {
+	store := streamstore.NewMemory()
+	channel := streamstore.Channel{ID: "chan-1", StreamIDs: []string{"s1"}}
+	stream := streamstore.Stream{ID: "s1", Key: "cam-1", Enabled: true}
+	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: false}
+	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: "comp-1", Enabled: true, URL: "rtmp://example.test/live"}
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
+
+	r := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
+	r.Tick(context.Background())
+
+	if got := r.StatusOf("r1").State; got != "off" {
+		t.Errorf("a relay for a disabled composition should be off, got %q", got)
 	}
 }
 

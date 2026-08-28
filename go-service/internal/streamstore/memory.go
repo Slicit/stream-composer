@@ -11,6 +11,7 @@ type Memory struct {
 	streams             []Stream
 	relays              []Relay
 	channels            []Channel
+	channelCompositions []ChannelComposition
 	publicViewing       bool
 	homepageChannelSlug string
 	defaultLayoutMode   string
@@ -20,15 +21,16 @@ func NewMemory() *Memory {
 	return &Memory{}
 }
 
-// Replace swaps the entire stream, relay and channel set atomically — how
-// a future JSON-file or polling-based loader would apply a refresh
-// without a caller ever observing a half-updated set.
-func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, publicViewing bool, homepageChannelSlug string, defaultLayoutMode string) {
+// Replace swaps the entire stream, relay, channel and composition set
+// atomically — how a future JSON-file or polling-based loader would apply
+// a refresh without a caller ever observing a half-updated set.
+func (m *Memory) Replace(streams []Stream, relays []Relay, channels []Channel, channelCompositions []ChannelComposition, publicViewing bool, homepageChannelSlug string, defaultLayoutMode string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.streams = append([]Stream(nil), streams...)
 	m.relays = append([]Relay(nil), relays...)
 	m.channels = append([]Channel(nil), channels...)
+	m.channelCompositions = append([]ChannelComposition(nil), channelCompositions...)
 	m.publicViewing = publicViewing
 	m.homepageChannelSlug = homepageChannelSlug
 	m.defaultLayoutMode = defaultLayoutMode
@@ -119,4 +121,34 @@ func (m *Memory) DefaultLayoutMode() string {
 		return "fixed"
 	}
 	return m.defaultLayoutMode
+}
+
+func (m *Memory) ChannelCompositions() []ChannelComposition {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return append([]ChannelComposition(nil), m.channelCompositions...)
+}
+
+func (m *Memory) FindChannelComposition(channelID, orientation string) (*ChannelComposition, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.channelCompositions {
+		if m.channelCompositions[i].ChannelID == channelID && m.channelCompositions[i].Orientation == orientation {
+			c := m.channelCompositions[i]
+			return &c, true
+		}
+	}
+	return nil, false
+}
+
+func (m *Memory) FindChannelCompositionByID(id string) (*ChannelComposition, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for i := range m.channelCompositions {
+		if m.channelCompositions[i].ID == id {
+			c := m.channelCompositions[i]
+			return &c, true
+		}
+	}
+	return nil, false
 }
