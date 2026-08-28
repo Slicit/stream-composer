@@ -61,55 +61,64 @@ on its own within a few seconds. Worth a real healthcheck later.
   `server/src/proxy.js`.
 - `internal/relayrunner` — per-stream restream supervision, ported from
   `server/src/relays.js`.
-- `internal/layout` — the grid-shape math, ported field-for-field from
-  `server/src/layout.js` (golden-master tested against its exact output —
-  see `layout_test.go` before touching it).
+- `internal/layout` — the grid-shape math. `Compute` (`layout.go`) is
+  ported field-for-field from `server/src/layout.js` (golden-master
+  tested against its exact output — see `layout_test.go` before touching
+  it) and is what a horizontal composition uses. `ComputeForCanvas`
+  (`layout_canvas.go`, no golden-master constraint) is a separate,
+  portrait-aware best-fit search ported from
+  `react-app/src/lib/clientLayout.ts`'s `bestGrid`, used for a vertical
+  composition — `Compute`'s landscape-only `ceil(sqrt(count))` guess packs
+  a tall canvas badly.
 - `internal/encoder` — hardware/software encoder capability detection,
   ported from `server/src/encoder.js`.
 - `internal/compositor` — the ffmpeg filtergraph builder and job
   supervisor a channel's composed restream runs on, ported from
   `server/src/compositor.js`. See "Compositor service" below.
-- `cmd/dataplane` — wires everything above except `compositor` into the
-  main data-plane HTTP server.
+- `internal/compositionscheduler` — polls `Store` + MediaMTX and decides
+  which channel compositions should currently be running (enabled + a
+  live member + an enabled destination), reconciling against the
+  compositor service's job API.
+- `cmd/dataplane` — wires everything above except `compositor` and
+  `internal/compositor` into the main data-plane HTTP server.
 - `cmd/compositor` — a separate binary/container wiring `internal/compositor`
   + `internal/encoder` into their own small HTTP server (`Dockerfile.compositor`).
 
 ## Compositor service
 
 A channel's server-side compositor (composite N sources into one encoded
-feed, publish it back into MediaMTX, relay it to YouTube/TikTok/etc. — see
-the plan in `LOGBOOK` once it lands there) runs as its own container,
-deliberately separate from `dataplane`: a heavy or misbehaving composition
-job must never affect ordinary viewers' WHEP proxying or the MediaMTX auth
-hook's latency. `cmd/compositor` exposes a small job API; nothing calls it
-automatically yet (that orchestration — deciding *which* channels should
-currently be compositing, from Rails config + live status — is a later
-phase, owned by `dataplane`), but it's directly reachable for manual
-validation once the dev stack is up:
+feed, publish it back into MediaMTX, relay it to YouTube/TikTok/etc.) runs
+as its own container, deliberately separate from `dataplane`: a heavy or
+misbehaving composition job must never affect ordinary viewers' WHEP
+proxying or the MediaMTX auth hook's latency.
+
+**This is fully automatic in normal operation** — nothing to run by hand.
+`internal/compositionscheduler` (inside `dataplane`) polls Rails config and
+MediaMTX live status, and for every `ChannelComposition` that's enabled,
+has at least one live member, and has at least one enabled
+`ChannelRelayDestination`, it starts a job on the compositor service;
+everything else, it stops. `internal/authhook` only authorizes a
+`composed/<channelId>/<orientation>` publish/read when Rails actually has
+that composition enabled — the compositor service can't be told to publish
+somewhere it isn't supposed to, even by whoever holds the internal
+credential.
+
+Turn it on by enabling a `ChannelComposition` and adding at least one
+enabled `ChannelRelayDestination` to it (self-service:
+`/api/channels/mine/:id/compositions`, admin:
+`/api/admin/channels/:id/compositions` — see the React "Compositor &
+restream" section on a channel's edit page) — within one poll cycle,
+`composed/<channelId>/<orientation>` shows up ready in MediaMTX and the
+relay starts forwarding it out.
+
+For lower-level debugging, `cmd/compositor`'s job API is still directly
+reachable — useful for checking a specific ffmpeg command or capability
+probe without going through the full Rails/dataplane loop, but a
+hand-crafted job's own publish only succeeds if `id`/`outputPath` matches
+a composition Rails actually has enabled (see above):
 
 ```bash
 curl http://localhost:18081/healthz
 curl http://localhost:18081/caps   # what this machine can actually encode with
-
-curl -X POST http://localhost:18081/jobs -H 'Content-Type: application/json' -d '{
-  "id": "manual-test",
-  "sources": [{"path": "live/<a real, currently-publishing stream key>", "label": "Cam"}],
-  "options": {"width": 1920, "height": 1080, "fps": 30, "bitrateKbps": 4500, "outputPath": "composed/manual-test"}
-}'
-curl http://localhost:18081/jobs/manual-test   # state, restarts, the exact ffmpeg command in use
-# then, in MediaMTX's own API: the composed/manual-test path should show up ready
-
-curl -X DELETE http://localhost:18081/jobs/manual-test
+curl http://localhost:18081/jobs   # every job dataplane currently has running, and its state/restarts/exact command
 ```
-
-**Known gap, expected until the next phase:** the job above reads its
-source fine but MediaMTX's auth hook (`internal/authhook`) currently
-returns `401 Unauthorized` on the actual publish — it only recognizes
-`ProgramPath` (the old single global "program") and `AudioPrefix/*` as
-authorized publish targets, nothing yet allows an arbitrary
-`composed/<channelId>/<orientation>` path. Confirmed by running the exact
-same command by hand: filtergraph, encoder args and the RTSP input all
-work correctly; only the final ANNOUNCE is refused. Teaching the auth hook
-about composed paths (authorized only when that specific composition is
-actually supposed to be running, per Rails config) is exactly what the
-data-plane orchestration phase adds.

@@ -47,6 +47,39 @@ func TestBuildArgsReadsEachSourceOverRTSPAndPublishesTheComposedOutput(t *testin
 	}
 }
 
+func TestBuildArgsUsesTheCanvasAwareGridForAVerticalComposition(t *testing.T) {
+	sources := []Source{{Path: "live/cam-1"}, {Path: "live/cam-2"}}
+	opts := Options{Width: 700, Height: 1400, OutputPath: "composed/chan-1/vertical", Orientation: "vertical"}
+	_, result := BuildArgs(sources, opts, testConfig(), encoder.Caps{Encoders: map[string]bool{"libx264": true}})
+
+	if len(result.Cells) != 2 {
+		t.Fatalf("expected 2 cells, got %d", len(result.Cells))
+	}
+	// A narrow, tall canvas should stack rather than go 2-across — see
+	// internal/layout.ComputeForCanvas's own tests for the general case;
+	// this just confirms BuildArgs actually routes there for "vertical".
+	if result.Cells[0].X != result.Cells[1].X || !(result.Cells[0].Y < result.Cells[1].Y) {
+		t.Errorf("expected a vertical composition's 2 sources stacked, got: %+v", result.Cells)
+	}
+}
+
+func TestBuildArgsUsesTheFixedGridWhenOrientationIsNotVertical(t *testing.T) {
+	sources := []Source{{Path: "live/cam-1"}, {Path: "live/cam-2"}}
+	// Same narrow/tall canvas as the vertical case above, but Orientation
+	// unset — Compute's landscape-only "auto" guess should still apply
+	// (side by side, not stacked), confirming the branch actually depends
+	// on Orientation and not just canvas shape.
+	opts := Options{Width: 700, Height: 1400, OutputPath: "composed/chan-1/horizontal"}
+	_, result := BuildArgs(sources, opts, testConfig(), encoder.Caps{Encoders: map[string]bool{"libx264": true}})
+
+	if len(result.Cells) != 2 {
+		t.Fatalf("expected 2 cells, got %d", len(result.Cells))
+	}
+	if result.Cells[0].Y != result.Cells[1].Y {
+		t.Errorf("expected Compute's own side-by-side auto layout, got: %+v", result.Cells)
+	}
+}
+
 func TestBuildArgsOmitsCaptionsWhenLabelsAreOff(t *testing.T) {
 	sources := []Source{{Path: "live/cam-1", Label: "Front Row"}}
 	opts := Options{Width: 1920, Height: 1080, OutputPath: "composed/c/horizontal", Labels: false}

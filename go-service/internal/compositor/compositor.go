@@ -51,6 +51,10 @@ type Options struct {
 	Labels        bool
 	LabelSize     int
 	OutputPath    string // MediaMTX path to publish the composed feed to, e.g. "composed/<channelId>/horizontal"
+	// Orientation picks the grid algorithm: "vertical" uses
+	// layout.ComputeForCanvas (portrait-aware — see its own doc comment),
+	// anything else (including "" and "horizontal") uses layout.Compute.
+	Orientation string
 }
 
 // escapeDrawtext truncates before escaping so a cut never lands mid-escape-
@@ -96,16 +100,24 @@ func rtspBase(cfg config.Config) string {
 }
 
 // BuildArgs is the complete ffmpeg argument list for one job. Cells come
-// from layout.Compute in "auto" mode — the same grid math a "fixed"-layout
-// browser viewer uses, so a channel's composed restream matches what a
-// fixed-mode viewer sees. Each source is scaled, padded and optionally
+// from layout.Compute in "auto" mode for a horizontal composition — the
+// same grid math a "fixed"-layout browser viewer uses, so a channel's
+// composed restream matches what a fixed-mode viewer sees — or from
+// layout.ComputeForCanvas for a vertical one, whose portrait-aware best-fit
+// search Compute's landscape-only guess packs badly (see each function's
+// own doc comment). Each source is scaled, padded and optionally
 // captioned, then overlaid onto a solid background — overlay rather than
 // xstack, since xstack can only tile a perfect matrix and overlay lets a
 // partial row stay centered. The output is video-only: mixing several
 // rooms' audio into one track is unlistenable, so a relayed destination
 // gets a silent picture, matching the pre-migration compositor exactly.
 func BuildArgs(sources []Source, opts Options, cfg config.Config, caps encoder.Caps) (args []string, result layout.Result) {
-	result = layout.Compute(len(sources), layout.Options{Width: opts.Width, Height: opts.Height, Gap: 4, Layout: "auto"})
+	layoutOpts := layout.Options{Width: opts.Width, Height: opts.Height, Gap: 4, Layout: "auto"}
+	if opts.Orientation == "vertical" {
+		result = layout.ComputeForCanvas(len(sources), layoutOpts)
+	} else {
+		result = layout.Compute(len(sources), layoutOpts)
+	}
 	placed := sources
 	if len(placed) > len(result.Cells) {
 		placed = placed[:len(result.Cells)]

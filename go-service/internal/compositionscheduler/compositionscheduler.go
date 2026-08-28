@@ -62,6 +62,7 @@ type apiOptions struct {
 	Labels      bool   `json:"labels"`
 	LabelSize   int    `json:"labelSize"`
 	OutputPath  string `json:"outputPath"`
+	Orientation string `json:"orientation"`
 }
 
 type startJobRequest struct {
@@ -257,7 +258,8 @@ func (s *Scheduler) startJob(ctx context.Context, id string, sources []apiSource
 			Width: comp.Width, Height: comp.Height, FPS: comp.FPS, BitrateKbps: comp.BitrateKbps,
 			Preset: comp.Preset, Encoder: comp.Encoder, Background: comp.Background,
 			Labels: comp.Labels, LabelSize: comp.LabelSize,
-			OutputPath: OutputPath(s.Config, comp.ChannelID, comp.Orientation),
+			OutputPath:  OutputPath(s.Config, comp.ChannelID, comp.Orientation),
+			Orientation: comp.Orientation,
 		},
 	}
 	buf, err := json.Marshal(body)

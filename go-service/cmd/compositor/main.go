@@ -42,6 +42,7 @@ type optionsJSON struct {
 	Labels      bool   `json:"labels"`
 	LabelSize   int    `json:"labelSize"`
 	OutputPath  string `json:"outputPath"`
+	Orientation string `json:"orientation"`
 }
 
 type startJobRequest struct {
@@ -150,7 +151,8 @@ func main() {
 			Width: req.Options.Width, Height: req.Options.Height, FPS: req.Options.FPS,
 			BitrateKbps: req.Options.BitrateKbps, Preset: req.Options.Preset, Encoder: req.Options.Encoder,
 			Background: req.Options.Background, Labels: req.Options.Labels, LabelSize: req.Options.LabelSize,
-			OutputPath: req.Options.OutputPath,
+			OutputPath:  req.Options.OutputPath,
+			Orientation: req.Options.Orientation,
 		}
 
 		log.Info("starting compositor job via API", "id", req.ID, "sources", len(sources))

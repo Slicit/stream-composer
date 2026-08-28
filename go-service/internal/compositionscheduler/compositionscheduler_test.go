@@ -107,6 +107,9 @@ func TestTickStartsAnEnabledCompositionWithALiveMemberAndAnEnabledDestination(t 
 	if req.Options.OutputPath != "composed/chan-1/horizontal" {
 		t.Errorf("outputPath = %q, want composed/chan-1/horizontal", req.Options.OutputPath)
 	}
+	if req.Options.Orientation != "horizontal" {
+		t.Errorf("orientation = %q, want horizontal — the compositor needs this to pick the right grid algorithm", req.Options.Orientation)
+	}
 	if len(req.Sources) != 1 || req.Sources[0].Path != "live/cam-1" {
 		t.Errorf("expected only the live member as a source, got: %+v", req.Sources)
 	}
