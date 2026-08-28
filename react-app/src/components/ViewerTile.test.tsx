@@ -25,7 +25,7 @@ function loadVideoWithIntrinsicSize(width: number, height: number) {
   const video = document.querySelector('video') as HTMLVideoElement
   Object.defineProperty(video, 'videoWidth', { value: width, configurable: true })
   Object.defineProperty(video, 'videoHeight', { value: height, configurable: true })
-  fireEvent.loadedMetadata(video)
+  fireEvent.resize(video)
 }
 
 describe('ViewerTile', () => {

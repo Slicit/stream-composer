@@ -21,11 +21,11 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
   const [state, setState] = useState<WhepState>('connecting')
   const [message, setMessage] = useState<string | null>(null)
   const [stats, setStats] = useState<WhepStats | null>(null)
-  // The source's own width/height, once its metadata loads — needed to
-  // work out how much of the cell object-contain actually letterboxes,
-  // so the name caption can be pushed up to sit at the bottom of the
-  // real, visible picture instead of the cell's own (possibly taller)
-  // bottom edge. null until then, treated as "no letterboxing yet".
+  // The source's own width/height, once known — needed to work out how
+  // much of the cell object-contain actually letterboxes, so the name
+  // caption can be pushed up to sit at the bottom of the real, visible
+  // picture instead of the cell's own (possibly taller) bottom edge.
+  // null until then, treated as "no letterboxing yet".
   const [videoRatio, setVideoRatio] = useState<number | null>(null)
 
   useEffect(() => {
@@ -64,6 +64,22 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
     else video.play()?.catch(() => {})
   }, [paused])
 
+  // `loadedmetadata` alone isn't reliable for a live WebRTC source: it can
+  // fire before videoWidth/videoHeight are actually populated, silently
+  // leaving videoRatio null forever and pinning the caption to the cell's
+  // bottom edge instead of the picture's. The video element's own `resize`
+  // event is what actually fires once (and whenever) its intrinsic size is
+  // known — including if a source's encoder changes resolution mid-stream.
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    const handleResize = () => {
+      if (video.videoWidth && video.videoHeight) setVideoRatio(video.videoWidth / video.videoHeight)
+    }
+    video.addEventListener('resize', handleResize)
+    return () => video.removeEventListener('resize', handleResize)
+  }, [])
+
   const style = {
     left: `${(cell.x / canvasWidth) * 100}%`,
     top: `${(cell.y / canvasHeight) * 100}%`,
@@ -92,10 +108,6 @@ export function ViewerTile({ path, name, cell, canvasWidth, canvasHeight, paused
         autoPlay
         muted
         className="h-full w-full object-contain"
-        onLoadedMetadata={(e) => {
-          const v = e.currentTarget
-          if (v.videoWidth && v.videoHeight) setVideoRatio(v.videoWidth / v.videoHeight)
-        }}
       />
       {state !== 'playing' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/70 p-2 text-center text-xs text-white/80">
