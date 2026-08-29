@@ -39,6 +39,16 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Explicit, not left to the action's own default: unset, it falls
+          # back to diffing against the repo's default branch (main) for any
+          # push not already targeting it. That's always an empty diff here
+          # — main is fast-forwarded to match migration/go-rails-react after
+          # every push in this repo's own workflow (see every commit
+          # message's push step) — so every job would silently skip on
+          # every push to that branch. Confirmed live: the commit that added
+          # the *workflow line just below skipped all three jobs it was
+          # meant to force, for exactly this reason.
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           # A change to this workflow file itself runs all three jobs, not
           # none — the whole point of touching this file is to prove it
           # still exercises every real test suite, and per-service-only
