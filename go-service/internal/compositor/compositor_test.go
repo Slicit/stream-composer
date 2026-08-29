@@ -100,6 +100,26 @@ func TestBuildArgsIncludesCaptionsWhenLabelsAreOnAndDrawtextIsAvailable(t *testi
 	}
 }
 
+// The caption must match the browser composer's own name badge
+// (react-app/src/components/ViewerTile.tsx) — the same green on the same
+// near-opaque black, filled rather than just outlined.
+func TestBuildArgsCaptionMatchesTheBrowserComposersGreenBadge(t *testing.T) {
+	sources := []Source{{Path: "live/cam-1", Label: "Front Row"}}
+	opts := Options{Width: 1920, Height: 1080, OutputPath: "composed/c/horizontal", Labels: true, LabelSize: 22}
+	args, _ := BuildArgs(sources, opts, testConfig(), encoder.Caps{Encoders: map[string]bool{"libx264": true}, Drawtext: true})
+	joined := strings.Join(args, " ")
+
+	if !strings.Contains(joined, "fontcolor=0x1a8900") {
+		t.Errorf("expected the browser's canonical green (#1a8900), got: %s", joined)
+	}
+	if !strings.Contains(joined, "box=1:boxcolor=black@0.9") {
+		t.Errorf("expected a filled near-opaque black badge, got: %s", joined)
+	}
+	if strings.Contains(joined, "bordercolor") || strings.Contains(joined, "fontcolor=white") {
+		t.Errorf("expected the outline style to be gone entirely, got: %s", joined)
+	}
+}
+
 func TestBuildArgsOmitsCaptionsWhenDrawtextIsUnavailableEvenIfLabelsAreOn(t *testing.T) {
 	sources := []Source{{Path: "live/cam-1", Label: "Front Row"}}
 	opts := Options{Width: 1920, Height: 1080, OutputPath: "composed/c/horizontal", Labels: true}

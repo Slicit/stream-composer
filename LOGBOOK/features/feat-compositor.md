@@ -95,6 +95,28 @@ independently, at once if wanted.
   valve against a box being asked to composite more than it realistically
   can. Reconfiguring an already-running job never counts against the cap,
   only genuinely new ones do.
+- **Name captions match the browser's, not `compositor.js`'s.** `Labels`/
+  `LabelSize` were threaded end-to-end from day one but drew the
+  pre-migration original's own choice — white text, black outline
+  (`internal/compositor/compositor.go`'s `BuildArgs`, `drawtext=...
+  fontcolor=white:...borderw=...bordercolor=black`). Changed to match
+  `ViewerTile.tsx`'s actual on-air caption exactly instead: the same
+  canonical green (`#1a8900`) on the same near-opaque black
+  (`rgba(0,0,0,0.9)`), via `drawtext`'s `box=1:boxcolor=black@0.9`. Two
+  things the browser's CSS can do that this can't, confirmed against the
+  real ffmpeg (5.1) this image ships rather than assumed from newer docs:
+  a border-radius (no rounded-box primitive in `drawtext` at all) and
+  asymmetric padding (`boxborderw` takes one `<int>` here — the
+  pipe-separated per-axis form is a newer ffmpeg release only, and
+  errored a live job out with `Invalid chars '|11'` the first time this
+  shipped, caught before commit by grabbing an actual frame off the
+  running composed RTSP output and looking at it, not just reading the
+  built ffmpeg command string). Both left as square corners and uniform
+  padding. The on/off toggle itself needed no new plumbing — `labels` was
+  already a real column on each independent per-orientation row — only a
+  `Switch` added to `ChannelCompositionSection.tsx`'s `OrientationCard`,
+  wired through the same `onUpdate` patch pattern as everything else on
+  the card.
 
 ## Verification
 

@@ -174,16 +174,29 @@ func BuildArgs(sources []Source, opts Options, cfg config.Config, caps encoder.C
 			if caps.FontFile != "" {
 				font = "fontfile='" + caps.FontFile + "':"
 			}
-			border := size / 8
-			if border < 2 {
-				border = 2
+			// Matches the browser composer's own name caption exactly
+			// (react-app/src/components/ViewerTile.tsx) rather than the
+			// pre-migration compositor.js's white-with-outline choice: a
+			// filled badge, not an outline, in the same canonical green
+			// (#1a8900) on the same near-opaque black (rgba(0,0,0,0.9)).
+			// Two things the browser's CSS can do that ffmpeg's drawtext box
+			// cannot, confirmed against the actual ffmpeg this image ships
+			// (5.1): a border-radius (no rounded-box primitive at all), and
+			// asymmetric padding (boxborderw takes a single INT here, not a
+			// per-axis list — that syntax only exists in newer ffmpeg
+			// releases and errors out on this one: "Invalid chars '|11' at
+			// the end of expression"). Both left as square corners and
+			// uniform padding rather than chased with a workaround.
+			pad := size / 2
+			if pad < 8 {
+				pad = 8
 			}
 			margin := size / 2
 			if margin < 8 {
 				margin = 8
 			}
-			chain += fmt.Sprintf(",drawtext=%stext='%s':expansion=none:fontcolor=white:fontsize=%d:borderw=%d:bordercolor=black:x=(w-text_w)/2:y=h-th-%d",
-				font, escapeDrawtext(caption), size, border, margin)
+			chain += fmt.Sprintf(",drawtext=%stext='%s':expansion=none:fontcolor=0x1a8900:fontsize=%d:box=1:boxcolor=black@0.9:boxborderw=%d:x=(w-text_w)/2:y=h-th-%d",
+				font, escapeDrawtext(caption), size, pad, margin)
 		}
 		parts = append(parts, chain+fmt.Sprintf("[c%d]", i))
 	}

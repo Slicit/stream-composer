@@ -124,6 +124,35 @@ describe('ChannelCompositionSection', () => {
     expect(patched).toEqual([{ enabled: true }])
   })
 
+  it('PATCHes labels when the name-badge switch is toggled, independently per orientation', async () => {
+    const patched: unknown[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (url === apiBase && (!init || init.method === undefined)) return jsonResponse({ compositions: [composition(), composition({ orientation: 'vertical' })], providers })
+        if (url === `${apiBase}/vertical` && init?.method === 'PATCH') {
+          patched.push(JSON.parse(String(init.body)))
+          return jsonResponse({ composition: composition({ orientation: 'vertical', labels: false }) })
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      }),
+    )
+    const user = userEvent.setup()
+
+    render(<ChannelCompositionSection apiBase={apiBase} />)
+    const horizontalSwitch = await screen.findByRole('switch', { name: 'Show names on the horizontal composition' })
+    const verticalSwitch = screen.getByRole('switch', { name: 'Show names on the vertical composition' })
+    expect(horizontalSwitch).toBeChecked()
+    expect(verticalSwitch).toBeChecked()
+
+    await user.click(verticalSwitch)
+
+    expect(patched).toEqual([{ labels: false }])
+    // Only the vertical card's switch was touched — the horizontal one's
+    // own labels setting must be untouched.
+    expect(horizontalSwitch).toBeChecked()
+  })
+
   it('shows the quota error when enabling a composition is refused', async () => {
     vi.stubGlobal(
       'fetch',

@@ -206,6 +206,16 @@ function OrientationCard({
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+          <Switch
+            id={`${orientation}-labels`}
+            checked={composition.labels}
+            onCheckedChange={(checked) => onUpdate({ labels: checked })}
+            aria-label={`Show names on the ${orientation} composition`}
+          />
+          <Label htmlFor={`${orientation}-labels`}>Show names (same green badge as the site)</Label>
+        </div>
+
         <DestinationsTable
           composition={composition}
           providers={providers}
