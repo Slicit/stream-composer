@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_29_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_29_000004) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -137,11 +137,27 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_000001) do
     t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying::text, 'private'::character varying::text])", name: "streams_visibility_check"
   end
 
+  create_table "two_factor_challenges", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "expires_at", null: false
+    t.string "token_digest", null: false
+    t.datetime "updated_at", null: false
+    t.uuid "user_id", null: false
+    t.index ["token_digest"], name: "index_two_factor_challenges_on_token_digest", unique: true
+    t.index ["user_id"], name: "index_two_factor_challenges_on_user_id"
+  end
+
   create_table "users", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "avatar", default: "", null: false
     t.integer "compositor_quota", default: 0, null: false
+    t.datetime "confirmation_sent_at"
+    t.string "confirmation_token_digest"
     t.datetime "created_at", null: false
+    t.string "email"
+    t.datetime "email_confirmed_at"
     t.datetime "last_login_at"
+    t.boolean "otp_enabled", default: false, null: false
+    t.string "otp_secret"
     t.datetime "password_changed_at"
     t.string "password_hash", null: false
     t.string "role", default: "viewer", null: false
@@ -149,6 +165,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_000001) do
     t.integer "stream_quota", default: 0, null: false
     t.datetime "updated_at", null: false
     t.string "username", null: false
+    t.index "lower((email)::text)", name: "index_users_on_lower_email", unique: true, where: "(email IS NOT NULL)"
     t.index "lower((username)::text)", name: "index_users_on_lower_username", unique: true
     t.check_constraint "compositor_quota >= 0 AND compositor_quota <= 20", name: "users_compositor_quota_range"
     t.check_constraint "role::text = ANY (ARRAY['admin'::character varying::text, 'viewer'::character varying::text, 'streamer'::character varying::text])", name: "users_role_check"
@@ -163,4 +180,5 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_29_000001) do
   add_foreign_key "sessions", "users"
   add_foreign_key "sessions", "users", column: "impersonator_id", on_delete: :nullify
   add_foreign_key "streams", "users", column: "owner_id", on_delete: :nullify
+  add_foreign_key "two_factor_challenges", "users"
 end
