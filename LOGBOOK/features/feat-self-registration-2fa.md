@@ -109,6 +109,34 @@ self-service, never mandatory at signup. SMTP is env-driven with a
   since none of the existing page tests did and so couldn't have caught
   it.
 
+### 2026-08-29 (follow-up: backup/recovery codes)
+
+- **Added the recovery-code capability originally deferred as out of
+  scope for "the basics."** 10 single-use codes, digest-only storage
+  (same pattern as `confirmation_token_digest`/`Session#token_digest`),
+  generated automatically the moment 2FA is first enabled and shown
+  exactly once in `EditProfileDialog`'s reveal panel — the only place in
+  the app they're ever visible in plaintext. A self-service regenerate
+  action (password-gated, like disable) replaces the whole set.
+  `AuthController#verify_two_factor` tries a real TOTP code first, then
+  falls back to a backup code — `LoginPage`'s single code field never
+  needs to know which kind was typed. Disabling 2FA and an admin's
+  force-reset both clear backup codes too, since they're meaningless
+  without 2FA enabled.
+
+- **A real, previously-silent gap in this session's own verification was
+  found while working on this:** plain `tsc --noEmit` (used throughout
+  every earlier phase's "clean typecheck" claim) checks nothing at all
+  against this project's solution-style root `tsconfig.json` (`files: []`
+  + `references`) — it silently succeeds regardless of real errors. The
+  actual command this project's own `npm run build` uses is `tsc -b`
+  (build mode, which walks the referenced `tsconfig.app.json`/
+  `tsconfig.node.json`). Running the correct command surfaced exactly one
+  real gap that had slipped through every earlier phase unnoticed —
+  `ChannelEditPage.test.tsx`'s `User` fixture predated the email/2FA
+  fields entirely — fixed, and `tsc -b --force` is now the command used
+  to verify TypeScript in this project going forward.
+
 ## Verification
 
 Every phase was proven live on the dev box, not just with unit tests, per
@@ -143,9 +171,12 @@ there, and Radix `Select` doesn't respond to synthetic clicks) — both are
 covered by component tests instead, with the underlying endpoint
 independently curl-verified.
 
-314 rspec examples and 33 vitest files / 146 tests green as of the final
-commit, both re-run in full at least once per phase, not just the files
-touched that phase.
+324 rspec examples and 33 vitest files / 148 tests green as of the final
+commit (backup codes included), both re-run in full at least once per
+phase, not just the files touched that phase — the vitest count now
+verified with `tsc -b`, the command this project's own build actually
+uses, not the silently-no-op `tsc --noEmit` used (and trusted) for every
+earlier phase.
 
 ## Links
 
