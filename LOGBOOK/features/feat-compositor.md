@@ -85,8 +85,9 @@ independently, at once if wanted.
   `Generations` registry, shared in-process with `mediaproxy` and
   `relayrunner`) *before* touching the old one. Only once the new
   generation is confirmed live does `Generations` flip to it, and only
-  after `COMPOSITION_DRAIN_MS` (default 20s) does the old generation
-  actually stop. `mediaproxy` embeds the resolved generation into the
+  after `COMPOSITION_DRAIN_MS` (default 5s — was 20s at first; see the
+  correction below) does the old generation actually stop. `mediaproxy`
+  embeds the resolved generation into the
   redirect a real player follows (`RewriteLocation`/
   `Parsed.RedirectPublicPath`), so every later relative fetch for that
   player's session — sub-playlist, init segment, media segments, all
@@ -105,6 +106,27 @@ independently, at once if wanted.
   through the handoff to the new one, 401 only once the drain window
   actually elapsed; a fresh top-level fetch during that window already
   resolved to the new generation.
+- **`COMPOSITION_DRAIN_MS` shipped at 20s, then got corrected to 5s** —
+  reported live, immediately: a channel with 3 vertical members had its
+  center one stopped, and the composed picture looked permanently
+  gapped, then never seemed to restore even once that member came back.
+  Reproduced with real ffmpeg publishers end to end: the scheduler
+  itself was never the problem — 2-source and then 3-source-again
+  generations both started, went live, and re-stacked *correctly*
+  (confirmed visually, a real frame grabbed off each), right on the
+  schedule the logs said they would. The 20s default was the actual
+  bug: it optimized for "give a real browser player time to notice and
+  re-poll its manifest," which most players — VLC very much included —
+  don't reliably do on their own. The practical effect for anyone
+  watching one continuous session (exactly how this feature is used) is
+  a long stretch of visibly stale, gapped video with no signal that
+  anything is happening, easily mistaken for "this doesn't work at
+  all." The drain's actual job — avoid an abrupt cut for whoever is
+  mid-request right when a handoff completes — needs a few seconds, not
+  twenty. Rather than trying to jam a hard fix in place of already-shipped
+  and verified behavior, this is a tuning correction on top of it: the
+  handoff/generation mechanism is unchanged, only the default a viewer
+  actually experiences.
 - **A composed-preview HLS URL, pasteable straight into VLC.** Every
   `ChannelComposition` gets a `preview_token` (Rails, `SecureRandom.hex`,
   generated once, never rotated) the moment it's created, exposed as
@@ -207,6 +229,20 @@ production — the compositor jobs API accepted the start request, but
 MediaMTX itself refused the publish (`malformed composed path`), a
 failure mode invisible from `compositionscheduler`'s own success-shaped
 unit tests.
+
+The `COMPOSITION_DRAIN_MS` correction got the same real-usage scrutiny
+that found it needed correcting in the first place: 3 real ffmpeg
+sources composited vertically, the center one stopped and, later,
+brought back — each transition confirmed three ways, not just one: the
+dataplane's own logs (generation N starting → live, in each direction,
+right on the debounce/startup schedule), the compositor's `/jobs`
+status for every generation involved, and an actual frame grabbed off
+the live RTSP output at each stage. Both re-stacks were pixel-correct
+(2-across when the count dropped to 2, back to the original 2-up/
+1-centered arrangement once it returned to 3) — proving the layout math
+was never the bug. The only thing that changed here is the default a
+viewer sits with while that correct new generation is already live and
+waiting.
 
 ## Links
 

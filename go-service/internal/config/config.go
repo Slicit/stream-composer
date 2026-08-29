@@ -46,6 +46,16 @@ type Config struct {
 	// generation started *before* the old one stops, so an already-
 	// connected viewer keeps watching the old generation, uninterrupted,
 	// until it's drained. See that package's own doc comment for why.
+	//
+	// CompositionDrainMs defaults short (5s), not long: its only job is to
+	// avoid an abrupt cut for whoever is mid-request right when the swap
+	// happens, not to give a viewer's player a long window to notice and
+	// reconnect on its own — confirmed live that most players (VLC
+	// included) never do that on their own, so a long drain just means a
+	// long-lived viewer stares at an increasingly stale (and, for a
+	// membership change specifically, visibly gapped) picture with no
+	// indication anything is wrong, mistaking "still draining" for
+	// "broken" — see feat-compositor.md.
 	CompositionStabilizeMs    int // wait this long after the last change before starting a new generation
 	CompositionMaxStabilizeMs int // ...but never more than this from the first change in a burst
 	CompositionDrainMs        int // how long an old generation keeps running after the new one goes live
@@ -118,7 +128,7 @@ func Load() Config {
 		MaxCompositorJobs:         envInt("MAX_COMPOSITOR_JOBS", 4),
 		CompositionStabilizeMs:    envInt("COMPOSITION_STABILIZE_MS", 5000),
 		CompositionMaxStabilizeMs: envInt("COMPOSITION_MAX_STABILIZE_MS", 20000),
-		CompositionDrainMs:        envInt("COMPOSITION_DRAIN_MS", 20000),
+		CompositionDrainMs:        envInt("COMPOSITION_DRAIN_MS", 5000),
 		FFmpegPath:                env("FFMPEG_PATH", "ffmpeg"),
 		FFprobePath:               env("FFPROBE_PATH", "ffprobe"),
 		VAAPIDevice:               env("VAAPI_DEVICE", "/dev/dri/renderD128"),

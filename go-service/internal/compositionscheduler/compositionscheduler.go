@@ -200,7 +200,7 @@ func (s *Scheduler) drainGrace() time.Duration {
 	if s.Config.CompositionDrainMs > 0 {
 		return time.Duration(s.Config.CompositionDrainMs) * time.Millisecond
 	}
-	return 20 * time.Second
+	return 5 * time.Second
 }
 
 // Start runs Tick immediately and then on every interval, until stop is
