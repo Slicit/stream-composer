@@ -8,6 +8,9 @@ export interface User {
   id: string
   username: string
   role: Role
+  email: string | null
+  emailConfirmed: boolean
+  otpEnabled: boolean
   streamQuota: number
   compositorQuota: number
   avatar: string | null

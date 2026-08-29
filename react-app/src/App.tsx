@@ -7,6 +7,8 @@ import { LeftNav } from './components/LeftNav'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
+import { RegisterPage } from './pages/RegisterPage'
+import { ConfirmEmailPage } from './pages/ConfirmEmailPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminStreamsPage } from './pages/admin/AdminStreamsPage'
@@ -52,6 +54,8 @@ export function App() {
             <AppMain>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                <Route path="/confirm-email" element={<ConfirmEmailPage />} />
                 <Route path="/" element={<ViewerPage />} />
                 <Route path="/c/:slug" element={<ChannelViewerPage />} />
                 <Route

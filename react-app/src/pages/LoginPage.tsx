@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { ApiError } from '../api/client'
 import { Button } from '@/components/ui/button'
@@ -68,6 +68,9 @@ export function LoginPage() {
             <Button type="submit" variant="outline" disabled={submitting}>
               {submitting ? 'Signing in…' : 'Sign in'}
             </Button>
+            <Link to="/register" className="text-sm text-muted-foreground underline underline-offset-4">
+              Don't have an account? Register
+            </Link>
           </form>
         </CardContent>
       </Card>
