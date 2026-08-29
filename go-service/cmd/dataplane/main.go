@@ -112,11 +112,17 @@ func main() {
 		log.Warn("neither RAILS_INTERNAL_API_URL nor STREAM_CONFIG_PATH is set — running with an empty stream set")
 	}
 
+	// Shared, in-process, between the compositor scheduler (which writes
+	// it, as part of a warm handoff between ffmpeg processes) and the
+	// media proxy + relay runner (which read it) — see
+	// compositionscheduler.Generations' own doc comment.
+	generations := compositionscheduler.NewGenerations()
+
 	hook := authhook.New(store, cfg, log)
-	proxy := mediaproxy.New(store, cfg, log)
+	proxy := mediaproxy.New(store, cfg, log, generations)
 
 	mtxClient := &mediamtx.Client{BaseURL: cfg.MediaMTX.API, IngestPrefix: cfg.IngestPrefix}
-	relays := relayrunner.New(store, mtxClient, cfg, log)
+	relays := relayrunner.New(store, mtxClient, cfg, log, generations)
 	relayStop := make(chan struct{})
 	defer close(relayStop)
 	go relays.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, relayStop)
@@ -128,7 +134,7 @@ func main() {
 	go audio.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, audioStop)
 	defer audio.StopAll()
 
-	compositions := compositionscheduler.New(store, mtxClient, cfg, log)
+	compositions := compositionscheduler.New(store, mtxClient, cfg, log, generations)
 	compositionStop := make(chan struct{})
 	defer close(compositionStop)
 	go compositions.Start(context.Background(), time.Duration(cfg.PollIntervalMs)*time.Millisecond, compositionStop)

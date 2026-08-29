@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Slicit/stream-composer/go-service/internal/compositionscheduler"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
 )
@@ -130,17 +131,62 @@ func testComposedPreviewResolver() Resolver {
 		{ID: "cc1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true, PreviewToken: "the-real-token"},
 		{ID: "cc2", ChannelID: "chan-1", Orientation: "vertical", Enabled: false, PreviewToken: "vertical-token"},
 	}, false, "", "")
-	return Resolver{Store: store, Config: config.Config{ComposedPrefix: "composed"}}
+	return Resolver{Store: store, Config: config.Config{ComposedPrefix: "composed"}, Generations: compositionscheduler.NewGenerations()}
 }
 
 func TestParseRequestComposedPreview(t *testing.T) {
 	r := testComposedPreviewResolver()
 
 	// No session is ever passed here — the whole point is that this path
-	// authorizes VLC, which has no sc_session cookie to send.
+	// authorizes VLC, which has no sc_session cookie to send. No
+	// generation has ever gone live in this test's registry, so this
+	// falls back to the base (non-generation) path.
 	p, ok := r.ParseRequest("/c/chan-1/horizontal/index.m3u8?token=the-real-token", "hls", nil)
 	if !ok || p.UpstreamPath != "/composed/chan-1/horizontal/index.m3u8" {
 		t.Errorf("got %+v, ok=%v", p, ok)
+	}
+	if p.RedirectPublicPath != "c/chan-1/horizontal" {
+		t.Errorf("RedirectPublicPath = %q, want the bare public path (no generation to embed yet)", p.RedirectPublicPath)
+	}
+}
+
+// Once a generation has actually gone live, a fresh (no-generation) request
+// resolves to it, and RewriteLocation would embed it into the redirect a
+// real player follows — see TestRewriteLocationEmbedsTheCurrentGeneration.
+func TestParseRequestComposedPreviewResolvesToTheCurrentGeneration(t *testing.T) {
+	r := testComposedPreviewResolver()
+	r.Generations.Set("chan-1", "horizontal", "composed/chan-1/horizontal/g3", "3")
+
+	p, ok := r.ParseRequest("/c/chan-1/horizontal/index.m3u8?token=the-real-token", "hls", nil)
+	if !ok || p.UpstreamPath != "/composed/chan-1/horizontal/g3/index.m3u8" {
+		t.Errorf("got %+v, ok=%v", p, ok)
+	}
+	if p.RedirectPublicPath != "c/chan-1/horizontal/g3" {
+		t.Errorf("RedirectPublicPath = %q, want the generation embedded", p.RedirectPublicPath)
+	}
+}
+
+// The whole point of a generation-qualified URL: it resolves to that exact
+// generation regardless of what's current, so an in-flight viewer session
+// against a generation that's draining (been handed off away from, but not
+// yet stopped) keeps working rather than 404ing the instant a newer
+// generation goes live.
+func TestParseRequestComposedPreviewWithAGenerationIgnoresWhatsCurrent(t *testing.T) {
+	r := testComposedPreviewResolver()
+	r.Generations.Set("chan-1", "horizontal", "composed/chan-1/horizontal/g5", "5") // g5 is current...
+
+	// ...but this request is for the older g3, an in-flight session that
+	// predates the handoff to g5.
+	p, ok := r.ParseRequest("/c/chan-1/horizontal/g3/video1_stream.m3u8?session=abc&token=the-real-token", "hls", nil)
+	if !ok || p.UpstreamPath != "/composed/chan-1/horizontal/g3/video1_stream.m3u8" {
+		t.Errorf("got %+v, ok=%v", p, ok)
+	}
+}
+
+func TestParseRequestComposedPreviewRejectsAnUnknownGenerationFormat(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/chan-1/horizontal/gnot-a-number/index.m3u8?token=the-real-token", "hls", nil); ok {
+		t.Error("a malformed generation segment must not parse as one")
 	}
 }
 
@@ -179,6 +225,22 @@ func TestParseRequestComposedPreviewDoesNotApplyToWebRTC(t *testing.T) {
 	r := testComposedPreviewResolver()
 	if _, ok := r.ParseRequest("/c/chan-1/horizontal/whep?token=the-real-token", "webrtc", nil); ok {
 		t.Error("the composed-preview token must not authorize the WebRTC mount")
+	}
+}
+
+// The redirect a real player follows (MediaMTX's own cookieCheck bounce)
+// must embed the resolved generation, not the bare public path — that's
+// what makes every later relative fetch for this player's session (the
+// sub-playlist reference right there in the master playlist body, then its
+// own init segment and media segments) keep hitting the same generation,
+// see Parsed.RedirectPublicPath's own doc comment.
+func TestRewriteLocationEmbedsTheCurrentGeneration(t *testing.T) {
+	parsed := &Parsed{PublicPath: "c/chan-1/horizontal", MediaPath: "composed/chan-1/horizontal/g3", RedirectPublicPath: "c/chan-1/horizontal/g3"}
+
+	got := RewriteLocation("/composed/chan-1/horizontal/g3/index.m3u8?cookieCheck=1", HLSMount, parsed)
+	want := HLSMount + "/c/chan-1/horizontal/g3/index.m3u8?cookieCheck=1"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
@@ -224,7 +286,7 @@ func TestForwardStripsAuthAndAddsInternalCredential(t *testing.T) {
 		IngestPrefix: "live", ProgramPath: "program", AudioPrefix: "audio",
 		MediaMTX: config.MediaMTX{InternalUser: "composer", InternalPassword: "internal-secret"},
 	}
-	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), compositionscheduler.NewGenerations())
 
 	req := httptest.NewRequest(http.MethodPost, WebRTCMount+"/s/aaaaaaaaaaaaaaaa/whep", nil)
 	req.Header.Set("Authorization", "Bearer client-supplied-should-be-stripped")
@@ -262,7 +324,7 @@ func TestForwardStripsAuthAndAddsInternalCredential(t *testing.T) {
 func TestServeWebRTCRejectsGET(t *testing.T) {
 	store := streamstore.NewMemory()
 	cfg := config.Config{IngestPrefix: "live", ProgramPath: "program", AudioPrefix: "audio"}
-	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), compositionscheduler.NewGenerations())
 
 	req := httptest.NewRequest(http.MethodGet, WebRTCMount+"/program/whep", nil)
 	rec := httptest.NewRecorder()
@@ -275,7 +337,7 @@ func TestServeWebRTCRejectsGET(t *testing.T) {
 func TestServeHLSRejectsPost(t *testing.T) {
 	store := streamstore.NewMemory()
 	cfg := config.Config{IngestPrefix: "live", ProgramPath: "program", AudioPrefix: "audio"}
-	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := New(store, cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), compositionscheduler.NewGenerations())
 
 	req := httptest.NewRequest(http.MethodPost, HLSMount+"/program/index.m3u8", nil)
 	rec := httptest.NewRecorder()

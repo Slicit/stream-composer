@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -195,16 +196,26 @@ func firstSegment(s string) string {
 
 // splitComposedPath splits "<channelId>/<orientation>" — exactly two
 // segments, neither empty, no further nesting.
+var generationSegmentRe = regexp.MustCompile(`^g\d+$`)
+
+// splitComposedPath parses "<channelId>/<orientation>" or "<channelId>/
+// <orientation>/g<N>" — the trailing segment, when present, names one
+// specific generation of that composition's output. The compositor never
+// actually publishes to the bare, non-generation form (see
+// internal/compositionscheduler.Generations' own doc comment on why), so
+// this has to accept it or every publish would be denied.
 func splitComposedPath(rest string) (channelID, orientation string, ok bool) {
-	i := strings.IndexByte(rest, '/')
-	if i <= 0 || i == len(rest)-1 {
+	parts := strings.Split(rest, "/")
+	if len(parts) == 3 {
+		if !generationSegmentRe.MatchString(parts[2]) {
+			return "", "", false
+		}
+		parts = parts[:2]
+	}
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return "", "", false
 	}
-	channelID, orientation = rest[:i], rest[i+1:]
-	if strings.Contains(orientation, "/") {
-		return "", "", false
-	}
-	return channelID, orientation, true
+	return parts[0], parts[1], true
 }
 
 // logDenial rate-limits repeated denials of the same shape so a scanner

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Slicit/stream-composer/go-service/internal/compositionscheduler"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
@@ -73,7 +74,7 @@ func TestTickDoesNotStartADisabledRelay(t *testing.T) {
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: false, URL: "rtmp://example.test/live"}
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
-	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	if got := r.StatusOf("r1").State; got != "off" {
@@ -87,7 +88,7 @@ func TestTickWaitsWhenSourceIsNotLive(t *testing.T) {
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
-	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	if got := r.StatusOf("r1").State; got != "waiting" {
@@ -101,7 +102,7 @@ func TestTickStopsARelayWhoseSourceStreamIsGone(t *testing.T) {
 	relay := streamstore.Relay{ID: "r1", StreamID: "missing", Enabled: true, URL: "rtmp://example.test/live"}
 	store.Replace(nil, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
-	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	if got := r.StatusOf("r1").State; got != "off" {
@@ -116,7 +117,7 @@ func TestTickStartsAndStopsALiveRelay(t *testing.T) {
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
 	lister := &fakeIngestLister{live: map[string]bool{"src-key": true}}
-	r := New(store, lister, testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5")), silentLog())
+	r := New(store, lister, testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	waitFor(t, time.Second, func() bool {
@@ -148,7 +149,7 @@ func TestFailingFFmpegSchedulesABackoffThatGrows(t *testing.T) {
 	relay := streamstore.Relay{ID: "r1", StreamID: "s1", Enabled: true, URL: "rtmp://example.test/live"}
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, nil, nil, false, "", "")
 
-	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "exit 1")), silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{"src-key": true}}, testConfig(fakeFFmpeg(t, "exit 1")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	waitFor(t, time.Second, func() bool {
@@ -192,7 +193,12 @@ func TestTickStartsAChannelCompositionRelayFromTheComposedPath(t *testing.T) {
 	cfg := testConfig(fakeFFmpeg(t, "trap '' TERM; sleep 5"))
 	cfg.ComposedPrefix = "composed"
 	lister := &fakeIngestLister{live: map[string]bool{"cam-1": true}}
-	r := New(store, lister, cfg, silentLog())
+	gens := compositionscheduler.NewGenerations()
+	// A live member alone isn't enough to relay — the compositor also has
+	// to have actually gone live for this composition, which is what
+	// Generations reflects.
+	gens.Set("chan-1", "horizontal", "composed/chan-1/horizontal/g7", "7")
+	r := New(store, lister, cfg, silentLog(), gens)
 	r.Tick(context.Background())
 
 	waitFor(t, time.Second, func() bool {
@@ -204,8 +210,28 @@ func TestTickStartsAChannelCompositionRelayFromTheComposedPath(t *testing.T) {
 	r.mu.Lock()
 	args := strings.Join(r.running["r1"].cmd.Args, " ")
 	r.mu.Unlock()
-	if !strings.Contains(args, "rtsp://mediamtx:8554/composed/chan-1/horizontal") {
-		t.Errorf("expected the composed path as the actual ffmpeg source, got: %s", args)
+	if !strings.Contains(args, "rtsp://mediamtx:8554/composed/chan-1/horizontal/g7") {
+		t.Errorf("expected the current generation's composed path as the actual ffmpeg source, got: %s", args)
+	}
+}
+
+func TestTickWaitsWhenAChannelCompositionHasNoLiveGenerationYet(t *testing.T) {
+	store := streamstore.NewMemory()
+	channel := streamstore.Channel{ID: "chan-1", StreamIDs: []string{"s1"}}
+	stream := streamstore.Stream{ID: "s1", Key: "cam-1", Enabled: true}
+	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
+	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: "comp-1", Enabled: true, URL: "rtmp://example.test/live"}
+	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
+
+	// A live member, but nothing registered in Generations yet — the
+	// compositor hasn't actually gone live for this composition (e.g.
+	// it's still warming up its first generation), so there's nothing
+	// real to relay from yet.
+	r := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog(), compositionscheduler.NewGenerations())
+	r.Tick(context.Background())
+
+	if got := r.StatusOf("r1").State; got != "waiting" {
+		t.Errorf("a composition relay with no live generation yet should be 'waiting', got %q", got)
 	}
 }
 
@@ -218,7 +244,7 @@ func TestTickWaitsWhenAChannelCompositionHasNoLiveMember(t *testing.T) {
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
 
 	cfg := testConfig(fakeFFmpeg(t, "sleep 5"))
-	r := New(store, &fakeIngestLister{live: map[string]bool{}}, cfg, silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{}}, cfg, silentLog(), nil)
 	r.Tick(context.Background())
 
 	if got := r.StatusOf("r1").State; got != "waiting" {
@@ -234,7 +260,7 @@ func TestTickStopsAChannelCompositionRelayWhenTheCompositionIsDisabled(t *testin
 	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: "comp-1", Enabled: true, URL: "rtmp://example.test/live"}
 	store.Replace([]streamstore.Stream{stream}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
 
-	r := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog())
+	r := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(fakeFFmpeg(t, "sleep 5")), silentLog(), nil)
 	r.Tick(context.Background())
 
 	if got := r.StatusOf("r1").State; got != "off" {

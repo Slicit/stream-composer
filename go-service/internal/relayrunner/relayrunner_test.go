@@ -11,7 +11,7 @@ import (
 )
 
 func testRunner(cfg config.Config) *Runner {
-	return New(streamstore.NewMemory(), nil, cfg, slog.New(slog.NewTextHandler(os.Stdout, nil)))
+	return New(streamstore.NewMemory(), nil, cfg, slog.New(slog.NewTextHandler(os.Stdout, nil)), nil)
 }
 
 func TestDestinationURL(t *testing.T) {

@@ -39,6 +39,17 @@ type Config struct {
 	// but part of the shared Config since every service loads the same env.
 	MaxCompositorJobs int
 
+	// Warm-handoff timing (internal/compositionscheduler) — a source
+	// joining/leaving always means restarting ffmpeg (it cannot add or
+	// remove a filtergraph input live), so a composition's config changes
+	// are debounced before acting on them at all, then applied via a new
+	// generation started *before* the old one stops, so an already-
+	// connected viewer keeps watching the old generation, uninterrupted,
+	// until it's drained. See that package's own doc comment for why.
+	CompositionStabilizeMs    int // wait this long after the last change before starting a new generation
+	CompositionMaxStabilizeMs int // ...but never more than this from the first change in a burst
+	CompositionDrainMs        int // how long an old generation keeps running after the new one goes live
+
 	FFmpegPath  string // "ffmpeg" unless overridden
 	FFprobePath string // "ffprobe" unless overridden
 	VAAPIDevice string // the render node a vaapi/qsv encode uploads into, e.g. /dev/dri/renderD128
@@ -99,22 +110,25 @@ func Load() Config {
 			InternalUser:     env("MEDIAMTX_INTERNAL_USER", "composer"),
 			InternalPassword: env("MEDIAMTX_INTERNAL_PASSWORD", ""),
 		},
-		IngestPrefix:      env("INGEST_PREFIX", "live"),
-		ProgramPath:       env("PROGRAM_PATH", "program"),
-		AudioPrefix:       env("AUDIO_PREFIX", "audio"),
-		ComposedPrefix:    env("COMPOSED_PREFIX", "composed"),
-		CompositorAPI:     env("COMPOSITOR_API", "http://compositor:8080"),
-		MaxCompositorJobs: envInt("MAX_COMPOSITOR_JOBS", 4),
-		FFmpegPath:        env("FFMPEG_PATH", "ffmpeg"),
-		FFprobePath:       env("FFPROBE_PATH", "ffprobe"),
-		VAAPIDevice:       env("VAAPI_DEVICE", "/dev/dri/renderD128"),
-		RestartDelayMs:    envInt("RESTART_DELAY_MS", 2000),
-		MaxRestartDelayMs: envInt("MAX_RESTART_DELAY_MS", 15000),
-		PollIntervalMs:    envInt("POLL_INTERVAL_MS", 2000),
-		DataDir:           env("DATA_DIR", "/data"),
-		CompositionLayout: env("COMPOSITION_LAYOUT", "auto"),
-		CompositionWidth:  envInt("COMPOSITION_WIDTH", 1920),
-		CompositionHeight: envInt("COMPOSITION_HEIGHT", 1080),
-		CompositionGapPx:  envInt("COMPOSITION_GAP_PX", 4),
+		IngestPrefix:              env("INGEST_PREFIX", "live"),
+		ProgramPath:               env("PROGRAM_PATH", "program"),
+		AudioPrefix:               env("AUDIO_PREFIX", "audio"),
+		ComposedPrefix:            env("COMPOSED_PREFIX", "composed"),
+		CompositorAPI:             env("COMPOSITOR_API", "http://compositor:8080"),
+		MaxCompositorJobs:         envInt("MAX_COMPOSITOR_JOBS", 4),
+		CompositionStabilizeMs:    envInt("COMPOSITION_STABILIZE_MS", 5000),
+		CompositionMaxStabilizeMs: envInt("COMPOSITION_MAX_STABILIZE_MS", 20000),
+		CompositionDrainMs:        envInt("COMPOSITION_DRAIN_MS", 20000),
+		FFmpegPath:                env("FFMPEG_PATH", "ffmpeg"),
+		FFprobePath:               env("FFPROBE_PATH", "ffprobe"),
+		VAAPIDevice:               env("VAAPI_DEVICE", "/dev/dri/renderD128"),
+		RestartDelayMs:            envInt("RESTART_DELAY_MS", 2000),
+		MaxRestartDelayMs:         envInt("MAX_RESTART_DELAY_MS", 15000),
+		PollIntervalMs:            envInt("POLL_INTERVAL_MS", 2000),
+		DataDir:                   env("DATA_DIR", "/data"),
+		CompositionLayout:         env("COMPOSITION_LAYOUT", "auto"),
+		CompositionWidth:          envInt("COMPOSITION_WIDTH", 1920),
+		CompositionHeight:         envInt("COMPOSITION_HEIGHT", 1080),
+		CompositionGapPx:          envInt("COMPOSITION_GAP_PX", 4),
 	}
 }

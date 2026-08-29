@@ -154,7 +154,19 @@ func (r *Runner) resolveSource(rl streamstore.Relay, channelByID map[string]stre
 	if !ok || !channelHasLiveMember(channel, streamByID, liveKeys) {
 		return "", "", "the channel has no live member"
 	}
-	return r.Config.ComposedPrefix + "/" + comp.ChannelID + "/" + comp.Orientation, "", ""
+	// Never the base, non-generation path — the compositor only ever
+	// publishes to a generation-scoped one (see
+	// internal/compositionscheduler.Generations' own doc comment on why),
+	// so a live member alone isn't enough; the compositor also has to have
+	// actually gone live for this composition yet.
+	if r.Generations == nil {
+		return "", "", "the composed output is not live yet"
+	}
+	path, _, live := r.Generations.Current(comp.ChannelID, comp.Orientation)
+	if !live {
+		return "", "", "the composed output is not live yet"
+	}
+	return path, "", ""
 }
 
 func channelHasLiveMember(channel streamstore.Channel, streamByID map[string]streamstore.Stream, liveKeys map[string]bool) bool {

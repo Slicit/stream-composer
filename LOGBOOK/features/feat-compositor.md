@@ -66,6 +66,45 @@ independently, at once if wanted.
   became clear the composed output is worth having, previewable, the
   moment it's live, before anyone has wired up a real destination (see
   the preview-URL decision below).
+- **A source joining/leaving is a warm handoff, never an in-place
+  restart.** ffmpeg cannot add or remove a filtergraph input from a
+  running process, so any config change means killing one process and
+  starting another — and doing that under one fixed output path is worse
+  for an already-connected viewer than the outage itself suggests:
+  MediaMTX's LL-HLS reader sessions are scoped to a specific publisher
+  instance, so an already-open session doesn't stall when the publisher
+  changes, it dies outright and stays dead (confirmed live, first: the
+  exact same session URL that returned 200 before a restart returned 401
+  afterward, forever, on every subsequent poll). `compositionscheduler`
+  now debounces a signature change (mirrors `compositor.js`'s own
+  `stabilizeMs`, ported here as `COMPOSITION_STABILIZE_MS`/
+  `COMPOSITION_MAX_STABILIZE_MS` — a source flapping in and out
+  shouldn't thrash the encoder) and then starts the new configuration
+  under its own generation-scoped path
+  (`composed/<channelId>/<orientation>/g<N>`, tracked by the new
+  `Generations` registry, shared in-process with `mediaproxy` and
+  `relayrunner`) *before* touching the old one. Only once the new
+  generation is confirmed live does `Generations` flip to it, and only
+  after `COMPOSITION_DRAIN_MS` (default 20s) does the old generation
+  actually stop. `mediaproxy` embeds the resolved generation into the
+  redirect a real player follows (`RewriteLocation`/
+  `Parsed.RedirectPublicPath`), so every later relative fetch for that
+  player's session — sub-playlist, init segment, media segments, all
+  resolved by the player itself, no rewriting needed beyond that one
+  redirect — keeps hitting the *same* generation for as long as it's
+  alive, regardless of what's since become current. `relayrunner` reads
+  the same registry rather than the bare path, since the compositor
+  never actually publishes to that bare path anymore. `authhook` needed
+  a matching fix, caught live (not in a unit test): its own
+  `splitComposedPath` rejected the new three-segment publish path
+  outright ("malformed composed path"), which would have silently kept
+  every composition permanently on generation 1 forever in production.
+  Verified live end to end: a real second source joining a running
+  composition, with a real HLS session polled continuously throughout —
+  200 for the ~50s the old generation was draining, uninterrupted
+  through the handoff to the new one, 401 only once the drain window
+  actually elapsed; a fresh top-level fetch during that window already
+  resolved to the new generation.
 - **A composed-preview HLS URL, pasteable straight into VLC.** Every
   `ChannelComposition` gets a `preview_token` (Rails, `SecureRandom.hex`,
   generated once, never rotated) the moment it's created, exposed as
@@ -84,13 +123,18 @@ independently, at once if wanted.
   started, MediaMTX reported the composed path ready, and the resulting
   URL resolved to genuine playable HLS (fMP4 init + parts) through the
   proxy's normal redirect-rewriting — a wrong or missing token 404s.
-- **Relaying a composed output reuses `internal/relayrunner` unchanged.**
-  `streamstore.Relay` gained `ChannelCompositionID` alongside `StreamID` —
-  two Rails tables (`RelayDestination`, `ChannelRelayDestination`, kept
-  separate per their own models' comments) feed one shape `relayrunner`
-  iterates. `Tick` branches on which is set to resolve the source path and
-  its liveness; `buildArgs`/`PreviewCommand` needed zero changes, already
-  source-agnostic.
+- **Relaying a composed output reuses `internal/relayrunner`'s process
+  supervision unchanged.** `streamstore.Relay` gained
+  `ChannelCompositionID` alongside `StreamID` — two Rails tables
+  (`RelayDestination`, `ChannelRelayDestination`, kept separate per their
+  own models' comments) feed one shape `relayrunner` iterates. `Tick`
+  branches on which is set to resolve the source path and its liveness;
+  `buildArgs`/`PreviewCommand` needed zero changes, already
+  source-agnostic — only *resolving* that path changed, once generations
+  existed to resolve (see the warm-handoff decision above): it now reads
+  `Generations.Current` instead of building the bare path itself, and
+  treats "no generation live yet" as the same kind of `waiting` state a
+  channel with no live member already was.
 - **`MAX_COMPOSITOR_JOBS` caps concurrency** (default 4) — the safety
   valve against a box being asked to composite more than it realistically
   can. Reconfiguring an already-running job never counts against the cap,
@@ -140,6 +184,29 @@ followed MediaMTX's own cookie-check redirect straight through to a real,
 live low-latency HLS playlist. A wrong token and no token each 404'd on
 the same URL. Clean teardown confirmed afterward (job stopped once
 disabled).
+
+The warm-handoff work got the most thorough live pass of any phase here,
+specifically because the bug it fixes only shows up under a real,
+sustained connection — a unit test can prove the state machine is
+internally consistent, but not that MediaMTX actually behaves the way the
+design assumes. Real ffmpeg publishers for two sources, a composition
+enabled with just the first (generation 1 → abandoned and superseded by
+generation 2 mid-warm-up by an unrelated disable/enable toggle, itself a
+live confirmation the abandon path works), a real HLS session fetched and
+then polled once a second continuously, the second source brought live
+mid-poll. The session kept returning 200 for the entire ~50s the old
+generation (2) spent draining after generation 3 went live with both
+sources — no interruption at all from the viewer's side — then 401 once
+the drain window actually elapsed and it stopped, matching
+`COMPOSITION_DRAIN_MS`'s default almost exactly. A fresh top-level fetch
+partway through that window already resolved to generation 3. Caught one
+real bug this way that no unit test would have: `authhook`'s
+`splitComposedPath` rejected the new three-segment publish path outright,
+which would have kept every composition stuck on generation 1 in
+production — the compositor jobs API accepted the start request, but
+MediaMTX itself refused the publish (`malformed composed path`), a
+failure mode invisible from `compositionscheduler`'s own success-shaped
+unit tests.
 
 ## Links
 

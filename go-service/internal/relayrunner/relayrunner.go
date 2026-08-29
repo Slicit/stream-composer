@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Slicit/stream-composer/go-service/internal/compositionscheduler"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/mediamtx"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
@@ -50,10 +51,11 @@ type IngestLister interface {
 // Runner owns exactly the mutable state startOne/stopOne/tick manage in the
 // Node version: which processes are running, and each relay's health.
 type Runner struct {
-	Store    streamstore.Store
-	MediaMTX IngestLister
-	Config   config.Config
-	Log      *slog.Logger
+	Store       streamstore.Store
+	MediaMTX    IngestLister
+	Config      config.Config
+	Log         *slog.Logger
+	Generations *compositionscheduler.Generations
 
 	mu      sync.Mutex
 	running map[string]*runningProc
@@ -61,15 +63,16 @@ type Runner struct {
 	backoff map[string]time.Duration
 }
 
-func New(store streamstore.Store, mtx IngestLister, cfg config.Config, log *slog.Logger) *Runner {
+func New(store streamstore.Store, mtx IngestLister, cfg config.Config, log *slog.Logger, gens *compositionscheduler.Generations) *Runner {
 	return &Runner{
-		Store:    store,
-		MediaMTX: mtx,
-		Config:   cfg,
-		Log:      log,
-		running:  make(map[string]*runningProc),
-		health:   make(map[string]*Status),
-		backoff:  make(map[string]time.Duration),
+		Store:       store,
+		MediaMTX:    mtx,
+		Config:      cfg,
+		Log:         log,
+		Generations: gens,
+		running:     make(map[string]*runningProc),
+		health:      make(map[string]*Status),
+		backoff:     make(map[string]time.Duration),
 	}
 }
 

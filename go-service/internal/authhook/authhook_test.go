@@ -67,6 +67,9 @@ func TestDecidePublish(t *testing.T) {
 		{"a disabled composition may not be published to, even internally", internalBody(Body{Action: "publish", Path: "composed/chan-1/vertical"}), false},
 		{"an unknown channel id may not be published to", internalBody(Body{Action: "publish", Path: "composed/no-such-channel/horizontal"}), false},
 		{"a malformed composed path (missing orientation) is refused", internalBody(Body{Action: "publish", Path: "composed/chan-1"}), false},
+		{"the compositor may publish a generation-scoped composed path", internalBody(Body{Action: "publish", Path: "composed/chan-1/horizontal/g3"}), true},
+		{"a generation-scoped composed path still respects the composition's own enabled flag", internalBody(Body{Action: "publish", Path: "composed/chan-1/vertical/g1"}), false},
+		{"a malformed generation segment is refused", internalBody(Body{Action: "publish", Path: "composed/chan-1/horizontal/not-a-generation"}), false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

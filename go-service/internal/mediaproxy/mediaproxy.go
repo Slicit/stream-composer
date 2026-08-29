@@ -44,7 +44,7 @@ var (
 	sessionIDRe       = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
 	hlsFileRe         = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$`)
 	safeQueryRe       = regexp.MustCompile(`^[A-Za-z0-9_.\-=&%~+/]*$`)
-	composedPreviewRe = regexp.MustCompile(`^c/([A-Za-z0-9_-]{1,64})/(horizontal|vertical)$`)
+	composedPreviewRe = regexp.MustCompile(`^c/([A-Za-z0-9_-]{1,64})/(horizontal|vertical)(?:/g(\d+))?$`)
 )
 
 // stripRequest headers are never relayed upstream. authorization and cookie
@@ -70,13 +70,26 @@ type Parsed struct {
 	UpstreamPath string
 	Query        string
 	SessionID    string // WebRTC only
+
+	// RedirectPublicPath, when set, is what RewriteLocation rebuilds a
+	// redirect's Location header against instead of PublicPath — used only
+	// by the composed-preview mount, to embed the resolved generation into
+	// the redirect target (MediaMTX's own cookieCheck bounce) so every
+	// subsequent relative fetch for this player's session — sub-playlist,
+	// init segment, media segments, all resolved by the player relative to
+	// the URL it's already holding — keeps hitting that same generation
+	// for as long as it's alive, rather than whatever generation happens
+	// to be current by the time each of those follow-up requests arrives.
+	// See internal/compositionscheduler.Generations' own doc comment.
+	RedirectPublicPath string
 }
 
 // Resolver ties a Store to the access rules and path conventions that decide
 // what a playback id is allowed to resolve to.
 type Resolver struct {
-	Store  streamstore.Store
-	Config config.Config
+	Store       streamstore.Store
+	Config      config.Config
+	Generations *compositionscheduler.Generations
 }
 
 // resolveStream finds the stream a playback id refers to, or nil when it is
@@ -137,7 +150,7 @@ func safeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// resolveComposedPreview authorizes c/<channelId>/<orientation> — a
+// resolveComposedPreview authorizes c/<channelId>/<orientation>[/g<N>] — a
 // channel composition's own composed output, HLS-only, for pasting
 // straight into VLC. Unlike every other path this proxy resolves, it is
 // not gated by the viewer session at all (WithUser's user is never
@@ -146,20 +159,29 @@ func safeEqual(a, b string) bool {
 // and no more privileged than MediaMTX's own internal credential — is the
 // only thing standing between a caller and this one, specific, already-
 // composed feed. It grants nothing about the channel's raw sources.
-func (r Resolver) resolveComposedPreview(publicPath, query string) (string, bool) {
+//
+// The optional /g<N> matters for exactly one thing: a request that already
+// names a generation (a viewer's in-flight session, via
+// RedirectPublicPath — see Parsed) resolves to that exact generation
+// deterministically, not whatever Generations reports as current, so an
+// old generation that's draining keeps serving the sessions it already
+// has for as long as it's alive. A bare c/<channelId>/<orientation> (a
+// fresh top-level playlist fetch, no session yet) always resolves to
+// whatever's current.
+func (r Resolver) resolveComposedPreview(publicPath, query string) (mediaPath, redirectPublicPath string, ok bool) {
 	m := composedPreviewRe.FindStringSubmatch(publicPath)
-	if m == nil {
-		return "", false
+	if m == nil || r.Generations == nil {
+		return "", "", false
 	}
-	channelID, orientation := m[1], m[2]
+	channelID, orientation, genStr := m[1], m[2], m[3]
 
 	values, err := url.ParseQuery(query)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	token := values.Get("token")
 	if token == "" {
-		return "", false
+		return "", "", false
 	}
 
 	for _, c := range r.Store.ChannelCompositions() {
@@ -167,11 +189,20 @@ func (r Resolver) resolveComposedPreview(publicPath, query string) (string, bool
 			continue
 		}
 		if !c.Enabled || c.PreviewToken == "" || !safeEqual(token, c.PreviewToken) {
-			return "", false
+			return "", "", false
 		}
-		return compositionscheduler.OutputPath(r.Config, channelID, orientation), true
+		if genStr != "" {
+			path := compositionscheduler.GenerationOutputPath(r.Config, channelID, orientation, genStr)
+			return path, publicPath, true
+		}
+		path, gen, live := r.Generations.Current(channelID, orientation)
+		if !live {
+			path = compositionscheduler.OutputPath(r.Config, channelID, orientation)
+			return path, publicPath, true
+		}
+		return path, publicPath + "/g" + gen, true
 	}
-	return "", false
+	return "", "", false
 }
 
 // ParseRequest strictly parses a proxied request's raw URL into validated
@@ -250,8 +281,11 @@ func (r Resolver) ParseRequest(rawURL, kind string, user *streamstore.User) (*Pa
 	}
 	publicPath := strings.Join(segments[:len(segments)-1], "/")
 
-	if mediaPath, ok := r.resolveComposedPreview(publicPath, query); ok {
-		return &Parsed{PublicPath: publicPath, MediaPath: mediaPath, UpstreamPath: "/" + mediaPath + "/" + file, Query: query}, true
+	if mediaPath, redirectPublicPath, ok := r.resolveComposedPreview(publicPath, query); ok {
+		return &Parsed{
+			PublicPath: publicPath, MediaPath: mediaPath, UpstreamPath: "/" + mediaPath + "/" + file, Query: query,
+			RedirectPublicPath: redirectPublicPath,
+		}, true
 	}
 
 	mediaPath, ok := r.ResolvePlayback(publicPath, user)
@@ -263,12 +297,19 @@ func (r Resolver) ParseRequest(rawURL, kind string, user *streamstore.User) (*Pa
 
 // RewriteLocation maps an upstream redirect back into our address space:
 // /live/<key>/index.m3u8?x=1 becomes /mtx/hls/s/<playbackId>/index.m3u8?x=1.
+// Rebuilds against parsed.RedirectPublicPath instead of parsed.PublicPath
+// when set — see that field's own doc comment.
 func RewriteLocation(location, mount string, parsed *Parsed) string {
+	publicPath := parsed.PublicPath
+	if parsed.RedirectPublicPath != "" {
+		publicPath = parsed.RedirectPublicPath
+	}
+
 	var pathname, search string
 	if strings.HasPrefix(strings.ToLower(location), "http://") || strings.HasPrefix(strings.ToLower(location), "https://") {
 		u, err := url.Parse(location)
 		if err != nil {
-			return mount + "/" + parsed.PublicPath
+			return mount + "/" + publicPath
 		}
 		pathname, search = u.Path, u.RawQuery
 		if search != "" {
@@ -283,11 +324,11 @@ func RewriteLocation(location, mount string, parsed *Parsed) string {
 	prefix := "/" + parsed.MediaPath
 	if pathname == prefix || strings.HasPrefix(pathname, prefix+"/") {
 		suffix := pathname[len(prefix):]
-		return mount + "/" + parsed.PublicPath + suffix + search
+		return mount + "/" + publicPath + suffix + search
 	}
 	// Anything unexpected goes back to the public entry point rather than
 	// exposing wherever upstream was pointing.
-	return mount + "/" + parsed.PublicPath + search
+	return mount + "/" + publicPath + search
 }
 
 func internalAuthHeader(cfg config.Config) string {
@@ -307,9 +348,9 @@ type Handler struct {
 	Log        *slog.Logger
 }
 
-func New(store streamstore.Store, cfg config.Config, log *slog.Logger) *Handler {
+func New(store streamstore.Store, cfg config.Config, log *slog.Logger, gens *compositionscheduler.Generations) *Handler {
 	return &Handler{
-		Resolver: Resolver{Store: store, Config: cfg},
+		Resolver: Resolver{Store: store, Config: cfg, Generations: gens},
 		HTTPClient: &http.Client{
 			// Redirects are rewritten and handed back to the client, never
 			// followed here — MediaMTX's cookieCheck bounce and the WHEP
