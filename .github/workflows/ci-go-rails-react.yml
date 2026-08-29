@@ -39,13 +39,21 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # A change to this workflow file itself runs all three jobs, not
+          # none — the whole point of touching this file is to prove it
+          # still exercises every real test suite, and per-service-only
+          # filters would skip all of them on a workflow-only commit (as
+          # this one, before this line existed, actually did).
           filters: |
             rails:
               - 'rails-service/**'
+              - &workflow '.github/workflows/ci-go-rails-react.yml'
             react:
               - 'react-app/**'
+              - *workflow
             go:
               - 'go-service/**'
+              - *workflow
 
   rails:
     name: Rails tests
