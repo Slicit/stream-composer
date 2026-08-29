@@ -66,7 +66,7 @@ export function AdminUsersPage() {
         password,
         role,
         streamQuota: role === 'streamer' ? streamQuota : undefined,
-        compositorQuota,
+        compositorQuota: role !== 'admin' ? compositorQuota : undefined,
       })
       setUsername('')
       setPassword('')
@@ -172,18 +172,20 @@ export function AdminUsersPage() {
               />
             </div>
           )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="new-compositor-quota">Compositor quota</Label>
-            <Input
-              id="new-compositor-quota"
-              type="number"
-              min={0}
-              max={20}
-              className="w-24"
-              value={compositorQuota}
-              onChange={(e) => setCompositorQuota(Number(e.target.value))}
-            />
-          </div>
+          {role !== 'admin' && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="new-compositor-quota">Compositor quota</Label>
+              <Input
+                id="new-compositor-quota"
+                type="number"
+                min={0}
+                max={20}
+                className="w-24"
+                value={compositorQuota}
+                onChange={(e) => setCompositorQuota(Number(e.target.value))}
+              />
+            </div>
+          )}
           <Button type="submit" variant="outline" disabled={creating}>
             Add user
           </Button>
@@ -229,18 +231,22 @@ export function AdminUsersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={20}
-                      className="w-24"
-                      defaultValue={u.compositorQuota}
-                      onBlur={(e) => {
-                        const next = Number(e.target.value)
-                        if (next !== u.compositorQuota) updateCompositorQuota(u.id, next)
-                      }}
-                      aria-label={`Compositor quota for ${u.username}`}
-                    />
+                    {u.role !== 'admin' ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        max={20}
+                        className="w-24"
+                        defaultValue={u.compositorQuota}
+                        onBlur={(e) => {
+                          const next = Number(e.target.value)
+                          if (next !== u.compositorQuota) updateCompositorQuota(u.id, next)
+                        }}
+                        aria-label={`Compositor quota for ${u.username}`}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
                   <TableCell className="text-right space-x-2">

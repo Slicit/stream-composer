@@ -143,6 +143,39 @@ describe('AdminUsersPage', () => {
     })
   })
 
+  it('shows a dash instead of an editable compositor quota for admin rows', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const [adminRow, viewerRow] = dataRows()
+
+    expect(within(adminRow).queryByLabelText('Compositor quota for admin')).not.toBeInTheDocument()
+    expect(within(viewerRow).getByLabelText('Compositor quota for viewer-1')).toBeInTheDocument()
+  })
+
+  it('hides the compositor quota field on the create form when the admin role is selected', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin] })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderPage(fetchMock)
+    await waitFor(() => expect(dataRows()).toHaveLength(1))
+
+    const form = screen.getByRole('form', { name: 'Add a user' })
+    expect(within(form).getByLabelText('Compositor quota')).toBeInTheDocument()
+
+    await userEvent.click(within(form).getByRole('combobox', { name: 'Role for the new user' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'admin' }))
+
+    expect(within(form).queryByLabelText('Compositor quota')).not.toBeInTheDocument()
+  })
+
   it('disables impersonating the account currently signed in with', async () => {
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/auth/me') return jsonResponse({ user: admin })
