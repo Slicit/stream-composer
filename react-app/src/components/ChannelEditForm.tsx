@@ -1,11 +1,12 @@
-import { useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Trash2 } from 'lucide-react'
+import { ChevronDown, Trash2 } from 'lucide-react'
 import type { Channel, Game } from '@/api/types'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +15,7 @@ interface StreamOption {
   id: string
   name: string
   nickname: string
+  visibility: 'private' | 'public'
 }
 
 interface UserOption {
@@ -175,24 +177,11 @@ export function ChannelEditForm({ channel, streams, games, users, onUpdate, onUp
 
       <div className="flex flex-col gap-1.5">
         <Label>Streams in this channel</Label>
-        <div className="flex flex-wrap gap-2">
-          {streams.map((s) => {
-            const included = channel.streamIds.includes(s.id)
-            return (
-              <Badge
-                key={s.id}
-                variant={included ? 'default' : 'outline'}
-                className="cursor-pointer select-none"
-                onClick={() =>
-                  onUpdate({ streamIds: included ? channel.streamIds.filter((id) => id !== s.id) : [...channel.streamIds, s.id] })
-                }
-              >
-                {s.nickname || s.name}
-              </Badge>
-            )
-          })}
-          {streams.length === 0 && <p className="text-sm text-muted-foreground">No streams available to add yet.</p>}
-        </div>
+        <StreamPicker
+          streams={streams}
+          selectedIds={channel.streamIds}
+          onChange={(streamIds) => onUpdate({ streamIds })}
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -215,6 +204,146 @@ export function ChannelEditForm({ channel, streams, games, users, onUpdate, onUp
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function visibilityBadge(visibility: 'private' | 'public') {
+  return (
+    <Badge variant={visibility === 'public' ? 'default' : 'secondary'} className="shrink-0">
+      {visibility}
+    </Badge>
+  )
+}
+
+// A searchable, visibility-filterable add-picker plus the resulting member
+// list, each row badged with its own visibility — replaces a flat wrap of
+// toggle-badges that was fine for a handful of streams but unworkable once
+// a streamer has dozens to choose from (nothing to search or filter by).
+function StreamPicker({
+  streams,
+  selectedIds,
+  onChange,
+}: {
+  streams: StreamOption[]
+  selectedIds: string[]
+  onChange: (ids: string[]) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [visibilityFilter, setVisibilityFilter] = useState<'all' | 'private' | 'public'>('all')
+
+  const selected = streams.filter((s) => selectedIds.includes(s.id))
+  const candidates = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return streams.filter((s) => {
+      if (selectedIds.includes(s.id)) return false
+      if (visibilityFilter !== 'all' && s.visibility !== visibilityFilter) return false
+      if (q && !(s.nickname || s.name).toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [streams, selectedIds, visibilityFilter, query])
+
+  function add(id: string) {
+    onChange([...selectedIds, id])
+    setQuery('')
+  }
+
+  function remove(id: string) {
+    onChange(selectedIds.filter((x) => x !== id))
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next) setQuery('')
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            role="combobox"
+            aria-expanded={open}
+            aria-label="Add a stream"
+            className="flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring sm:w-80"
+          >
+            Add a stream…
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+          <div className="flex items-center gap-2 border-b p-2">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search streams…"
+              aria-label="Search streams"
+              className="flex h-8 flex-1 rounded-sm bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <Select value={visibilityFilter} onValueChange={(v) => setVisibilityFilter(v as typeof visibilityFilter)}>
+              <SelectTrigger aria-label="Filter by visibility" className="h-8 w-[6.5rem] shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="public">Public</SelectItem>
+                <SelectItem value="private">Private</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1">
+            {candidates.length === 0 ? (
+              <p className="px-2 py-3 text-center text-sm text-muted-foreground">
+                {streams.length === 0 ? 'No streams available to add yet.' : 'No streams match.'}
+              </p>
+            ) : (
+              candidates.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => add(s.id)}
+                  className="flex w-full items-center justify-between gap-2 rounded-sm py-1.5 pl-2 pr-2 text-left text-sm outline-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                >
+                  <span className="truncate">{s.nickname || s.name}</span>
+                  {visibilityBadge(s.visibility)}
+                </button>
+              ))
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      {selected.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No streams added yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y rounded-md border">
+          {selected.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-2 px-3 py-2">
+              <span className="text-sm">{s.nickname || s.name}</span>
+              <div className="flex items-center gap-2">
+                {visibilityBadge(s.visibility)}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  onClick={() => remove(s.id)}
+                  title="Remove"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  <span className="sr-only">Remove {s.nickname || s.name}</span>
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

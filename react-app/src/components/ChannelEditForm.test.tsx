@@ -23,8 +23,9 @@ const channel: Channel = {
 }
 
 const streams = [
-  { id: 's1', name: 'Included Cam', nickname: '' },
-  { id: 's2', name: 'Other Cam', nickname: '' },
+  { id: 's1', name: 'Included Cam', nickname: '', visibility: 'public' as const },
+  { id: 's2', name: 'Rare Private Cam', nickname: '', visibility: 'private' as const },
+  { id: 's3', name: 'Public Extra Cam', nickname: '', visibility: 'public' as const },
 ]
 
 const games = [{ id: 'g1', name: 'Celeste' }]
@@ -105,15 +106,57 @@ describe('ChannelEditForm', () => {
     expect(onUpdate).toHaveBeenCalledWith({ featuredGameId: 'g1' })
   })
 
-  it('toggles stream membership by clicking a badge', async () => {
+  it('shows every included stream in the list, badged with its own visibility', () => {
+    renderForm()
+
+    const row = screen.getByText('Included Cam').closest('li')!
+    expect(row).toHaveTextContent('public')
+  })
+
+  it('adds a stream from the picker, and removes one from the list', async () => {
     const { onUpdate } = renderForm()
     const user = userEvent.setup()
 
-    await user.click(screen.getByText('Other Cam'))
+    await user.click(screen.getByRole('combobox', { name: 'Add a stream' }))
+    await user.click(screen.getByRole('option', { name: /Rare Private Cam/ }))
     expect(onUpdate).toHaveBeenCalledWith({ streamIds: ['s1', 's2'] })
 
-    await user.click(screen.getByText('Included Cam'))
+    await user.click(screen.getByRole('button', { name: /Remove Included Cam/ }))
     expect(onUpdate).toHaveBeenCalledWith({ streamIds: [] })
+  })
+
+  it('already-selected streams never appear among the picker candidates', async () => {
+    renderForm()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('combobox', { name: 'Add a stream' }))
+    expect(screen.queryByRole('option', { name: /Included Cam/ })).not.toBeInTheDocument()
+  })
+
+  it('filters the picker candidates by visibility', async () => {
+    renderForm()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('combobox', { name: 'Add a stream' }))
+    expect(screen.getByRole('option', { name: /Rare Private Cam/ })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Public Extra Cam/ })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox', { name: 'Filter by visibility' }))
+    await user.click(screen.getByRole('option', { name: 'Public' }))
+
+    expect(screen.queryByRole('option', { name: /Rare Private Cam/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Public Extra Cam/ })).toBeInTheDocument()
+  })
+
+  it('filters the picker candidates by a search query', async () => {
+    renderForm()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('combobox', { name: 'Add a stream' }))
+    await user.type(screen.getByLabelText('Search streams'), 'Rare')
+
+    expect(screen.getByRole('option', { name: /Rare Private Cam/ })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Public Extra Cam/ })).not.toBeInTheDocument()
   })
 
   it('shows the owner field only when users are provided (admin only)', () => {
