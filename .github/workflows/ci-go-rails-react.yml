@@ -1,0 +1,156 @@
+name: CI (Go/Rails/React)
+
+# Test coverage for the go-rails-react stack — separate from ci.yml, which
+# is scoped to the pre-migration server/ app and knows nothing about this
+# one. Mirrors build-go-rails-react-images.yml's trigger/path-filter shape,
+# but filters each service independently rather than bundling rails+react:
+# that workflow combines them because the Rails image bundles the built
+# SPA, but their test suites don't depend on each other.
+
+on:
+  push:
+    branches: [main, migration/go-rails-react]
+    paths:
+      - 'rails-service/**'
+      - 'react-app/**'
+      - 'go-service/**'
+      - '.github/workflows/ci-go-rails-react.yml'
+  pull_request:
+    paths:
+      - 'rails-service/**'
+      - 'react-app/**'
+      - 'go-service/**'
+      - '.github/workflows/ci-go-rails-react.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ci-go-rails-react-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rails: ${{ steps.filter.outputs.rails }}
+      react: ${{ steps.filter.outputs.react }}
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rails:
+              - 'rails-service/**'
+            react:
+              - 'react-app/**'
+            go:
+              - 'go-service/**'
+
+  rails:
+    name: Rails tests
+    needs: changes
+    if: needs.changes.outputs.rails == 'true'
+    runs-on: ubuntu-latest
+    services:
+      # Reached over localhost, not a service hostname — GitHub Actions
+      # publishes service containers straight onto the runner's network
+      # namespace, unlike the box's docker-compose network.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: scmig
+          POSTGRES_PASSWORD: ci-secret
+          POSTGRES_DB: scmig_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgres://scmig:ci-secret@localhost:5432/scmig_test
+      # rails_helper.rb's maintain_test_schema! always targets config/database.yml's
+      # test: section, which only honors TEST_DATABASE_URL (not DATABASE_URL) —
+      # see that file's own comment on why. Same value as DATABASE_URL here since
+      # this job has no separate development database to protect against.
+      TEST_DATABASE_URL: postgres://scmig:ci-secret@localhost:5432/scmig_test
+      # Most specs stub this themselves, but pages_spec.rb's "does not shadow
+      # a real /internal route" test relies on InternalTokenAuthenticatable
+      # actually reaching its wrong-token branch (404) rather than its
+      # unset-token branch (401) — needs a real, if arbitrary, value here.
+      INTERNAL_API_TOKEN: ci-internal-token
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: rails-service
+
+      - name: Prepare the test database
+        working-directory: rails-service
+        run: bin/rails db:test:prepare
+
+      - name: Run tests
+        working-directory: rails-service
+        run: bundle exec rspec
+
+  go:
+    name: Go tests
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: go-service/go.mod
+
+      - name: gofmt
+        working-directory: go-service
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted"
+            echo "The above files are not gofmt-clean — run 'gofmt -w' on them."
+            exit 1
+          fi
+
+      - name: Build, vet, test
+        working-directory: go-service
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+  react:
+    name: React tests
+    needs: changes
+    if: needs.changes.outputs.react == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: react-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: react-app
+        run: npm ci
+
+      - name: Type check
+        working-directory: react-app
+        run: npx tsc -b
+
+      - name: Run tests
+        working-directory: react-app
+        run: npm test
