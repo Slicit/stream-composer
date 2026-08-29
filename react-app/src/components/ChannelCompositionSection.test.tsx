@@ -78,7 +78,7 @@ describe('ChannelCompositionSection', () => {
     await screen.findByText('horizontal')
 
     expect(screen.getByLabelText('Preview URL (paste into VLC)')).toHaveValue(
-      `${window.location.origin}/mtx/hls/c/c1/horizontal/index.m3u8?token=horizontal-preview-token`,
+      `${window.location.origin}/mtx/preview/c/c1/horizontal.ts?token=horizontal-preview-token`,
     )
     // Only one card is enabled — the vertical one must not show a preview
     // URL for a composition that isn't actually running.
@@ -100,7 +100,7 @@ describe('ChannelCompositionSection', () => {
     render(<ChannelCompositionSection apiBase={apiBase} />)
     await user.click(await screen.findByRole('button', { name: 'Copy preview URL' }))
 
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/mtx/hls/c/c1/horizontal/index.m3u8?token=horizontal-preview-token`)
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/mtx/preview/c/c1/horizontal.ts?token=horizontal-preview-token`)
   })
 
   it('PATCHes enabled when the switch is toggled', async () => {

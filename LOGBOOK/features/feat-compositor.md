@@ -183,6 +183,54 @@ independently, at once if wanted.
   `Switch` added to `ChannelCompositionSection.tsx`'s `OrientationCard`,
   wired through the same `onUpdate` patch pattern as everything else on
   the card.
+- **The caption sits on the video, not the letterbox bars around it.**
+  Reported live: with two sources in a vertical composition (a landscape
+  source in a portrait cell, letterboxed top and bottom), the name badge
+  floated down into the black padding below the picture instead of
+  resting on it. `BuildArgs`'s per-source chain ran `drawtext` *after*
+  `pad` — by then `h`/`w` in its `y=h-th-margin` expression refer to the
+  full, already-padded cell, not the actual visible picture inside it.
+  Moved `drawtext` to run on the tightly `scale`d frame, before `pad` —
+  now `h`/`w` are the real visible picture's own dimensions, so the
+  caption (and its badge, carried along as part of the same frame `pad`
+  then centers) lands on the video every time, matching
+  `ViewerTile.tsx`'s own letterbox-aware placement exactly. Confirmed
+  live: a landscape source in a tall portrait cell, badge sitting right
+  where the color bars end, not floating in the black area.
+- **A continuous MPEG-TS relay (`/mtx/preview`), not the composed-preview
+  HLS mount, is what VLC actually gets handed.** The HLS mount (previous
+  bullet's own drain-timing fix notwithstanding) still has a hard floor:
+  MediaMTX's LL-HLS reader sessions are scoped to a specific publisher
+  instance, so *any* handoff eventually breaks an in-flight session, and
+  VLC — confirmed live, this is what actually motivated the whole
+  rework — never notices and reconnects on its own the way a browser
+  might. `internal/mediaproxy/preview.go`'s `ServePreview` sidesteps the
+  session concept entirely: it holds one persistent HTTP connection to
+  the viewer open (`Content-Type: video/mp2t`) and relays into it from
+  its own short-lived per-viewer `ffmpeg -c copy -f mpegts` process,
+  reading whichever generation `Generations` reports as current over
+  RTSP — cheap (a remux, never a re-encode; the compositor already
+  encoded this feed) and typically warm within a second or two, since
+  it's connecting to an already-live composed output, not waiting on a
+  fresh compositor encode. `copyPreviewUntilGenerationChanges` is the one
+  goroutine ever allowed to write to the response, reading relay bytes
+  over a channel from a second goroutine and polling `Generations` on a
+  ticker in the same `select` — when the current generation moves on, it
+  returns, the caller kills the old relay and starts a new one against
+  the new path, and the *viewer's own connection never closes*. Verified
+  live with a real handoff, not just the swap logic in isolation: curl
+  held one unbroken connection through a real second source joining/
+  leaving, its output file's byte count climbing continuously with no
+  stall either side of the change, and frames pulled from early versus
+  late in that one file showing 2-source and then 1-source content —
+  proof the same connection actually carried both sides of a real
+  handoff, not just that bytes kept flowing from an unrelated source.
+  `ChannelCompositionSection.tsx`'s copy field now hands out this URL,
+  not the HLS one — the HLS composed-preview mount stays in
+  `mediaproxy` (a browser-based low-latency preview player, which *can*
+  recover from a manifest change the way VLC won't, is the one plausible
+  reason to still reach for it), just no longer what this feature itself
+  points anyone at.
 
 ## Verification
 
@@ -243,6 +291,23 @@ the live RTSP output at each stage. Both re-stacks were pixel-correct
 was never the bug. The only thing that changed here is the default a
 viewer sits with while that correct new generation is already live and
 waiting.
+
+The `/mtx/preview` MPEG-TS relay and the caption-placement fix got the
+same live-first treatment. For the relay: real ffmpeg publishers, a real
+`curl` download held open across a real second source stopping mid-
+capture — the single most important thing to prove was negative (the
+download process never exited, never had to be restarted), backed up by
+positive proof the swap actually reached different content (a frame
+pulled from early in the captured file shows both sources; one from
+late in the same file, after the real stop, shows only one — matching
+frame numbers by sequential count rather than by timestamp, since a
+splice between two independently-encoded ffmpeg outputs leaves a PTS
+discontinuity that confuses naive duration/seek estimation the same way
+a real player has to be resilient to it). For the caption: a landscape
+source in a portrait vertical-composition cell, grabbed live before and
+after the fix, badge visibly sitting in the black bar below the picture
+in the old frame and right on the picture's own bottom edge in the new
+one.
 
 ## Links
 

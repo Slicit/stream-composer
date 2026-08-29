@@ -229,12 +229,18 @@ function OrientationCard({
 
 // A read-only, pasteable URL for eyeballing a composition in an external
 // player (VLC, ffplay) — works the moment the composition is enabled and
-// live, with no relay destination required at all: it's the composited
-// output itself, reached through the same HLS mount viewers use, just
-// authorized by this composition's own token instead of a session cookie
-// (which VLC has no way to send).
+// live, with no relay destination required at all. Deliberately the
+// continuous MPEG-TS relay (/mtx/preview), not the HLS composed-preview
+// mount (/mtx/hls/c/...) also built for this: an HLS session dies outright
+// the moment a source joins/leaves and the composition hands off to a new
+// generation (MediaMTX's LL-HLS reader sessions are scoped to a specific
+// publisher instance), and VLC — unlike a browser — never notices and
+// reconnects on its own. The MPEG-TS relay holds one connection open for
+// as long as VLC does and swaps its own upstream internally on a handoff,
+// so VLC never has to be reopened by hand — confirmed live: the same
+// connection carried both sides of a real handoff with no interruption.
 function previewUrl(composition: ChannelComposition): string {
-  return `${window.location.origin}/mtx/hls/c/${composition.channelId}/${composition.orientation}/index.m3u8?token=${composition.previewToken}`
+  return `${window.location.origin}/mtx/preview/c/${composition.channelId}/${composition.orientation}.ts?token=${composition.previewToken}`
 }
 
 function PreviewUrlField({ composition }: { composition: ChannelComposition }) {

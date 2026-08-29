@@ -159,8 +159,8 @@ func BuildArgs(sources []Source, opts Options, cfg config.Config, caps encoder.C
 
 	for i, src := range placed {
 		cell := result.Cells[i]
-		chain := fmt.Sprintf("[%d:v]fps=%d,scale=%d:%d:force_original_aspect_ratio=decrease:flags=bilinear,pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1",
-			i, fps, cell.W, cell.H, cell.W, cell.H)
+		chain := fmt.Sprintf("[%d:v]fps=%d,scale=%d:%d:force_original_aspect_ratio=decrease:flags=bilinear",
+			i, fps, cell.W, cell.H)
 		caption := strings.TrimSpace(src.Label)
 		if useLabels && caption != "" {
 			size := opts.LabelSize
@@ -198,6 +198,19 @@ func BuildArgs(sources []Source, opts Options, cfg config.Config, caps encoder.C
 			chain += fmt.Sprintf(",drawtext=%stext='%s':expansion=none:fontcolor=0x1a8900:fontsize=%d:box=1:boxcolor=black@0.9:boxborderw=%d:x=(w-text_w)/2:y=h-th-%d",
 				font, escapeDrawtext(caption), size, pad, margin)
 		}
+		// The pad happens *after* drawtext, not before: a source whose
+		// aspect ratio doesn't match its cell's gets letterboxed by scale's
+		// own force_original_aspect_ratio=decrease, and drawtext needs to
+		// see that tightly-scaled frame — where h/w are the actual visible
+		// picture's own dimensions — to plant the caption at its bottom
+		// edge, exactly like the browser composer's own caption does
+		// (react-app/src/components/ViewerTile.tsx tracks the same
+		// letterboxing to place its caption at the visible picture's
+		// bottom, not the tile's). Drawtext first, then pad, means the
+		// caption gets carried along as part of the same frame the pad
+		// centers — sitting on the video, never in the black bars either
+		// side of it.
+		chain += fmt.Sprintf(",pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1", cell.W, cell.H)
 		parts = append(parts, chain+fmt.Sprintf("[c%d]", i))
 	}
 

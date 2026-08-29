@@ -150,6 +150,27 @@ func safeEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+// authorizeComposedPreview is the one check every composed-preview mount
+// shares (HLS and the continuous-stream one in preview.go): the
+// composition must exist, be enabled, and the caller must present its
+// exact preview token. Not gated by the viewer session at all — VLC and
+// ffplay carry no sc_session cookie — so this token, minted once by
+// Rails, is the only thing standing between a caller and this one,
+// specific, already-composed feed. It grants nothing about the channel's
+// raw sources.
+func (r Resolver) authorizeComposedPreview(channelID, orientation, token string) bool {
+	if token == "" {
+		return false
+	}
+	for _, c := range r.Store.ChannelCompositions() {
+		if c.ChannelID != channelID || c.Orientation != orientation {
+			continue
+		}
+		return c.Enabled && c.PreviewToken != "" && safeEqual(token, c.PreviewToken)
+	}
+	return false
+}
+
 // resolveComposedPreview authorizes c/<channelId>/<orientation>[/g<N>] — a
 // channel composition's own composed output, HLS-only, for pasting
 // straight into VLC. Unlike every other path this proxy resolves, it is
@@ -184,25 +205,19 @@ func (r Resolver) resolveComposedPreview(publicPath, query string) (mediaPath, r
 		return "", "", false
 	}
 
-	for _, c := range r.Store.ChannelCompositions() {
-		if c.ChannelID != channelID || c.Orientation != orientation {
-			continue
-		}
-		if !c.Enabled || c.PreviewToken == "" || !safeEqual(token, c.PreviewToken) {
-			return "", "", false
-		}
-		if genStr != "" {
-			path := compositionscheduler.GenerationOutputPath(r.Config, channelID, orientation, genStr)
-			return path, publicPath, true
-		}
-		path, gen, live := r.Generations.Current(channelID, orientation)
-		if !live {
-			path = compositionscheduler.OutputPath(r.Config, channelID, orientation)
-			return path, publicPath, true
-		}
-		return path, publicPath + "/g" + gen, true
+	if !r.authorizeComposedPreview(channelID, orientation, token) {
+		return "", "", false
 	}
-	return "", "", false
+	if genStr != "" {
+		path := compositionscheduler.GenerationOutputPath(r.Config, channelID, orientation, genStr)
+		return path, publicPath, true
+	}
+	path, gen, live := r.Generations.Current(channelID, orientation)
+	if !live {
+		path = compositionscheduler.OutputPath(r.Config, channelID, orientation)
+		return path, publicPath, true
+	}
+	return path, publicPath + "/g" + gen, true
 }
 
 // ParseRequest strictly parses a proxied request's raw URL into validated

@@ -100,6 +100,32 @@ func TestBuildArgsIncludesCaptionsWhenLabelsAreOnAndDrawtextIsAvailable(t *testi
 	}
 }
 
+// A letterboxed source (its aspect ratio doesn't fill the cell) must get
+// its caption planted on the actual visible picture, not the black bars
+// pad adds around it — which means drawtext has to run on the tightly
+// scaled frame, before pad, not after. Ported from a live bug: two
+// sources in a vertical composition each got padded top/bottom to fill a
+// portrait cell, and the caption — drawn after pad, positioned relative
+// to the padded frame's own bottom edge — ended up sitting in the black
+// bar below the picture instead of on it, unlike the browser composer's
+// own caption (react-app/src/components/ViewerTile.tsx), which already
+// accounts for exactly this and tracks the visible picture's edge.
+func TestBuildArgsPlantsTheCaptionBeforePaddingNotAfter(t *testing.T) {
+	sources := []Source{{Path: "live/cam-1", Label: "Front Row"}}
+	opts := Options{Width: 1920, Height: 1080, OutputPath: "composed/c/horizontal", Labels: true, LabelSize: 22}
+	args, _ := BuildArgs(sources, opts, testConfig(), encoder.Caps{Encoders: map[string]bool{"libx264": true}, Drawtext: true})
+	joined := strings.Join(args, " ")
+
+	drawtextAt := strings.Index(joined, "drawtext")
+	padAt := strings.Index(joined, "pad=")
+	if drawtextAt < 0 || padAt < 0 {
+		t.Fatalf("expected both drawtext and pad in the filter chain, got: %s", joined)
+	}
+	if drawtextAt > padAt {
+		t.Errorf("drawtext must come before pad — got pad first, so the caption would land in the padding, not on the video: %s", joined)
+	}
+}
+
 // The caption must match the browser composer's own name badge
 // (react-app/src/components/ViewerTile.tsx) — the same green on the same
 // near-opaque black, filled rather than just outlined.

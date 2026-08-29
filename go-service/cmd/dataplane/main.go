@@ -239,6 +239,11 @@ func main() {
 	mux.Handle(mediaproxy.HLSMount+"/", guard(func(w http.ResponseWriter, r *http.Request) {
 		proxy.ServeHLS(w, r, cfg.MediaMTX.HLS)
 	}))
+	// Token-authorized like HLSMount's own composed-preview path, not
+	// session-guarded in any meaningful sense — guard is still harmless to
+	// wrap this in (it only ever attaches a resolved user, never consulted
+	// here), kept for consistency with the other two mounts.
+	mux.Handle(mediaproxy.PreviewMount+"/", guard(proxy.ServePreview))
 
 	// The browser-composition equivalent of server/src/routes/api.js's
 	// GET /api/state.
