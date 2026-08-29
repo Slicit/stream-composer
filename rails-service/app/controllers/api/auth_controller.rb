@@ -23,13 +23,14 @@ module Api
       render json: { user: user.as_public_json }
     end
 
-    # Step two of a 2FA login: exchanges a live TwoFactorChallenge plus a
-    # real TOTP code for an actual signed-in session.
+    # Step two of a 2FA login: exchanges a live TwoFactorChallenge plus
+    # either a real TOTP code or an unused backup code for an actual
+    # signed-in session.
     def verify_two_factor
       challenge = TwoFactorChallenge.authenticate(params[:challengeToken])
       return render_unauthorized("This sign-in attempt has expired — sign in again.") unless challenge
 
-      unless challenge.user.verify_otp(params[:code])
+      unless challenge.user.verify_otp(params[:code]) || challenge.user.verify_backup_code(params[:code])
         return render_unauthorized("Invalid code.")
       end
 

@@ -41,6 +41,15 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
   const [disableError, setDisableError] = useState<string | null>(null)
   const [disabling, setDisabling] = useState(false)
 
+  // Set once right after #enable or a regenerate succeeds — the only
+  // time these are ever shown in plaintext, so this dialog is the one
+  // place in the app that ever holds them.
+  const [revealedBackupCodes, setRevealedBackupCodes] = useState<string[] | null>(null)
+  const [regeneratingCodes, setRegeneratingCodes] = useState(false)
+  const [regeneratePassword, setRegeneratePassword] = useState('')
+  const [regenerateError, setRegenerateError] = useState<string | null>(null)
+  const [regenerateSubmitting, setRegenerateSubmitting] = useState(false)
+
   function reset() {
     setCurrentPassword('')
     setNewPassword('')
@@ -50,6 +59,10 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     resetTwoFactorSetup()
     setDisablePassword('')
     setDisableError(null)
+    setRevealedBackupCodes(null)
+    setRegeneratingCodes(false)
+    setRegeneratePassword('')
+    setRegenerateError(null)
   }
 
   function resetTwoFactorSetup() {
@@ -75,13 +88,31 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     setOtpError(null)
     setOtpSubmitting(true)
     try {
-      await api.post('/api/two-factor/enable', { code: otpCode })
+      const data = await api.post<{ backupCodes: string[] }>('/api/two-factor/enable', { code: otpCode })
       await refresh()
       resetTwoFactorSetup()
+      setRevealedBackupCodes(data.backupCodes)
     } catch (err) {
       setOtpError(err instanceof ApiError ? err.message : 'Could not enable two-factor authentication.')
     } finally {
       setOtpSubmitting(false)
+    }
+  }
+
+  async function regenerateBackupCodes(e: FormEvent) {
+    e.preventDefault()
+    setRegenerateError(null)
+    setRegenerateSubmitting(true)
+    try {
+      const data = await api.post<{ backupCodes: string[] }>('/api/two-factor/backup-codes', { currentPassword: regeneratePassword })
+      await refresh()
+      setRegeneratingCodes(false)
+      setRegeneratePassword('')
+      setRevealedBackupCodes(data.backupCodes)
+    } catch (err) {
+      setRegenerateError(err instanceof ApiError ? err.message : 'Could not regenerate backup codes.')
+    } finally {
+      setRegenerateSubmitting(false)
     }
   }
 
@@ -149,29 +180,92 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
         <div className="flex flex-col gap-3 border-b pb-4">
           <Label>Two-factor authentication</Label>
-          {user?.otpEnabled ? (
-            <form className="flex flex-col gap-3" onSubmit={disableTwoFactor}>
-              <p className="text-sm text-muted-foreground">Two-factor authentication is on.</p>
-              {disableError && (
-                <p className="text-sm text-destructive" role="alert">
-                  {disableError}
-                </p>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="disable-2fa-password">Confirm your password to disable it</Label>
-                <Input
-                  id="disable-2fa-password"
-                  type="password"
-                  value={disablePassword}
-                  onChange={(e) => setDisablePassword(e.target.value)}
-                  autoComplete="current-password"
-                  required
-                />
+          {revealedBackupCodes ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Save these backup codes somewhere safe — each one signs you in once if you lose access to your authenticator app.
+                They won't be shown again.
+              </p>
+              <div className="grid grid-cols-2 gap-1.5 rounded-md bg-muted p-3 font-mono text-sm">
+                {revealedBackupCodes.map((code) => (
+                  <code key={code}>{code}</code>
+                ))}
               </div>
-              <Button type="submit" variant="outline" size="sm" disabled={disabling} className="self-start">
-                {disabling ? 'Disabling…' : 'Disable two-factor authentication'}
+              <Button type="button" variant="outline" size="sm" onClick={() => setRevealedBackupCodes(null)} className="self-start">
+                I've saved these
               </Button>
-            </form>
+            </div>
+          ) : user?.otpEnabled ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                Two-factor authentication is on. {user.otpBackupCodesRemaining} backup {user.otpBackupCodesRemaining === 1 ? 'code' : 'codes'}{' '}
+                remaining.
+              </p>
+              {regeneratingCodes ? (
+                <form className="flex flex-col gap-3" onSubmit={regenerateBackupCodes}>
+                  {regenerateError && (
+                    <p className="text-sm text-destructive" role="alert">
+                      {regenerateError}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="regenerate-codes-password">Confirm your password to regenerate backup codes</Label>
+                    <Input
+                      id="regenerate-codes-password"
+                      type="password"
+                      value={regeneratePassword}
+                      onChange={(e) => setRegeneratePassword(e.target.value)}
+                      autoComplete="current-password"
+                      required
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground">This replaces all existing backup codes — old ones stop working.</p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setRegeneratingCodes(false)
+                        setRegeneratePassword('')
+                        setRegenerateError(null)
+                      }}
+                      disabled={regenerateSubmitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit" variant="outline" size="sm" disabled={regenerateSubmitting}>
+                      {regenerateSubmitting ? 'Regenerating…' : 'Regenerate'}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <Button type="button" variant="outline" size="sm" onClick={() => setRegeneratingCodes(true)} className="self-start">
+                  Regenerate backup codes
+                </Button>
+              )}
+              <form className="flex flex-col gap-3 border-t pt-3" onSubmit={disableTwoFactor}>
+                {disableError && (
+                  <p className="text-sm text-destructive" role="alert">
+                    {disableError}
+                  </p>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="disable-2fa-password">Confirm your password to disable it</Label>
+                  <Input
+                    id="disable-2fa-password"
+                    type="password"
+                    value={disablePassword}
+                    onChange={(e) => setDisablePassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                <Button type="submit" variant="outline" size="sm" disabled={disabling} className="self-start">
+                  {disabling ? 'Disabling…' : 'Disable two-factor authentication'}
+                </Button>
+              </form>
+            </div>
           ) : otpSecret ? (
             <form className="flex flex-col gap-3" onSubmit={enableTwoFactor}>
               <p className="text-sm text-muted-foreground">Scan this code with your authenticator app, or enter the secret manually.</p>

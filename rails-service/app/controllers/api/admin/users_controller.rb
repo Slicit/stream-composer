@@ -87,7 +87,7 @@ module Api
       # This is the "unlock a locked-out user" path.
       def reset_two_factor
         user = User.find(params[:id])
-        user.update!(otp_enabled: false, otp_secret: nil)
+        user.update!(otp_enabled: false, otp_secret: nil, otp_backup_code_digests: [])
         render json: { user: user.as_public_json }
       end
 

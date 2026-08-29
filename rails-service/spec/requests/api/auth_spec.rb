@@ -100,6 +100,15 @@ RSpec.describe "Api::Auth", type: :request do
       post "/api/auth/login/verify-2fa", params: { challengeToken: "not-a-real-token", code: "123456" }, as: :json
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "completes sign-in with a backup code instead of a TOTP code, consuming it" do
+      backup_codes = totp_user.generate_backup_codes!
+      challenge_token = start_challenge
+      post "/api/auth/login/verify-2fa", params: { challengeToken: challenge_token, code: backup_codes.first }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(response.cookies["sc_session"]).to be_present
+      expect(totp_user.reload.verify_backup_code(backup_codes.first)).to be false # already consumed
+    end
   end
 
   describe "GET /api/auth/me" do

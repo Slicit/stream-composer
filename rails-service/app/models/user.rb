@@ -13,6 +13,7 @@ class User < ApplicationRecord
   USERNAME_FORMAT = /\A[a-zA-Z0-9._-]{2,32}\z/
   SCRYPT = { n: 16384, r: 8, p: 1, length: 64 }.freeze
   CONFIRMATION_TOKEN_TTL = 48.hours
+  BACKUP_CODE_COUNT = 10
 
   # Reversible, unlike the password hash — a TOTP secret has to be read
   # back to generate the expected code each login, so it's encrypted
@@ -74,6 +75,7 @@ class User < ApplicationRecord
       email: email,
       emailConfirmed: email_confirmed_at.present?,
       otpEnabled: otp_enabled,
+      otpBackupCodesRemaining: otp_backup_code_digests.size,
       streamQuota: stream_quota,
       compositorQuota: compositor_quota,
       avatar: avatar.presence,
@@ -100,6 +102,25 @@ class User < ApplicationRecord
     ROTP::TOTP.new(otp_secret).verify(code.to_s, drift_behind: 30, drift_ahead: 30).present?
   end
 
+  # Replaces the whole set — called once automatically when 2FA is first
+  # enabled, and again on demand via the self-service regenerate action.
+  # Returns the raw codes; this is the only time they exist outside a
+  # digest, matching generate_confirmation_token!'s own shape.
+  def generate_backup_codes!
+    raw_codes = Array.new(BACKUP_CODE_COUNT) { self.class.format_backup_code(SecureRandom.hex(4)) }
+    update!(otp_backup_code_digests: raw_codes.map { |c| self.class.digest_backup_code(c) })
+    raw_codes
+  end
+
+  # Single-use: a match consumes it immediately, so replaying the same
+  # code twice fails the second time.
+  def verify_backup_code(code)
+    digest = self.class.digest_backup_code(code)
+    return false unless otp_backup_code_digests.include?(digest)
+    update!(otp_backup_code_digests: otp_backup_code_digests - [digest])
+    true
+  end
+
   def remove_avatar_file
     return if avatar.blank?
     path = Rails.public_path.join(avatar.delete_prefix("/"))
@@ -111,6 +132,18 @@ class User < ApplicationRecord
   class << self
     def scrypt_hex(password, salt)
       OpenSSL::KDF.scrypt(password.to_s, salt: salt, N: SCRYPT[:n], r: SCRYPT[:r], p: SCRYPT[:p], length: SCRYPT[:length]).unpack1("H*")
+    end
+
+    # "abcd1234" -> "abcd-1234" — cosmetic only, stripped again before
+    # digesting so a code verifies the same whether or not the dash (or
+    # any other punctuation/whitespace/case) survived being typed back in.
+    def format_backup_code(raw)
+      raw[0, 4] + "-" + raw[4, 4]
+    end
+
+    def digest_backup_code(code)
+      normalized = code.to_s.downcase.gsub(/[^a-z0-9]/, "")
+      Digest::SHA256.hexdigest(normalized)
     end
 
     # A constant-ish amount of work runs whether or not the username

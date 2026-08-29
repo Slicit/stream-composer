@@ -93,13 +93,15 @@ RSpec.describe "Api::Admin::Users", type: :request do
       expect(JSON.parse(response.body)["user"]["username"]).to eq("viewer-1")
     end
 
-    it "force-resets another user's 2FA, no re-auth required" do
+    it "force-resets another user's 2FA (including backup codes), no re-auth required" do
       viewer.update!(otp_secret: ROTP::Base32.random, otp_enabled: true)
+      viewer.generate_backup_codes!
       post "/api/admin/users/#{viewer.id}/reset-2fa", as: :json
       expect(response).to have_http_status(:ok)
       viewer.reload
       expect(viewer.otp_enabled).to be false
       expect(viewer.otp_secret).to be_nil
+      expect(viewer.otp_backup_code_digests).to be_empty
     end
 
     it "uploads an avatar on another user's account" do

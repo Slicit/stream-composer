@@ -214,6 +214,47 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "two-factor backup codes" do
+    let!(:user) { build_user.tap(&:save!) }
+
+    it "generates 10 codes and verifies a real one" do
+      codes = user.generate_backup_codes!
+      expect(codes.length).to eq(10)
+      expect(user.verify_backup_code(codes.first)).to be true
+    end
+
+    it "SECURITY: a code is single-use — verifying it twice fails the second time" do
+      codes = user.generate_backup_codes!
+      expect(user.verify_backup_code(codes.first)).to be true
+      expect(user.verify_backup_code(codes.first)).to be false
+    end
+
+    it "normalizes case/dashes/whitespace before comparing" do
+      codes = user.generate_backup_codes!
+      scrambled = codes.first.upcase.gsub("-", " ")
+      expect(user.verify_backup_code(scrambled)).to be true
+    end
+
+    it "rejects an unknown code without raising" do
+      user.generate_backup_codes!
+      expect(user.verify_backup_code("0000-0000")).to be false
+    end
+
+    it "SECURITY: never stores raw codes, only their digests" do
+      codes = user.generate_backup_codes!
+      raw_column_value = ActiveRecord::Base.connection.select_value(
+        "select otp_backup_code_digests from users where id = #{ActiveRecord::Base.connection.quote(user.id)}",
+      )
+      codes.each { |c| expect(raw_column_value).not_to include(c) }
+    end
+
+    it "regenerating replaces the whole set — old codes stop working" do
+      first_batch = user.generate_backup_codes!
+      user.generate_backup_codes!
+      expect(user.verify_backup_code(first_batch.first)).to be false
+    end
+  end
+
   describe "the admin role immutability guard" do
     it "refuses to change the role of the sole remaining admin" do
       admin = build_user(username: "solo-admin", role: "admin").tap(&:save!)

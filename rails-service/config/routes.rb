@@ -27,6 +27,7 @@ Rails.application.routes.draw do
     post "two-factor/setup", to: "two_factor#setup"
     post "two-factor/enable", to: "two_factor#enable"
     post "two-factor/disable", to: "two_factor#disable"
+    post "two-factor/backup-codes", to: "two_factor#regenerate_backup_codes"
 
     scope path: "streams/mine", controller: "streams" do
       get "", action: :index

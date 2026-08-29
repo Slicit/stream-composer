@@ -33,6 +33,7 @@ const baseUser: User = {
   email: 'target@example.com',
   emailConfirmed: true,
   otpEnabled: true,
+  otpBackupCodesRemaining: 8,
   streamQuota: 5,
   compositorQuota: 0,
   avatar: null,

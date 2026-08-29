@@ -11,6 +11,7 @@ export interface User {
   email: string | null
   emailConfirmed: boolean
   otpEnabled: boolean
+  otpBackupCodesRemaining: number
   streamQuota: number
   compositorQuota: number
   avatar: string | null

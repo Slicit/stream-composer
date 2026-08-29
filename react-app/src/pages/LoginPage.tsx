@@ -69,7 +69,9 @@ export function LoginPage() {
         <CardContent>
           {challengeToken ? (
             <form className="flex flex-col gap-4" onSubmit={handleVerifyTwoFactor}>
-              <p className="text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+              <p className="text-sm text-muted-foreground">
+                Enter the 6-digit code from your authenticator app, or one of your backup codes.
+              </p>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="otp-code">Code</Label>
                 <Input
