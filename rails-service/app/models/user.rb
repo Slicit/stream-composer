@@ -12,19 +12,30 @@ class User < ApplicationRecord
   ROLES = %w[admin viewer streamer].freeze
   USERNAME_FORMAT = /\A[a-zA-Z0-9._-]{2,32}\z/
   SCRYPT = { n: 16384, r: 8, p: 1, length: 64 }.freeze
+  CONFIRMATION_TOKEN_TTL = 48.hours
+
+  # Reversible, unlike the password hash — a TOTP secret has to be read
+  # back to generate the expected code each login, so it's encrypted
+  # rather than hashed. RAILS_MASTER_KEY (already mandatory infra) is
+  # what protects it.
+  encrypts :otp_secret
 
   has_many :sessions, dependent: :destroy
+  has_many :two_factor_challenges, dependent: :destroy
   has_many :owned_streams, class_name: "Stream", foreign_key: :owner_id, inverse_of: :owner, dependent: nil
   has_many :owned_channels, class_name: "Channel", foreign_key: :owner_id, inverse_of: :owner, dependent: :destroy
 
   before_validation { self.username = username.to_s.strip }
   before_validation { self.role = "viewer" if role.blank? }
+  before_validation { self.email = email.to_s.strip.downcase.presence }
 
   validates :username, format: { with: USERNAME_FORMAT, message: "must be 2-32 characters: letters, digits, dot, dash or underscore" }
   validates :username, uniqueness: { case_sensitive: false, message: "is already taken" }
   validates :role, inclusion: { in: ROLES, message: "must be admin, viewer or streamer" }
   validates :stream_quota, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 1000 }
   validates :compositor_quota, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 20 }
+  validates :email, format: { with: URI::MailTo::EMAIL_REGEXP, message: "is not a valid email address" }, allow_nil: true
+  validates :email, uniqueness: { case_sensitive: false, message: "is already registered" }, allow_nil: true
 
   validates :password, presence: true, on: :create, unless: -> { @password_assignment_attempted || @importing_legacy_hash }
   validate :password_is_strong, if: -> { @password_assignment_attempted }
@@ -60,12 +71,33 @@ class User < ApplicationRecord
       id: id,
       username: username,
       role: role,
+      email: email,
+      emailConfirmed: email_confirmed_at.present?,
+      otpEnabled: otp_enabled,
       streamQuota: stream_quota,
       compositorQuota: compositor_quota,
       avatar: avatar.presence,
       createdAt: created_at.iso8601,
       lastLoginAt: last_login_at&.iso8601,
     }
+  end
+
+  # An account with no email (every admin-created account) is never
+  # blocked from signing in — the confirmation gate only applies to the
+  # self-registration flow that collects an email in the first place.
+  def email_confirmation_required?
+    email.present? && email_confirmed_at.nil?
+  end
+
+  def generate_confirmation_token!
+    raw_token = SecureRandom.hex(32)
+    update!(confirmation_token_digest: Digest::SHA256.hexdigest(raw_token), confirmation_sent_at: Time.current)
+    raw_token
+  end
+
+  def verify_otp(code)
+    return false if otp_secret.blank?
+    ROTP::TOTP.new(otp_secret).verify(code.to_s, drift_behind: 30, drift_ahead: 30).present?
   end
 
   def remove_avatar_file
@@ -91,6 +123,16 @@ class User < ApplicationRecord
         return nil
       end
       user.authenticate(password) ? user : nil
+    end
+
+    # An expired or unknown token both return nil — the caller can't tell
+    # the difference, so there's nothing to enumerate here either.
+    def find_by_confirmation_token(raw_token)
+      return nil if raw_token.blank?
+      user = find_by(confirmation_token_digest: Digest::SHA256.hexdigest(raw_token))
+      return nil unless user
+      return nil if user.confirmation_sent_at.nil? || user.confirmation_sent_at < CONFIRMATION_TOKEN_TTL.ago
+      user
     end
 
     # Rebuilds a user straight from an already-hashed config.json record —

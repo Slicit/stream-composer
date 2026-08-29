@@ -13,6 +13,12 @@ gem "bootsnap", require: false
 # The React frontend runs on its own dev-server origin.
 gem "rack-cors"
 
+# TOTP two-factor auth: RFC 6238 code generation/verification, plus a QR
+# code (as SVG) for the authenticator-app provisioning URI. Hand-rolled
+# like the rest of this app's auth — no devise wrapper gem.
+gem "rotp", "~> 6.3"
+gem "rqrcode", "~> 3.0"
+
 group :development, :test do
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
   gem "brakeman", require: false

@@ -136,6 +136,84 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "email" do
+    it "allows a nil email" do
+      expect(build_user(email: nil)).to be_valid
+    end
+
+    it "rejects a malformed email" do
+      expect(build_user(email: "not-an-email")).not_to be_valid
+    end
+
+    it "treats emails as case-insensitively unique" do
+      build_user(username: "one", email: "Person@Example.com").save!
+      expect(build_user(username: "two", email: "person@example.com")).not_to be_valid
+    end
+
+    it "normalizes email to lowercase" do
+      user = build_user(email: "Person@Example.COM").tap(&:save!)
+      expect(user.email).to eq("person@example.com")
+    end
+  end
+
+  describe "email confirmation" do
+    let!(:user) { build_user(email: "confirm-me@example.com").tap(&:save!) }
+
+    it "requires confirmation only once an email is present and unconfirmed" do
+      expect(user.email_confirmation_required?).to be true
+      expect(build_user(email: nil).email_confirmation_required?).to be false
+
+      user.update!(email_confirmed_at: Time.current)
+      expect(user.email_confirmation_required?).to be false
+    end
+
+    it "generates a token that round-trips back to the same user" do
+      raw_token = user.generate_confirmation_token!
+      expect(User.find_by_confirmation_token(raw_token)).to eq(user)
+    end
+
+    it "SECURITY: rejects an unknown or garbage token without raising" do
+      user.generate_confirmation_token!
+      expect(User.find_by_confirmation_token("not-the-real-token")).to be_nil
+      expect(User.find_by_confirmation_token(nil)).to be_nil
+    end
+
+    it "rejects a token older than the 48-hour TTL" do
+      raw_token = user.generate_confirmation_token!
+      user.update_column(:confirmation_sent_at, 49.hours.ago)
+      expect(User.find_by_confirmation_token(raw_token)).to be_nil
+    end
+
+    it "SECURITY: never stores the raw token, only its digest" do
+      raw_token = user.generate_confirmation_token!
+      expect(user.reload.confirmation_token_digest).not_to eq(raw_token)
+      expect(user.confirmation_token_digest).to eq(Digest::SHA256.hexdigest(raw_token))
+    end
+  end
+
+  describe "two-factor authentication" do
+    let!(:user) { build_user.tap(&:save!) }
+
+    it "SECURITY: encrypts otp_secret at rest, not plaintext" do
+      user.update!(otp_secret: ROTP::Base32.random)
+      raw_column_value = ActiveRecord::Base.connection.select_value(
+        "select otp_secret from users where id = #{ActiveRecord::Base.connection.quote(user.id)}",
+      )
+      expect(raw_column_value).not_to eq(user.otp_secret)
+      expect(user.reload.otp_secret).to eq(user.otp_secret)
+    end
+
+    it "verifies a real TOTP code and rejects a wrong one" do
+      user.update!(otp_secret: ROTP::Base32.random)
+      expect(user.verify_otp(ROTP::TOTP.new(user.otp_secret).now)).to be true
+      expect(user.verify_otp("000000")).to be false
+    end
+
+    it "returns false without raising when no secret has been set up yet" do
+      expect(user.verify_otp("123456")).to be false
+    end
+  end
+
   describe "the admin role immutability guard" do
     it "refuses to change the role of the sole remaining admin" do
       admin = build_user(username: "solo-admin", role: "admin").tap(&:save!)
