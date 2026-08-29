@@ -5,6 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>app</title>
+    <script>
+      // Sets data-theme before first paint so there is never a flash of
+      // the default theme before ThemeProvider mounts — keep this key and
+      // the fallback in sync with ThemeContext.tsx's STORAGE_KEY/DEFAULT_THEME.
+      ;(function () {
+        var THEMES = ['studio', 'legacy', 'aurora', 'onair']
+        var theme = 'studio'
+        try {
+          var stored = localStorage.getItem('sc:theme')
+          if (stored && THEMES.indexOf(stored) !== -1) theme = stored
+        } catch (e) {
+          /* storage unavailable — fall back to the default */
+        }
+        document.documentElement.dataset.theme = theme
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

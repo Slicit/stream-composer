@@ -72,7 +72,7 @@ export function LeftNav() {
   if (!user) return null
 
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-r px-3 py-4 sm:flex">
+    <aside className="hidden w-56 shrink-0 flex-col border-r bg-nav text-nav-foreground px-3 py-4 sm:flex">
       <div className="flex flex-col gap-1">
         <h2 className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Channels</h2>
         {channels === null ? (

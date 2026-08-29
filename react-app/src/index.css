@@ -2,22 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Theme tokens originally lifted from server/public/assets/style.css's
-   :root block (the vanilla app's "control-room UI" palette), converted to
-   the bare "H S% L%" triples shadcn/Tailwind expects. The app is dark-only
-   (color-scheme: dark, no toggle) — same as the app it is replacing — so
-   there is a single :root palette, no .light/.dark split.
+/* Four themes, switched by a `data-theme` attribute on <html> (see
+   ThemeContext + the blocking inline script in index.html that sets it
+   before first paint, to avoid a flash of the wrong theme).
 
-   The neutrals carry a small blue-grey tint (hue ~222°, low saturation)
-   rather than true 0-saturation grey — same lightness steps as the
-   original palette, so contrast/hierarchy is unchanged, just less
-   clinical. primary/success/warning/destructive are untouched. */
+   - "legacy": the original single dark palette this app shipped with,
+     lifted byte-for-byte from server/public/assets/style.css's
+     "control-room UI" — preserved exactly, never edited, for anyone who
+     prefers it. --nav equals --background here on purpose: the legacy
+     look never distinguished the chrome from the content area.
+   - "studio" (the default): legacy's same blue identity, refined —
+     --nav is deliberately lighter than --background so NavBar/LeftNav
+     read as a distinct layer instead of blending into the page, and the
+     accent/success tones are a little more saturated.
+   - "aurora": a violet/magenta streaming-at-night palette.
+   - "onair": a crimson broadcast/tally-light palette.
+
+   All four are dark-only (color-scheme: dark) — this app has never had a
+   light mode, and none of the four is one. */
 @layer base {
-  :root {
+  :root,
+  [data-theme='studio'] {
+    color-scheme: dark;
+
+    --background: 224 18% 5%;
+    --foreground: 210 25% 98%;
+
+    --nav: 224 20% 9%;
+    --nav-foreground: 210 25% 98%;
+
+    --card: 224 17% 11%;
+    --card-foreground: 210 25% 98%;
+
+    --popover: 224 17% 12%;
+    --popover-foreground: 210 25% 98%;
+
+    --primary: 213 88% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 224 15% 15%;
+    --secondary-foreground: 210 25% 98%;
+
+    --muted: 224 15% 15%;
+    --muted-foreground: 218 10% 62%;
+
+    --accent: 224 15% 19%;
+    --accent-foreground: 210 25% 98%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 16% 22%;
+    --input: 222 16% 22%;
+    --ring: 213 88% 58%;
+
+    --success: 142 70% 42%;
+    --warning: 38 96% 56%;
+
+    --radius: 0.625rem;
+  }
+
+  [data-theme='legacy'] {
     color-scheme: dark;
 
     --background: 222 15% 6%;
     --foreground: 210 20% 98%;
+
+    --nav: 222 15% 6%; /* same as --background — legacy never separated them */
+    --nav-foreground: 210 20% 98%;
 
     --card: 222 14% 11%;
     --card-foreground: 210 20% 98%;
@@ -34,7 +86,7 @@
     --muted: 222 13% 14%;
     --muted-foreground: 218 8% 58%;
 
-    --accent: 222 12% 18%; /* shadcn's "accent" = a hover surface */
+    --accent: 222 12% 18%;
     --accent-foreground: 210 20% 98%;
 
     --destructive: 0 61% 52%; /* --critical #d03b3b */
@@ -42,12 +94,96 @@
 
     --border: 220 12% 22%;
     --input: 220 12% 22%;
-    --ring: 213 77% 56%; /* --accent, same as primary */
+    --ring: 213 77% 56%;
 
-    --success: 120 86% 34%; /* --good #0ca30c, used for the "live" status only */
+    --success: 120 86% 34%; /* --good #0ca30c */
     --warning: 41 96% 54%; /* --warning #fab219 */
 
-    --radius: 0.625rem; /* --radius: 10px */
+    --radius: 0.625rem;
+  }
+
+  [data-theme='aurora'] {
+    color-scheme: dark;
+
+    --background: 265 22% 6%;
+    --foreground: 270 20% 97%;
+
+    --nav: 266 24% 10%;
+    --nav-foreground: 270 20% 97%;
+
+    --card: 266 20% 12%;
+    --card-foreground: 270 20% 97%;
+
+    --popover: 266 20% 13%;
+    --popover-foreground: 270 20% 97%;
+
+    --primary: 271 91% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 266 16% 16%;
+    --secondary-foreground: 270 20% 97%;
+
+    --muted: 266 16% 16%;
+    --muted-foreground: 265 12% 66%;
+
+    --accent: 266 18% 20%;
+    --accent-foreground: 270 20% 97%;
+
+    --destructive: 350 78% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 266 18% 24%;
+    --input: 266 18% 24%;
+    --ring: 271 91% 65%;
+
+    --success: 152 70% 42%;
+    --warning: 32 95% 58%;
+
+    --radius: 0.625rem;
+  }
+
+  [data-theme='onair'] {
+    color-scheme: dark;
+
+    --background: 0 12% 6%;
+    --foreground: 10 15% 97%;
+
+    --nav: 0 16% 10%;
+    --nav-foreground: 10 15% 97%;
+
+    --card: 0 14% 12%;
+    --card-foreground: 10 15% 97%;
+
+    --popover: 0 14% 13%;
+    --popover-foreground: 10 15% 97%;
+
+    --primary: 355 78% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 12% 16%;
+    --secondary-foreground: 10 15% 97%;
+
+    --muted: 0 12% 16%;
+    --muted-foreground: 10 8% 66%;
+
+    --accent: 0 12% 20%;
+    --accent-foreground: 10 15% 97%;
+
+    /* Orange-red, not crimson — this theme's own --primary is already a
+       red, so --destructive needs a different hue to still read as a
+       distinct "this is dangerous" signal rather than blending into the
+       theme's own accent color. */
+    --destructive: 15 85% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 14% 24%;
+    --input: 0 14% 24%;
+    --ring: 355 78% 56%;
+
+    --success: 145 65% 42%;
+    --warning: 42 96% 56%;
+
+    --radius: 0.625rem;
   }
 }
 
