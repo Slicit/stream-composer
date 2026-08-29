@@ -70,8 +70,10 @@ Rails.application.routes.draw do
     end
 
     namespace :admin do
-      resources :users, only: %i[index create update destroy] do
+      resources :users, only: %i[index show create update destroy] do
         post "impersonate", on: :member
+        post "reset-2fa", on: :member, action: :reset_two_factor
+        put "avatar", on: :member
       end
 
       get "stats/status", to: "stats#status"

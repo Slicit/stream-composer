@@ -10,6 +10,7 @@ import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { ConfirmEmailPage } from './pages/ConfirmEmailPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
+import { AdminUserEditPage } from './pages/admin/AdminUserEditPage'
 import { AdminLayout } from './pages/admin/AdminLayout'
 import { AdminStreamsPage } from './pages/admin/AdminStreamsPage'
 import { AdminRelaysPage } from './pages/admin/AdminRelaysPage'
@@ -67,6 +68,7 @@ export function App() {
                   }
                 >
                   <Route index element={<AdminUsersPage />} />
+                  <Route path="users/:id" element={<AdminUserEditPage />} />
                   <Route path="streams" element={<AdminStreamsPage />} />
                   <Route path="relays" element={<AdminRelaysPage />} />
                   <Route path="channels" element={<AdminChannelsPage />} />

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Trash2, VenetianMask } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Pencil, Trash2, VenetianMask } from 'lucide-react'
 import { api, ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { Role, User } from '../api/types'
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
 
 const ROLES: Role[] = ['viewer', 'streamer', 'admin']
 
@@ -30,6 +31,9 @@ function RoleSelect({ value, onChange, label }: { value: Role; onChange: (role: 
   )
 }
 
+// The list-only view — see AdminUserEditPage for the full per-user edit
+// page (role/quota/password/avatar/2FA reset), reached via the Edit
+// action or by clicking a username. Mirrors AdminChannelsPage's shape.
 export function AdminUsersPage() {
   const { user: currentUser, refresh } = useAuth()
   const navigate = useNavigate()
@@ -78,36 +82,6 @@ export function AdminUsersPage() {
       setError(err instanceof ApiError ? err.message : 'Could not create the user.')
     } finally {
       setCreating(false)
-    }
-  }
-
-  async function updateRole(id: string, nextRole: Role) {
-    setError(null)
-    try {
-      await api.patch(`/api/admin/users/${id}`, { role: nextRole })
-      await load()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change the role.')
-    }
-  }
-
-  async function updateQuota(id: string, quota: number) {
-    setError(null)
-    try {
-      await api.patch(`/api/admin/users/${id}`, { streamQuota: quota })
-      await load()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change the quota.')
-    }
-  }
-
-  async function updateCompositorQuota(id: string, quota: number) {
-    setError(null)
-    try {
-      await api.patch(`/api/admin/users/${id}`, { compositorQuota: quota })
-      await load()
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not change the compositor quota.')
     }
   }
 
@@ -199,8 +173,8 @@ export function AdminUsersPage() {
               <TableRow>
                 <TableHead>Username</TableHead>
                 <TableHead>Role</TableHead>
-                <TableHead>Stream quota</TableHead>
-                <TableHead>Compositor quota</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>2FA</TableHead>
                 <TableHead>Last signed in</TableHead>
                 <TableHead />
               </TableRow>
@@ -208,48 +182,30 @@ export function AdminUsersPage() {
             <TableBody>
               {users.map((u) => (
                 <TableRow key={u.id}>
-                  <TableCell className="font-medium">{u.username}</TableCell>
-                  <TableCell>
-                    <RoleSelect value={u.role} onChange={(next) => updateRole(u.id, next)} label={`Role for ${u.username}`} />
+                  <TableCell className="font-medium">
+                    <Link to={`/admin/users/${u.id}`} className="hover:underline">
+                      {u.username}
+                    </Link>
                   </TableCell>
+                  <TableCell className="capitalize text-muted-foreground">{u.role}</TableCell>
                   <TableCell>
-                    {u.role === 'streamer' ? (
-                      <Input
-                        type="number"
-                        min={0}
-                        max={1000}
-                        className="w-24"
-                        defaultValue={u.streamQuota}
-                        onBlur={(e) => {
-                          const next = Number(e.target.value)
-                          if (next !== u.streamQuota) updateQuota(u.id, next)
-                        }}
-                        aria-label={`Stream quota for ${u.username}`}
-                      />
+                    {u.email ? (
+                      <Badge variant={u.emailConfirmed ? 'default' : 'secondary'}>{u.emailConfirmed ? 'confirmed' : 'unconfirmed'}</Badge>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {u.role !== 'admin' ? (
-                      <Input
-                        type="number"
-                        min={0}
-                        max={20}
-                        className="w-24"
-                        defaultValue={u.compositorQuota}
-                        onBlur={(e) => {
-                          const next = Number(e.target.value)
-                          if (next !== u.compositorQuota) updateCompositorQuota(u.id, next)
-                        }}
-                        aria-label={`Compositor quota for ${u.username}`}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
+                    <Badge variant={u.otpEnabled ? 'default' : 'secondary'}>{u.otpEnabled ? 'on' : 'off'}</Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'never'}</TableCell>
                   <TableCell className="text-right space-x-2">
+                    <Button variant="outline" size="icon" asChild title="Edit">
+                      <Link to={`/admin/users/${u.id}`}>
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">Edit {u.username}</span>
+                      </Link>
+                    </Button>
                     <Button
                       variant="outline"
                       size="icon"

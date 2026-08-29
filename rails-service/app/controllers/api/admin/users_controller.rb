@@ -1,10 +1,16 @@
 module Api
   module Admin
     class UsersController < ApplicationController
+      include AvatarUploadable
+
       before_action :require_admin!
 
       def index
         render json: { users: User.order(:created_at).map(&:as_public_json) }
+      end
+
+      def show
+        render json: { user: User.find(params[:id]).as_public_json }
       end
 
       def create
@@ -74,6 +80,19 @@ module Api
 
         sign_in(target, impersonator: current_user)
         render json: { user: target.as_public_json }
+      end
+
+      # Administrative override — clears both otp fields regardless of the
+      # admin's own password, unlike the self-service disable action.
+      # This is the "unlock a locked-out user" path.
+      def reset_two_factor
+        user = User.find(params[:id])
+        user.update!(otp_enabled: false, otp_secret: nil)
+        render json: { user: user.as_public_json }
+      end
+
+      def avatar
+        store_avatar!(User.find(params[:id]))
       end
 
       private

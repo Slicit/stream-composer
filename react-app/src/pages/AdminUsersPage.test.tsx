@@ -11,7 +11,19 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 const admin: User = { id: 'admin-1', username: 'admin', role: 'admin', email: null, emailConfirmed: false, otpEnabled: false, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
-const viewer: User = { id: 'viewer-1', username: 'viewer-1', role: 'viewer', email: null, emailConfirmed: false, otpEnabled: false, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const viewer: User = {
+  id: 'viewer-1',
+  username: 'viewer-1',
+  role: 'viewer',
+  email: 'viewer@example.com',
+  emailConfirmed: true,
+  otpEnabled: true,
+  streamQuota: 0,
+  compositorQuota: 0,
+  avatar: null,
+  createdAt: '2026-01-01',
+  lastLoginAt: null,
+}
 
 function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
@@ -24,10 +36,6 @@ function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   )
 }
 
-// The username cell's text and the row's role-Select trigger can both
-// contain "admin" (the trigger shows the current role as its visible
-// value), so a plain getByText('admin') is ambiguous within a row. Rows
-// are stable and ordered, so index into them instead of querying by text.
 function dataRows() {
   return screen.getAllByRole('row').slice(1) // row 0 is the header
 }
@@ -48,10 +56,41 @@ describe('AdminUsersPage', () => {
     expect(await screen.findByText('viewer-1')).toBeInTheDocument()
     const rows = dataRows()
     expect(rows).toHaveLength(2)
-    // The first <td> specifically — getByText('admin') within the row is
-    // itself ambiguous, since the role <select> also renders an "admin"
-    // <option> as real DOM text.
-    expect(rows[0].querySelector('td')).toHaveTextContent('admin')
+    expect(rows[0]).toHaveTextContent('admin')
+  })
+
+  it("links a user's name and the Edit action to their full edit page", async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const viewerRow = dataRows()[1]
+
+    expect(within(viewerRow).getByRole('link', { name: 'viewer-1' })).toHaveAttribute('href', '/admin/users/viewer-1')
+    expect(within(viewerRow).getByRole('link', { name: 'Edit viewer-1' })).toHaveAttribute('href', '/admin/users/viewer-1')
+  })
+
+  it('shows email confirmation and 2FA status as badges', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/auth/me') return jsonResponse({ user: admin })
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
+      throw new Error(`unexpected fetch ${url}`)
+    })
+    renderPage(fetchMock)
+
+    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const [adminRow, viewerRow] = dataRows()
+
+    // admin has no email — a dash, not a badge
+    expect(within(adminRow).getByText('—')).toBeInTheDocument()
+    expect(within(adminRow).getByText('off')).toBeInTheDocument()
+
+    expect(within(viewerRow).getByText('confirmed')).toBeInTheDocument()
+    expect(within(viewerRow).getByText('on')).toBeInTheDocument()
   })
 
   it('creates a user and refreshes the list', async () => {
@@ -78,30 +117,22 @@ describe('AdminUsersPage', () => {
     expect(await screen.findByText('newperson')).toBeInTheDocument()
   })
 
-  it('changes a role via the Select and PATCHes the server', async () => {
-    let users: User[] = [admin, viewer]
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+  it('hides the compositor quota field on the create form when the admin role is selected', async () => {
+    const fetchMock = vi.fn((url: string) => {
       if (url === '/api/auth/me') return jsonResponse({ user: admin })
-      if (url === '/api/admin/users' && (!init || init.method === undefined)) return jsonResponse({ users })
-      if (url === '/api/admin/users/viewer-1' && init?.method === 'PATCH') {
-        const body = JSON.parse(init.body as string)
-        users = users.map((u) => (u.id === 'viewer-1' ? { ...u, role: body.role } : u))
-        return jsonResponse({ user: users.find((u) => u.id === 'viewer-1') })
-      }
-      throw new Error(`unexpected fetch ${url} ${init?.method}`)
+      if (url === '/api/admin/users') return jsonResponse({ users: [admin] })
+      throw new Error(`unexpected fetch ${url}`)
     })
     renderPage(fetchMock)
+    await waitFor(() => expect(dataRows()).toHaveLength(1))
 
-    await waitFor(() => expect(dataRows()).toHaveLength(2))
+    const form = screen.getByRole('form', { name: 'Add a user' })
+    expect(within(form).getByLabelText('Compositor quota')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('combobox', { name: 'Role for viewer-1' }))
-    await userEvent.click(await screen.findByRole('option', { name: 'streamer' }))
+    await userEvent.click(within(form).getByRole('combobox', { name: 'Role for the new user' }))
+    await userEvent.click(await screen.findByRole('option', { name: 'admin' }))
 
-    await waitFor(() => {
-      const call = fetchMock.mock.calls.find(([url]) => url === '/api/admin/users/viewer-1')
-      expect(call).toBeTruthy()
-    })
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Role for viewer-1' })).toHaveTextContent('streamer'))
+    expect(within(form).queryByLabelText('Compositor quota')).not.toBeInTheDocument()
   })
 
   it('disables deleting the account currently signed in with', async () => {
@@ -141,39 +172,6 @@ describe('AdminUsersPage', () => {
       const call = fetchMock.mock.calls.find(([url]) => url === '/api/admin/users/viewer-1/impersonate')
       expect(call).toBeTruthy()
     })
-  })
-
-  it('shows a dash instead of an editable compositor quota for admin rows', async () => {
-    const fetchMock = vi.fn((url: string) => {
-      if (url === '/api/auth/me') return jsonResponse({ user: admin })
-      if (url === '/api/admin/users') return jsonResponse({ users: [admin, viewer] })
-      throw new Error(`unexpected fetch ${url}`)
-    })
-    renderPage(fetchMock)
-
-    await waitFor(() => expect(dataRows()).toHaveLength(2))
-    const [adminRow, viewerRow] = dataRows()
-
-    expect(within(adminRow).queryByLabelText('Compositor quota for admin')).not.toBeInTheDocument()
-    expect(within(viewerRow).getByLabelText('Compositor quota for viewer-1')).toBeInTheDocument()
-  })
-
-  it('hides the compositor quota field on the create form when the admin role is selected', async () => {
-    const fetchMock = vi.fn((url: string) => {
-      if (url === '/api/auth/me') return jsonResponse({ user: admin })
-      if (url === '/api/admin/users') return jsonResponse({ users: [admin] })
-      throw new Error(`unexpected fetch ${url}`)
-    })
-    renderPage(fetchMock)
-    await waitFor(() => expect(dataRows()).toHaveLength(1))
-
-    const form = screen.getByRole('form', { name: 'Add a user' })
-    expect(within(form).getByLabelText('Compositor quota')).toBeInTheDocument()
-
-    await userEvent.click(within(form).getByRole('combobox', { name: 'Role for the new user' }))
-    await userEvent.click(await screen.findByRole('option', { name: 'admin' }))
-
-    expect(within(form).queryByLabelText('Compositor quota')).not.toBeInTheDocument()
   })
 
   it('disables impersonating the account currently signed in with', async () => {

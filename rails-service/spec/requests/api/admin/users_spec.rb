@@ -15,6 +15,25 @@ RSpec.describe "Api::Admin::Users", type: :request do
       get "/api/admin/users", as: :json
       expect(response).to have_http_status(:forbidden)
     end
+
+    it "refuses an anonymous caller on show/reset-2fa/avatar" do
+      get "/api/admin/users/#{viewer.id}", as: :json
+      expect(response).to have_http_status(:unauthorized)
+      post "/api/admin/users/#{viewer.id}/reset-2fa", as: :json
+      expect(response).to have_http_status(:unauthorized)
+      put "/api/admin/users/#{viewer.id}/avatar", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "refuses a signed-in viewer on show/reset-2fa/avatar" do
+      sign_in_as(viewer, password: "correct-horse-1")
+      get "/api/admin/users/#{admin.id}", as: :json
+      expect(response).to have_http_status(:forbidden)
+      post "/api/admin/users/#{admin.id}/reset-2fa", as: :json
+      expect(response).to have_http_status(:forbidden)
+      put "/api/admin/users/#{admin.id}/avatar", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:forbidden)
+    end
   end
 
   describe "as an admin" do
@@ -66,6 +85,30 @@ RSpec.describe "Api::Admin::Users", type: :request do
       delete "/api/admin/users/#{admin.id}", as: :json
       expect(response).to have_http_status(:conflict)
       expect(User.exists?(admin.id)).to be true
+    end
+
+    it "shows a single user by id" do
+      get "/api/admin/users/#{viewer.id}", as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["user"]["username"]).to eq("viewer-1")
+    end
+
+    it "force-resets another user's 2FA, no re-auth required" do
+      viewer.update!(otp_secret: ROTP::Base32.random, otp_enabled: true)
+      post "/api/admin/users/#{viewer.id}/reset-2fa", as: :json
+      expect(response).to have_http_status(:ok)
+      viewer.reload
+      expect(viewer.otp_enabled).to be false
+      expect(viewer.otp_secret).to be_nil
+    end
+
+    it "uploads an avatar on another user's account" do
+      put "/api/admin/users/#{viewer.id}/avatar", params: "fake-png-bytes", headers: { "CONTENT_TYPE" => "image/png" }
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)["user"]
+      expect(body["avatar"]).to eq("/uploads/avatars/#{viewer.id}.png")
+      expect(File.exist?(Rails.public_path.join("uploads", "avatars", "#{viewer.id}.png"))).to be true
+      FileUtils.rm_rf(Rails.public_path.join("uploads", "avatars"))
     end
   end
 
