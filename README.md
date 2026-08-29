@@ -53,6 +53,15 @@ curl -fsSL https://raw.githubusercontent.com/Slicit/stream-composer/main/update-
 Then open the admin console, create a stream, and paste the key into OBS.
 Create a channel to curate which streams show up together on their own page.
 
+**Self-registration needs SMTP to actually deliver confirmation emails.**
+The installer doesn't prompt for this — without it, self-registration
+still works end to end, but the confirmation link only ever shows up in
+`docker compose logs rails`, never a real inbox. Set `SMTP_ADDRESS`,
+`SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_DOMAIN` and
+`MAIL_FROM` in `.env` (any provider — Mailgun, SES, a personal relay,
+etc.; see `.env.go-rails-react.example`'s own comments for the exact
+shape), then restart the `rails` service.
+
 ## What it does
 
 - **Composes in the browser, not the server.** Each source is a separate
@@ -95,6 +104,11 @@ Create a channel to curate which streams show up together on their own page.
   the same multi-cam grid viewers see here. Runs as its own service, only
   while it's actually needed (an enabled composition, a live member, an
   enabled destination), so it never costs anything when it's off.
+- **Self-registration, with 2FA.** Anyone can create their own account —
+  always a viewer, restricted to public channels — confirmed by email
+  before they can sign in. Two-factor authentication (TOTP, any
+  authenticator app) is opt-in from account settings; an admin can force-
+  reset it to unlock someone who's locked themselves out.
 - **Admin impersonation.** See the app exactly as another user does, with a
   fixed banner naming who you're impersonating and a one-click way back.
 - **Server & Stats.** CPU, memory, host and data-plane uptime, MediaMTX and
