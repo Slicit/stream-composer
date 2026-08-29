@@ -14,6 +14,10 @@ class User < ApplicationRecord
   SCRYPT = { n: 16384, r: 8, p: 1, length: 64 }.freeze
   CONFIRMATION_TOKEN_TTL = 48.hours
   BACKUP_CODE_COUNT = 10
+  # Keep in sync with react-app/src/api/types.ts's THEMES — the client is
+  # the source of truth for what a theme actually looks like (CSS tokens),
+  # this just needs to agree on the valid identifiers.
+  THEMES = %w[studio legacy aurora onair].freeze
 
   # Reversible, unlike the password hash — a TOTP secret has to be read
   # back to generate the expected code each login, so it's encrypted
@@ -37,6 +41,7 @@ class User < ApplicationRecord
   validates :compositor_quota, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 20 }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP, message: "is not a valid email address" }, allow_nil: true
   validates :email, uniqueness: { case_sensitive: false, message: "is already registered" }, allow_nil: true
+  validates :theme, inclusion: { in: THEMES }, allow_nil: true
 
   validates :password, presence: true, on: :create, unless: -> { @password_assignment_attempted || @importing_legacy_hash }
   validate :password_is_strong, if: -> { @password_assignment_attempted }
@@ -76,6 +81,7 @@ class User < ApplicationRecord
       emailConfirmed: email_confirmed_at.present?,
       otpEnabled: otp_enabled,
       otpBackupCodesRemaining: otp_backup_code_digests.size,
+      theme: theme,
       streamQuota: stream_quota,
       compositorQuota: compositor_quota,
       avatar: avatar.presence,

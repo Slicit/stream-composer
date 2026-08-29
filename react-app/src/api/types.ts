@@ -4,6 +4,11 @@
 
 export type Role = 'admin' | 'viewer' | 'streamer'
 
+// Keep in sync with rails-service/app/models/user.rb's User::THEMES, and
+// with the [data-theme] blocks in index.css.
+export const THEMES = ['studio', 'legacy', 'aurora', 'onair'] as const
+export type Theme = (typeof THEMES)[number]
+
 export interface User {
   id: string
   username: string
@@ -12,6 +17,7 @@ export interface User {
   emailConfirmed: boolean
   otpEnabled: boolean
   otpBackupCodesRemaining: number
+  theme: Theme | null
   streamQuota: number
   compositorQuota: number
   avatar: string | null

@@ -34,6 +34,7 @@ const baseUser: User = {
   emailConfirmed: true,
   otpEnabled: true,
   otpBackupCodesRemaining: 8,
+  theme: null,
   streamQuota: 5,
   compositorQuota: 0,
   avatar: null,

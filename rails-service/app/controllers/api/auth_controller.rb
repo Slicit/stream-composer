@@ -2,7 +2,7 @@ module Api
   class AuthController < ApplicationController
     include AvatarUploadable
 
-    before_action :require_user!, only: %i[stop_impersonating avatar]
+    before_action :require_user!, only: %i[stop_impersonating avatar update_theme]
 
     def login
       user = User.authenticate_credentials(params[:username], params[:password])
@@ -81,6 +81,22 @@ module Api
       else
         render_error :bad_request, current_user.errors.full_messages.join(", ")
       end
+    end
+
+    # Self-service theme preference — deliberately no currentPassword
+    # check, unlike #update_me: this isn't security-sensitive, and
+    # requiring a password just to switch a color scheme would be poor
+    # UX. Ties the choice to the account (follows across devices/
+    # browsers) rather than only the browser's own localStorage, which is
+    # what ThemeContext still uses as a same-device cache for painting
+    # the right theme before this endpoint could ever respond.
+    def update_theme
+      unless User::THEMES.include?(params[:theme])
+        return render_error(:bad_request, "Unknown theme.")
+      end
+
+      current_user.update!(theme: params[:theme])
+      render json: { user: current_user.as_public_json }
     end
 
     # Self-service avatar upload — cropped client-side (see

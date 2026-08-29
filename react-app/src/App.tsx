@@ -5,6 +5,7 @@ import { ChannelPrefsProvider, useChannelPrefs } from './contexts/ChannelPrefsCo
 import { NavBar } from './components/NavBar'
 import { LeftNav } from './components/LeftNav'
 import { ImpersonationBanner } from './components/ImpersonationBanner'
+import { ThemeAccountSync } from './components/ThemeAccountSync'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -48,6 +49,7 @@ export function App() {
   return (
     <AuthProvider>
       <ChannelPrefsProvider>
+        <ThemeAccountSync />
         <div className="flex min-h-svh flex-col">
           <NavBar />
           <div className="flex flex-1 items-stretch">

@@ -156,6 +156,22 @@ RSpec.describe User, type: :model do
     end
   end
 
+  describe "theme" do
+    it "allows a nil theme" do
+      expect(build_user(theme: nil)).to be_valid
+    end
+
+    it "accepts any of the known themes" do
+      User::THEMES.each do |t|
+        expect(build_user(theme: t)).to be_valid
+      end
+    end
+
+    it "rejects an unknown theme" do
+      expect(build_user(theme: "not-a-real-theme")).not_to be_valid
+    end
+  end
+
   describe "email confirmation" do
     let!(:user) { build_user(email: "confirm-me@example.com").tap(&:save!) }
 

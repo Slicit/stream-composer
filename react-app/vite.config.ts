@@ -22,6 +22,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // Vite blocks any Host header it doesn't recognize by default — the
+    // dev box's own DNS name, used by the Browser pane tool instead of
+    // its bare IP.
+    allowedHosts: ['claude-machine-03.home'],
     proxy: {
       '/api/state': {
         target: process.env.VITE_DATAPLANE_ORIGIN || 'http://localhost:18080',

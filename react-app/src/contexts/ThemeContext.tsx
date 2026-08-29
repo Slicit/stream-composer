@@ -1,10 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-
-// Keep in sync with index.css's [data-theme='...'] blocks and the
-// blocking inline script in index.html (which reads the same storage key
-// before first paint, to avoid a flash of the wrong theme).
-export const THEMES = ['studio', 'legacy', 'aurora', 'onair'] as const
-export type Theme = (typeof THEMES)[number]
+import { THEMES, type Theme } from '@/api/types'
 
 export const THEME_LABELS: Record<Theme, string> = {
   studio: 'Studio',
@@ -13,6 +8,13 @@ export const THEME_LABELS: Record<Theme, string> = {
   onair: 'On Air',
 }
 
+// This is a same-device *cache* used only to paint the right theme
+// before hydration (see index.html's blocking inline script, which reads
+// the same key). The account is the actual source of truth for a
+// signed-in user — see ThemeAccountSync, which applies User.theme on
+// login, and ThemeSwitcher, which PATCHes /api/auth/me/theme on change.
+// Signed-out browsing has nowhere else to keep the choice, so this stays
+// the only persistence for that case.
 const STORAGE_KEY = 'sc:theme'
 const DEFAULT_THEME: Theme = 'studio'
 

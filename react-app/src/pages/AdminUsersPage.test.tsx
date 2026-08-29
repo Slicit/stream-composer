@@ -10,7 +10,7 @@ function jsonResponse(body: unknown, status = 200) {
   return Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 }
 
-const admin: User = { id: 'admin-1', username: 'admin', role: 'admin', email: null, emailConfirmed: false, otpEnabled: false, otpBackupCodesRemaining: 0, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+const admin: User = { id: 'admin-1', username: 'admin', role: 'admin', email: null, emailConfirmed: false, otpEnabled: false, otpBackupCodesRemaining: 0, theme: null, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
 const viewer: User = {
   id: 'viewer-1',
   username: 'viewer-1',
@@ -19,6 +19,7 @@ const viewer: User = {
   emailConfirmed: true,
   otpEnabled: true,
   otpBackupCodesRemaining: 10,
+  theme: null,
   streamQuota: 0,
   compositorQuota: 0,
   avatar: null,
@@ -100,7 +101,7 @@ describe('AdminUsersPage', () => {
       if (url === '/api/auth/me') return jsonResponse({ user: admin })
       if (url === '/api/admin/users' && (!init || init.method === undefined)) return jsonResponse({ users })
       if (url === '/api/admin/users' && init?.method === 'POST') {
-        const created: User = { id: 'new-1', username: 'newperson', role: 'viewer', email: null, emailConfirmed: false, otpEnabled: false, otpBackupCodesRemaining: 0, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
+        const created: User = { id: 'new-1', username: 'newperson', role: 'viewer', email: null, emailConfirmed: false, otpEnabled: false, otpBackupCodesRemaining: 0, theme: null, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null }
         users = [...users, created]
         return jsonResponse({ user: created }, 201)
       }

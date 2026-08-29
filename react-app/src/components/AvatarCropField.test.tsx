@@ -41,6 +41,7 @@ const uploadedUser: User = {
   emailConfirmed: false,
   otpEnabled: false,
   otpBackupCodesRemaining: 0,
+  theme: null,
   streamQuota: 0,
   compositorQuota: 0,
   avatar: '/uploads/avatars/u1.png',

@@ -152,6 +152,28 @@ RSpec.describe "Api::Auth", type: :request do
     end
   end
 
+  describe "PATCH /api/auth/me/theme" do
+    it "sets the caller's theme, with no password required" do
+      sign_in_as(user, password: "correct-horse-1")
+      patch "/api/auth/me/theme", params: { theme: "aurora" }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(JSON.parse(response.body)["user"]["theme"]).to eq("aurora")
+      expect(user.reload.theme).to eq("aurora")
+    end
+
+    it "refuses an unknown theme" do
+      sign_in_as(user, password: "correct-horse-1")
+      patch "/api/auth/me/theme", params: { theme: "not-a-real-theme" }, as: :json
+      expect(response).to have_http_status(:bad_request)
+      expect(user.reload.theme).to be_nil
+    end
+
+    it "refuses an anonymous caller" do
+      patch "/api/auth/me/theme", params: { theme: "aurora" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "POST /api/auth/logout" do
     it "ends the session so /api/auth/me goes back to nil" do
       sign_in_as(user, password: "correct-horse-1")

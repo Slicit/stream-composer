@@ -21,6 +21,7 @@ Rails.application.routes.draw do
     delete "auth/logout", to: "auth#logout"
     get "auth/me", to: "auth#me"
     patch "auth/me", to: "auth#update_me"
+    patch "auth/me/theme", to: "auth#update_theme"
     delete "auth/impersonate", to: "auth#stop_impersonating"
     put "auth/me/avatar", to: "auth#avatar"
 
