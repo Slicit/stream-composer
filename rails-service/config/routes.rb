@@ -17,11 +17,16 @@ Rails.application.routes.draw do
     post "confirm-email/resend", to: "email_confirmations#resend"
 
     post "auth/login", to: "auth#login"
+    post "auth/login/verify-2fa", to: "auth#verify_two_factor"
     delete "auth/logout", to: "auth#logout"
     get "auth/me", to: "auth#me"
     patch "auth/me", to: "auth#update_me"
     delete "auth/impersonate", to: "auth#stop_impersonating"
     put "auth/me/avatar", to: "auth#avatar"
+
+    post "two-factor/setup", to: "two_factor#setup"
+    post "two-factor/enable", to: "two_factor#enable"
+    post "two-factor/disable", to: "two_factor#disable"
 
     scope path: "streams/mine", controller: "streams" do
       get "", action: :index

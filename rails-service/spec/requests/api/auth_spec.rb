@@ -42,6 +42,66 @@ RSpec.describe "Api::Auth", type: :request do
     end
   end
 
+  describe "POST /api/auth/login with 2FA enabled" do
+    let!(:totp_user) { User.create!(username: "totp-alice", password: "correct-horse-1", role: "viewer", otp_secret: ROTP::Base32.random, otp_enabled: true) }
+
+    it "SECURITY: does not sign in and mints no session cookie — only a challenge" do
+      post "/api/auth/login", params: { username: "totp-alice", password: "correct-horse-1" }, as: :json
+      expect(response).to have_http_status(:ok)
+      body = JSON.parse(response.body)
+      expect(body["twoFactorRequired"]).to be true
+      expect(body["challengeToken"]).to be_present
+      expect(body["user"]).to be_nil
+      expect(response.cookies["sc_session"]).to be_blank
+      expect(totp_user.reload.last_login_at).to be_nil
+    end
+
+    it "still refuses a wrong password before ever reaching the 2FA step" do
+      post "/api/auth/login", params: { username: "totp-alice", password: "wrong" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
+  describe "POST /api/auth/login/verify-2fa" do
+    let!(:totp_user) { User.create!(username: "totp-bob", password: "correct-horse-1", role: "viewer", otp_secret: ROTP::Base32.random, otp_enabled: true) }
+
+    def start_challenge
+      post "/api/auth/login", params: { username: "totp-bob", password: "correct-horse-1" }, as: :json
+      JSON.parse(response.body)["challengeToken"]
+    end
+
+    it "completes sign-in with the right code and sets the session cookie" do
+      challenge_token = start_challenge
+      code = ROTP::TOTP.new(totp_user.otp_secret).now
+      post "/api/auth/login/verify-2fa", params: { challengeToken: challenge_token, code: code }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(response.cookies["sc_session"]).to be_present
+      expect(totp_user.reload.last_login_at).to be_present
+    end
+
+    it "refuses a wrong code" do
+      challenge_token = start_challenge
+      post "/api/auth/login/verify-2fa", params: { challengeToken: challenge_token, code: "000000" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+      expect(response.cookies["sc_session"]).to be_blank
+    end
+
+    it "SECURITY: the challenge token is single-use" do
+      challenge_token = start_challenge
+      code = ROTP::TOTP.new(totp_user.otp_secret).now
+      post "/api/auth/login/verify-2fa", params: { challengeToken: challenge_token, code: code }, as: :json
+      expect(response).to have_http_status(:ok)
+
+      post "/api/auth/login/verify-2fa", params: { challengeToken: challenge_token, code: code }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "rejects an unknown or garbage challenge token" do
+      post "/api/auth/login/verify-2fa", params: { challengeToken: "not-a-real-token", code: "123456" }, as: :json
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
+
   describe "GET /api/auth/me" do
     it "is nil when signed out" do
       get "/api/auth/me", as: :json

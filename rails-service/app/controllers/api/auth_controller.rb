@@ -10,9 +10,34 @@ module Api
       return render_unauthorized("Wrong username or password.") unless user
       return render_error(:forbidden, "Confirm your email before signing in.") if user.email_confirmation_required?
 
+      # No Session/cookie is minted here when 2FA is on — only a short-
+      # lived TwoFactorChallenge, returned in the body, never a cookie.
+      # A leaked step-1 response is therefore not a partial session; there
+      # is no session yet at all. See #verify_two_factor.
+      if user.otp_enabled?
+        challenge = TwoFactorChallenge.start_for(user)
+        return render json: { twoFactorRequired: true, challengeToken: challenge.raw_token }
+      end
+
       sign_in(user)
       user.update_column(:last_login_at, Time.current)
       render json: { user: user.as_public_json }
+    end
+
+    # Step two of a 2FA login: exchanges a live TwoFactorChallenge plus a
+    # real TOTP code for an actual signed-in session.
+    def verify_two_factor
+      challenge = TwoFactorChallenge.authenticate(params[:challengeToken])
+      return render_unauthorized("This sign-in attempt has expired — sign in again.") unless challenge
+
+      unless challenge.user.verify_otp(params[:code])
+        return render_unauthorized("Invalid code.")
+      end
+
+      challenge.destroy
+      sign_in(challenge.user)
+      challenge.user.update_column(:last_login_at, Time.current)
+      render json: { user: challenge.user.as_public_json }
     end
 
     def logout
