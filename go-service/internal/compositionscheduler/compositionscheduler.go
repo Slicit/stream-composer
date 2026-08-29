@@ -1,11 +1,18 @@
 // Package compositionscheduler decides which channel compositions should
-// currently be compositing — enabled, at least one member actually live,
-// at least one relay destination enabled — and tells the compositor
-// service (a separate container, see internal/compositor's package
-// comment) to start or stop each job accordingly, over its small HTTP
-// job API. It never runs ffmpeg itself, and it never mutates Store —
-// purely a reconciliation loop, the same shape internal/relayrunner's
-// Tick already uses for a very similar decision.
+// currently be compositing — enabled, at least one member actually live —
+// and tells the compositor service (a separate container, see
+// internal/compositor's package comment) to start or stop each job
+// accordingly, over its small HTTP job API. It never runs ffmpeg itself,
+// and it never mutates Store — purely a reconciliation loop, the same
+// shape internal/relayrunner's Tick already uses for a very similar
+// decision.
+//
+// A relay destination is deliberately not a precondition for a job to run
+// (it once was): the composed output is worth having the moment it's
+// enabled and live, even with nothing relayed out yet, because
+// internal/mediaproxy's composed-preview HLS mount lets an owner/admin
+// pull it up directly (e.g. in VLC) to check it looks right before wiring
+// up a real destination.
 package compositionscheduler
 
 import (
@@ -153,8 +160,7 @@ func signatureOf(sources []apiSource, comp streamstore.ChannelComposition) strin
 }
 
 // Tick is one reconciliation pass: every enabled composition with a live
-// member and at least one enabled destination should have a job running;
-// everything else should not.
+// member should have a job running; everything else should not.
 func (s *Scheduler) Tick(ctx context.Context) {
 	compositions := s.Store.ChannelCompositions()
 
@@ -165,12 +171,6 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	streamByID := make(map[string]streamstore.Stream)
 	for _, st := range s.Store.Streams() {
 		streamByID[st.ID] = st
-	}
-	hasEnabledDestination := make(map[string]bool)
-	for _, r := range s.Store.Relays() {
-		if r.ChannelCompositionID != "" && r.Enabled {
-			hasEnabledDestination[r.ChannelCompositionID] = true
-		}
 	}
 
 	var liveKeys map[string]bool
@@ -191,7 +191,7 @@ func (s *Scheduler) Tick(ctx context.Context) {
 	wanted := make(map[string]bool, len(compositions))
 	for _, comp := range compositions {
 		id := jobID(comp.ChannelID, comp.Orientation)
-		if !comp.Enabled || !hasEnabledDestination[comp.ID] {
+		if !comp.Enabled {
 			continue
 		}
 		channel, ok := channelByID[comp.ChannelID]

@@ -57,12 +57,33 @@ independently, at once if wanted.
   `react-app/src/lib/clientLayout.ts`'s portrait-aware `bestGrid`.
 - **The compositor is "dumb" — it has no opinion on what should be
   running.** `internal/compositionscheduler` (in `dataplane`) polls Rails
-  config + MediaMTX live status and turns "enabled + a live member + an
-  enabled destination" into `POST`/`DELETE` calls against the compositor's
-  job API, idempotently (a signature check skips re-POSTing an unchanged
-  job every tick). `internal/authhook` authorizes a
-  `composed/<channelId>/<orientation>` publish/read only when Rails
-  actually has that composition enabled.
+  config + MediaMTX live status and turns "enabled + a live member" into
+  `POST`/`DELETE` calls against the compositor's job API, idempotently (a
+  signature check skips re-POSTing an unchanged job every tick).
+  `internal/authhook` authorizes a `composed/<channelId>/<orientation>`
+  publish/read only when Rails actually has that composition enabled. A
+  relay destination was a precondition too, at first — removed once it
+  became clear the composed output is worth having, previewable, the
+  moment it's live, before anyone has wired up a real destination (see
+  the preview-URL decision below).
+- **A composed-preview HLS URL, pasteable straight into VLC.** Every
+  `ChannelComposition` gets a `preview_token` (Rails, `SecureRandom.hex`,
+  generated once, never rotated) the moment it's created, exposed as
+  `previewToken` in `as_public_json` and, over the internal bridge, to
+  `streamstore.ChannelComposition.PreviewToken`. `internal/mediaproxy`
+  (already the reverse proxy fronting MediaMTX for viewers) resolves
+  `GET /mtx/hls/c/<channelId>/<orientation>/*?token=...` the same way it
+  resolves `s/<playbackId>/...`, except authorized by that token
+  (constant-time compared) instead of the viewer session — deliberately:
+  VLC carries no `sc_session` cookie to send. The token is unrelated to
+  and no more privileged than MediaMTX's own internal credential, which
+  never leaves the container network either way — it only ever grants
+  this one already-composed output, never a raw source, and only once the
+  composition is `enabled`. Confirmed live (see Verification) with a real
+  ffmpeg publisher and zero relay destinations configured: the job
+  started, MediaMTX reported the composed path ready, and the resulting
+  URL resolved to genuine playable HLS (fMP4 init + parts) through the
+  proxy's normal redirect-rewriting — a wrong or missing token 404s.
 - **Relaying a composed output reuses `internal/relayrunner` unchanged.**
   `streamstore.Relay` gained `ChannelCompositionID` alongside `StreamID` —
   two Rails tables (`RelayDestination`, `ChannelRelayDestination`, kept
@@ -86,6 +107,17 @@ directions. See each phase's commit message
 (`06d1a21`/`1fbfdee`/`1d48aba`/`4dcbb18`/`4651289` on
 `migration/go-rails-react`) for the specifics. All `go-service` packages
 and the Rails suite pass throughout.
+
+The preview-URL addition got the same treatment: a real ffmpeg publisher
+pushed a live source, a composition was enabled through the admin API
+with `destinations: []`, and the compositor job started anyway (the
+scheduler change) — `docker compose logs dataplane` showed the job
+request, MediaMTX's path list showed `composed/<channelId>/horizontal`
+ready, and `curl`ing the resulting `/mtx/hls/c/...?token=...` URL
+followed MediaMTX's own cookie-check redirect straight through to a real,
+live low-latency HLS playlist. A wrong token and no token each 404'd on
+the same URL. Clean teardown confirmed afterward (job stopped once
+disabled).
 
 ## Links
 

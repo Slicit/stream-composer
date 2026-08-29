@@ -71,13 +71,12 @@ func (f *fakeCompositor) deleteCount() int {
 	return len(f.deletes)
 }
 
-func testStore(comp streamstore.ChannelComposition, destinationEnabled bool) *streamstore.Memory {
+func testStore(comp streamstore.ChannelComposition) *streamstore.Memory {
 	store := streamstore.NewMemory()
 	channel := streamstore.Channel{ID: "chan-1", StreamIDs: []string{"s1", "s2"}}
 	stream1 := streamstore.Stream{ID: "s1", Key: "cam-1", Enabled: true, Name: "Cam One"}
 	stream2 := streamstore.Stream{ID: "s2", Key: "cam-2", Enabled: true, Name: "Cam Two"}
-	relay := streamstore.Relay{ID: "r1", ChannelCompositionID: comp.ID, Enabled: destinationEnabled, URL: "rtmp://example.test/live"}
-	store.Replace([]streamstore.Stream{stream1, stream2}, []streamstore.Relay{relay}, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
+	store.Replace([]streamstore.Stream{stream1, stream2}, nil, []streamstore.Channel{channel}, []streamstore.ChannelComposition{comp}, false, "", "")
 	return store
 }
 
@@ -85,13 +84,13 @@ func testConfig(compositorAPI string) config.Config {
 	return config.Config{IngestPrefix: "live", ComposedPrefix: "composed", CompositorAPI: compositorAPI}
 }
 
-func TestTickStartsAnEnabledCompositionWithALiveMemberAndAnEnabledDestination(t *testing.T) {
+func TestTickStartsAnEnabledCompositionWithALiveMember(t *testing.T) {
 	fc := &fakeCompositor{}
 	srv := fc.server()
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true, Width: 1920, Height: 1080}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(srv.URL), silentLog())
 	s.Tick(context.Background())
 
@@ -121,7 +120,7 @@ func TestTickDoesNotStartADisabledComposition(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: false}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(srv.URL), silentLog())
 	s.Tick(context.Background())
 
@@ -136,7 +135,7 @@ func TestTickDoesNotStartWithNoLiveMember(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{}}, testConfig(srv.URL), silentLog())
 	s.Tick(context.Background())
 
@@ -145,18 +144,21 @@ func TestTickDoesNotStartWithNoLiveMember(t *testing.T) {
 	}
 }
 
-func TestTickDoesNotStartWithNoEnabledDestination(t *testing.T) {
+// A relay destination is not, and was deliberately made not to be, a
+// precondition — the whole point of the composed-preview HLS mount is
+// checking a composition looks right before wiring up a real one.
+func TestTickStartsEvenWithNoRelayDestinationAtAll(t *testing.T) {
 	fc := &fakeCompositor{}
 	srv := fc.server()
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, false) // destination disabled
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(srv.URL), silentLog())
 	s.Tick(context.Background())
 
-	if got := fc.startCount(); got != 0 {
-		t.Errorf("expected no start request with no enabled destination, got %d", got)
+	if got := fc.startCount(); got != 1 {
+		t.Errorf("expected a start request even with no relay destination at all, got %d", got)
 	}
 }
 
@@ -166,7 +168,7 @@ func TestTickDoesNotRestartAnUnchangedJob(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(srv.URL), silentLog())
 
 	s.Tick(context.Background())
@@ -184,7 +186,7 @@ func TestTickRestartsWhenTheLiveSourceSetChanges(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	lister := &fakeIngestLister{live: map[string]bool{"cam-1": true}}
 	s := New(store, lister, testConfig(srv.URL), silentLog())
 
@@ -203,7 +205,7 @@ func TestTickStopsAJobThatIsNoLongerWanted(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	lister := &fakeIngestLister{live: map[string]bool{"cam-1": true}}
 	s := New(store, lister, testConfig(srv.URL), silentLog())
 
@@ -230,7 +232,7 @@ func TestStartTicksUntilStopped(t *testing.T) {
 	defer srv.Close()
 
 	comp := streamstore.ChannelComposition{ID: "comp-1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true}
-	store := testStore(comp, true)
+	store := testStore(comp)
 	s := New(store, &fakeIngestLister{live: map[string]bool{"cam-1": true}}, testConfig(srv.URL), silentLog())
 
 	stop := make(chan struct{})

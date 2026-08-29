@@ -23,6 +23,7 @@ function composition(overrides: Partial<ChannelComposition> = {}): ChannelCompos
     backgroundColor: '#0b1220',
     labels: true,
     labelSize: 22,
+    previewToken: overrides.orientation === 'vertical' ? 'vertical-preview-token' : 'horizontal-preview-token',
     destinations: [],
     createdAt: '2026-01-01',
     ...overrides,
@@ -57,6 +58,49 @@ describe('ChannelCompositionSection', () => {
     expect(screen.getByText('vertical')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Enable horizontal composition' })).not.toBeChecked()
     expect(screen.getByRole('switch', { name: 'Enable vertical composition' })).not.toBeChecked()
+  })
+
+  it('shows a copyable preview URL once a composition is enabled, and not before', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === apiBase) {
+          return jsonResponse({
+            compositions: [composition({ enabled: true }), composition({ orientation: 'vertical', enabled: false })],
+            providers,
+          })
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<ChannelCompositionSection apiBase={apiBase} />)
+    await screen.findByText('horizontal')
+
+    expect(screen.getByLabelText('Preview URL (paste into VLC)')).toHaveValue(
+      `${window.location.origin}/mtx/hls/c/c1/horizontal/index.m3u8?token=horizontal-preview-token`,
+    )
+    // Only one card is enabled — the vertical one must not show a preview
+    // URL for a composition that isn't actually running.
+    expect(screen.getAllByLabelText('Preview URL (paste into VLC)')).toHaveLength(1)
+  })
+
+  it('copies the preview URL to the clipboard', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url === apiBase) return jsonResponse({ compositions: [composition({ enabled: true })], providers })
+        throw new Error(`unexpected fetch ${url}`)
+      }),
+    )
+
+    render(<ChannelCompositionSection apiBase={apiBase} />)
+    await user.click(await screen.findByRole('button', { name: 'Copy preview URL' }))
+
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/mtx/hls/c/c1/horizontal/index.m3u8?token=horizontal-preview-token`)
   })
 
   it('PATCHes enabled when the switch is toggled', async () => {

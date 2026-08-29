@@ -130,6 +130,12 @@ export interface ChannelComposition {
   backgroundColor: string
   labels: boolean
   labelSize: number
+  // Authorizes GET /mtx/hls/c/:channelId/:orientation/*.m3u8?token=... —
+  // a URL that works pasted straight into VLC, unrelated to (and no more
+  // privileged than) any session. Present regardless of `enabled`, but
+  // only actually resolves anything once the composition is both enabled
+  // and live.
+  previewToken: string
   destinations: ChannelCompositionDestination[]
   createdAt: string
 }

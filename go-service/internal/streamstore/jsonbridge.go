@@ -48,19 +48,20 @@ type jsonConfig struct {
 		LayoutMode      string   `json:"layoutMode"`
 	} `json:"channels"`
 	ChannelCompositions []struct {
-		ID          string `json:"id"`
-		ChannelID   string `json:"channelId"`
-		Orientation string `json:"orientation"`
-		Enabled     bool   `json:"enabled"`
-		Width       int    `json:"width"`
-		Height      int    `json:"height"`
-		FPS         int    `json:"fps"`
-		BitrateKbps int    `json:"bitrateKbps"`
-		Preset      string `json:"preset"`
-		Encoder     string `json:"encoder"`
-		Background  string `json:"background"`
-		Labels      bool   `json:"labels"`
-		LabelSize   int    `json:"labelSize"`
+		ID           string `json:"id"`
+		ChannelID    string `json:"channelId"`
+		Orientation  string `json:"orientation"`
+		Enabled      bool   `json:"enabled"`
+		Width        int    `json:"width"`
+		Height       int    `json:"height"`
+		FPS          int    `json:"fps"`
+		BitrateKbps  int    `json:"bitrateKbps"`
+		Preset       string `json:"preset"`
+		Encoder      string `json:"encoder"`
+		Background   string `json:"background"`
+		Labels       bool   `json:"labels"`
+		LabelSize    int    `json:"labelSize"`
+		PreviewToken string `json:"previewToken"`
 	} `json:"channelCompositions"`
 	ChannelRelays []struct {
 		ID                   string `json:"id"`
@@ -134,7 +135,7 @@ func (cfg jsonConfig) toChannelCompositions() []ChannelComposition {
 			ID: c.ID, ChannelID: c.ChannelID, Orientation: c.Orientation, Enabled: c.Enabled,
 			Width: c.Width, Height: c.Height, FPS: c.FPS, BitrateKbps: c.BitrateKbps,
 			Preset: c.Preset, Encoder: c.Encoder, Background: c.Background,
-			Labels: c.Labels, LabelSize: c.LabelSize,
+			Labels: c.Labels, LabelSize: c.LabelSize, PreviewToken: c.PreviewToken,
 		})
 	}
 	return out

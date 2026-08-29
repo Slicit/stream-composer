@@ -35,17 +35,22 @@ module Internal
             layoutMode: c.layout_mode }
         end,
         # The compositor's own config — see go-service/internal/
-        # compositionscheduler, which turns "enabled + a live member + an
-        # enabled destination" into start/stop calls against the
-        # compositor service. destinations travel as a flat, separate
-        # list (channelRelays) rather than nested under each composition:
-        # internal/streamstore.Relay unifies both a stream's and a
-        # composition's destinations into one shape relayrunner iterates.
+        # compositionscheduler, which turns "enabled + a live member" into
+        # start/stop calls against the compositor service (a relay
+        # destination is not required for a job to run — see that
+        # package's own comment for why). destinations travel as a flat,
+        # separate list (channelRelays) rather than nested under each
+        # composition: internal/streamstore.Relay unifies both a stream's
+        # and a composition's destinations into one shape relayrunner
+        # iterates. previewToken authorizes go-service/internal/
+        # mediaproxy's composed-preview HLS mount — travels here in full
+        # for the same reason relay keys do (see this controller's own
+        # top comment): server-to-server, behind the shared secret.
         channelCompositions: ChannelComposition.all.map do |cc|
           { id: cc.id, channelId: cc.channel_id, orientation: cc.orientation, enabled: cc.enabled,
             width: cc.width, height: cc.height, fps: cc.fps, bitrateKbps: cc.bitrate_kbps,
             preset: cc.preset, encoder: cc.encoder, background: cc.background_color,
-            labels: cc.labels, labelSize: cc.label_size }
+            labels: cc.labels, labelSize: cc.label_size, previewToken: cc.preview_token }
         end,
         channelRelays: ChannelRelayDestination.all.map do |d|
           { id: d.id, channelCompositionId: d.channel_composition_id, provider: d.provider,

@@ -17,10 +17,17 @@ class ChannelComposition < ApplicationRecord
   before_validation { self.orientation = orientation.to_s.strip.downcase }
   before_validation { self.encoder = "auto" if encoder.blank? }
   before_validation { self.preset = "veryfast" if preset.blank? }
+  # Authorizes go-service/internal/mediaproxy's composed-preview HLS mount
+  # — unrelated to and no more privileged than MediaMTX's own internal
+  # credential, since it only ever grants this one already-composed
+  # output, never a raw source. Generated once and never rotated for now;
+  # add a rotation endpoint if that's ever actually needed.
+  before_validation { self.preview_token = SecureRandom.hex(16) if preview_token.blank? }
 
   validates :orientation, inclusion: { in: ORIENTATIONS }
   validates :orientation, uniqueness: { scope: :channel_id, message: "already has a composition for this channel" }
   validates :encoder, inclusion: { in: ENCODERS }
+  validates :preview_token, presence: true, uniqueness: true
   validates :width, :height, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: 3840 }
   validates :fps, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: 60 }
   validates :bitrate_kbps, numericality: { only_integer: true, greater_than: 0, less_than_or_equal_to: 51_000 }
@@ -42,6 +49,7 @@ class ChannelComposition < ApplicationRecord
       backgroundColor: background_color,
       labels: labels,
       labelSize: label_size,
+      previewToken: preview_token,
       destinations: channel_relay_destinations.order(:created_at).map(&:as_public_json),
       createdAt: created_at.iso8601,
     }

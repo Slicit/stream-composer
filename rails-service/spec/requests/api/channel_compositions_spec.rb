@@ -47,6 +47,13 @@ RSpec.describe "Api::ChannelCompositions (self-service /channels/mine/:channel_i
       get "/api/channels/mine/#{channel.id}/compositions", as: :json
       expect(JSON.parse(response.body)["quota"]).to eq(2)
     end
+
+    it "includes a preview token per composition" do
+      get "/api/channels/mine/#{channel.id}/compositions", as: :json
+      tokens = JSON.parse(response.body)["compositions"].map { |c| c["previewToken"] }
+      expect(tokens).to all(be_present)
+      expect(tokens.uniq.length).to eq(2)
+    end
   end
 
   describe "updating a composition" do

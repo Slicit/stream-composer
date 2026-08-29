@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
+ActiveRecord::Schema[8.1].define(version: 2026_08_29_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
   enable_extension "pgcrypto"
@@ -21,7 +21,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
     t.uuid "homepage_channel_id"
     t.boolean "public_viewing", default: false, null: false
     t.datetime "updated_at", null: false
-    t.check_constraint "default_layout_mode::text = ANY (ARRAY['fixed'::character varying::text, 'maximize'::character varying::text])", name: "app_settings_default_layout_mode_check"
+    t.check_constraint "default_layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "app_settings_default_layout_mode_check"
   end
 
   create_table "channel_compositions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -37,14 +37,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
     t.boolean "labels", default: true, null: false
     t.string "orientation", null: false
     t.string "preset", default: "veryfast", null: false
+    t.string "preview_token", null: false
     t.datetime "updated_at", null: false
     t.integer "width", default: 1920, null: false
     t.index ["channel_id", "orientation"], name: "index_channel_compositions_on_channel_id_and_orientation", unique: true
     t.index ["channel_id"], name: "index_channel_compositions_on_channel_id"
+    t.index ["preview_token"], name: "index_channel_compositions_on_preview_token", unique: true
     t.check_constraint "bitrate_kbps > 0 AND bitrate_kbps <= 51000", name: "channel_compositions_bitrate_check"
-    t.check_constraint "encoder::text = ANY (ARRAY['auto'::character varying::text, 'software'::character varying::text, 'vaapi'::character varying::text, 'qsv'::character varying::text])", name: "channel_compositions_encoder_check"
+    t.check_constraint "encoder::text = ANY (ARRAY['auto'::character varying, 'software'::character varying, 'vaapi'::character varying, 'qsv'::character varying]::text[])", name: "channel_compositions_encoder_check"
     t.check_constraint "height > 0 AND height <= 3840", name: "channel_compositions_height_check"
-    t.check_constraint "orientation::text = ANY (ARRAY['horizontal'::character varying::text, 'vertical'::character varying::text])", name: "channel_compositions_orientation_check"
+    t.check_constraint "orientation::text = ANY (ARRAY['horizontal'::character varying, 'vertical'::character varying]::text[])", name: "channel_compositions_orientation_check"
     t.check_constraint "width > 0 AND width <= 3840", name: "channel_compositions_width_check"
   end
 
@@ -79,8 +81,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
     t.index ["owner_id"], name: "index_channels_on_owner_id"
     t.index ["shared_with"], name: "index_channels_on_shared_with", using: :gin
     t.index ["stream_ids"], name: "index_channels_on_stream_ids", using: :gin
-    t.check_constraint "layout_mode::text = ANY (ARRAY['fixed'::character varying::text, 'maximize'::character varying::text])", name: "channels_layout_mode_check"
-    t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying::text, 'private'::character varying::text])", name: "channels_visibility_check"
+    t.check_constraint "layout_mode::text = ANY (ARRAY['fixed'::character varying, 'maximize'::character varying]::text[])", name: "channels_layout_mode_check"
+    t.check_constraint "visibility::text = ANY (ARRAY['public'::character varying, 'private'::character varying]::text[])", name: "channels_visibility_check"
   end
 
   create_table "games", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -101,7 +103,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_28_000004) do
     t.datetime "updated_at", null: false
     t.string "url", null: false
     t.index ["stream_id"], name: "index_relay_destinations_on_stream_id"
-    t.check_constraint "audio::text = ANY (ARRAY['copy'::character varying::text, 'aac'::character varying::text])", name: "relay_destinations_audio_check"
+    t.check_constraint "audio::text = ANY (ARRAY['copy'::character varying, 'aac'::character varying]::text[])", name: "relay_destinations_audio_check"
   end
 
   create_table "sessions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

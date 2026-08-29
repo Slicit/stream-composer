@@ -65,6 +65,12 @@ type ChannelComposition struct {
 	Background  string
 	Labels      bool
 	LabelSize   int
+	// PreviewToken authorizes internal/mediaproxy's composed-preview HLS
+	// mount (see that package) — a per-composition secret, unrelated to
+	// MediaMTX's own internal credential, that lets an owner/admin paste a
+	// working URL straight into VLC without ever handing out the shared
+	// internal password.
+	PreviewToken string
 }
 
 // User is the subset of a user record access decisions need.

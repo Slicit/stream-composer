@@ -124,6 +124,64 @@ func TestParseRequestHLS(t *testing.T) {
 	}
 }
 
+func testComposedPreviewResolver() Resolver {
+	store := streamstore.NewMemory()
+	store.Replace(nil, nil, nil, []streamstore.ChannelComposition{
+		{ID: "cc1", ChannelID: "chan-1", Orientation: "horizontal", Enabled: true, PreviewToken: "the-real-token"},
+		{ID: "cc2", ChannelID: "chan-1", Orientation: "vertical", Enabled: false, PreviewToken: "vertical-token"},
+	}, false, "", "")
+	return Resolver{Store: store, Config: config.Config{ComposedPrefix: "composed"}}
+}
+
+func TestParseRequestComposedPreview(t *testing.T) {
+	r := testComposedPreviewResolver()
+
+	// No session is ever passed here — the whole point is that this path
+	// authorizes VLC, which has no sc_session cookie to send.
+	p, ok := r.ParseRequest("/c/chan-1/horizontal/index.m3u8?token=the-real-token", "hls", nil)
+	if !ok || p.UpstreamPath != "/composed/chan-1/horizontal/index.m3u8" {
+		t.Errorf("got %+v, ok=%v", p, ok)
+	}
+}
+
+func TestParseRequestComposedPreviewRejectsAWrongToken(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/chan-1/horizontal/index.m3u8?token=guessed", "hls", nil); ok {
+		t.Error("SECURITY: a wrong token must not resolve")
+	}
+}
+
+func TestParseRequestComposedPreviewRejectsAMissingToken(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/chan-1/horizontal/index.m3u8", "hls", nil); ok {
+		t.Error("SECURITY: no token at all must not resolve")
+	}
+}
+
+func TestParseRequestComposedPreviewRejectsADisabledComposition(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/chan-1/vertical/index.m3u8?token=vertical-token", "hls", nil); ok {
+		t.Error("a disabled composition must not resolve, even with its real token")
+	}
+}
+
+func TestParseRequestComposedPreviewRejectsAnUnknownComposition(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/no-such-channel/horizontal/index.m3u8?token=the-real-token", "hls", nil); ok {
+		t.Error("an unknown (channel, orientation) pair must not resolve")
+	}
+}
+
+// The WebRTC/WHEP mount deliberately does not get this treatment — HLS is
+// all VLC needs, and keeping WHEP session-only avoids growing this token's
+// scope any further than it has to be.
+func TestParseRequestComposedPreviewDoesNotApplyToWebRTC(t *testing.T) {
+	r := testComposedPreviewResolver()
+	if _, ok := r.ParseRequest("/c/chan-1/horizontal/whep?token=the-real-token", "webrtc", nil); ok {
+		t.Error("the composed-preview token must not authorize the WebRTC mount")
+	}
+}
+
 func TestRewriteLocation(t *testing.T) {
 	parsed := &Parsed{PublicPath: "s/bbbbbbbbbbbbbbbb", MediaPath: "live/priv-key"}
 

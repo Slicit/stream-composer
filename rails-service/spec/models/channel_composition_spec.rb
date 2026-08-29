@@ -15,6 +15,17 @@ RSpec.describe ChannelComposition, type: :model do
     expect(composition.preset).to eq("veryfast")
   end
 
+  it "generates a unique preview_token automatically, and never rotates it on a later save" do
+    horizontal = build_composition.tap(&:save!)
+    vertical = build_composition(orientation: "vertical").tap(&:save!)
+    expect(horizontal.preview_token).to be_present
+    expect(horizontal.preview_token).not_to eq(vertical.preview_token)
+
+    original_token = horizontal.preview_token
+    horizontal.update!(bitrate_kbps: 3000)
+    expect(horizontal.reload.preview_token).to eq(original_token)
+  end
+
   it "rejects an unknown orientation" do
     expect(build_composition(orientation: "diagonal")).not_to be_valid
   end
@@ -46,6 +57,11 @@ RSpec.describe ChannelComposition, type: :model do
       composition = build_composition.tap(&:save!)
       composition.channel_relay_destinations.create!(provider: "custom", url: "rtmp://example.test/live")
       expect(composition.as_public_json[:destinations].length).to eq(1)
+    end
+
+    it "includes the preview token" do
+      composition = build_composition.tap(&:save!)
+      expect(composition.as_public_json[:previewToken]).to eq(composition.preview_token)
     end
   end
 end

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Check, Copy, Trash2 } from 'lucide-react'
 import { api, ApiError } from '@/api/client'
 import type { ChannelComposition, ChannelCompositionDestination, Orientation, RelayProvider } from '@/api/types'
 import { Button } from '@/components/ui/button'
@@ -137,6 +137,7 @@ function OrientationCard({
         />
       </CardHeader>
       <CardContent className="space-y-4">
+        {composition.enabled && <PreviewUrlField composition={composition} />}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label>Resolution</Label>
@@ -213,6 +214,47 @@ function OrientationCard({
         />
       </CardContent>
     </Card>
+  )
+}
+
+// A read-only, pasteable URL for eyeballing a composition in an external
+// player (VLC, ffplay) — works the moment the composition is enabled and
+// live, with no relay destination required at all: it's the composited
+// output itself, reached through the same HLS mount viewers use, just
+// authorized by this composition's own token instead of a session cookie
+// (which VLC has no way to send).
+function previewUrl(composition: ChannelComposition): string {
+  return `${window.location.origin}/mtx/hls/c/${composition.channelId}/${composition.orientation}/index.m3u8?token=${composition.previewToken}`
+}
+
+function PreviewUrlField({ composition }: { composition: ChannelComposition }) {
+  const [copied, setCopied] = useState(false)
+  const url = previewUrl(composition)
+
+  async function handleCopy() {
+    await navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={`${composition.orientation}-preview-url`}>Preview URL (paste into VLC)</Label>
+      <div className="flex items-center gap-1.5">
+        <Input
+          id={`${composition.orientation}-preview-url`}
+          type="text"
+          readOnly
+          value={url}
+          onFocus={(e) => e.target.select()}
+          className="font-mono text-xs"
+        />
+        <Button type="button" variant="outline" size="icon" onClick={handleCopy} title="Copy preview URL" className="shrink-0">
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          <span className="sr-only">Copy preview URL</span>
+        </Button>
+      </div>
+    </div>
   )
 }
 

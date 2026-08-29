@@ -12,6 +12,7 @@
 package mediaproxy
 
 import (
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -22,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/Slicit/stream-composer/go-service/internal/access"
+	"github.com/Slicit/stream-composer/go-service/internal/compositionscheduler"
 	"github.com/Slicit/stream-composer/go-service/internal/config"
 	"github.com/Slicit/stream-composer/go-service/internal/streamstore"
 )
@@ -38,10 +40,11 @@ const (
 )
 
 var (
-	playbackIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
-	sessionIDRe  = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
-	hlsFileRe    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$`)
-	safeQueryRe  = regexp.MustCompile(`^[A-Za-z0-9_.\-=&%~+/]*$`)
+	playbackIDRe      = regexp.MustCompile(`^[A-Za-z0-9_-]{8,64}$`)
+	sessionIDRe       = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
+	hlsFileRe         = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}\.(m3u8|mp4|m4s|ts|mps)$`)
+	safeQueryRe       = regexp.MustCompile(`^[A-Za-z0-9_.\-=&%~+/]*$`)
+	composedPreviewRe = regexp.MustCompile(`^c/([A-Za-z0-9_-]{1,64})/(horizontal|vertical)$`)
 )
 
 // stripRequest headers are never relayed upstream. authorization and cookie
@@ -127,6 +130,50 @@ func (r Resolver) ResolvePlayback(publicPath string, user *streamstore.User) (st
 	return r.Config.IngestPrefix + "/" + stream.Key, true
 }
 
+func safeEqual(a, b string) bool {
+	if len(a) == 0 || len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// resolveComposedPreview authorizes c/<channelId>/<orientation> — a
+// channel composition's own composed output, HLS-only, for pasting
+// straight into VLC. Unlike every other path this proxy resolves, it is
+// not gated by the viewer session at all (WithUser's user is never
+// consulted here): VLC carries no sc_session cookie, so the query
+// string's token — a per-composition secret minted by Rails, unrelated to
+// and no more privileged than MediaMTX's own internal credential — is the
+// only thing standing between a caller and this one, specific, already-
+// composed feed. It grants nothing about the channel's raw sources.
+func (r Resolver) resolveComposedPreview(publicPath, query string) (string, bool) {
+	m := composedPreviewRe.FindStringSubmatch(publicPath)
+	if m == nil {
+		return "", false
+	}
+	channelID, orientation := m[1], m[2]
+
+	values, err := url.ParseQuery(query)
+	if err != nil {
+		return "", false
+	}
+	token := values.Get("token")
+	if token == "" {
+		return "", false
+	}
+
+	for _, c := range r.Store.ChannelCompositions() {
+		if c.ChannelID != channelID || c.Orientation != orientation {
+			continue
+		}
+		if !c.Enabled || c.PreviewToken == "" || !safeEqual(token, c.PreviewToken) {
+			return "", false
+		}
+		return compositionscheduler.OutputPath(r.Config, channelID, orientation), true
+	}
+	return "", false
+}
+
 // ParseRequest strictly parses a proxied request's raw URL into validated
 // components. kind is "webrtc" or "hls". Anything unexpected returns
 // (nil, false) — there is no lenient path.
@@ -202,6 +249,11 @@ func (r Resolver) ParseRequest(rawURL, kind string, user *streamstore.User) (*Pa
 		return nil, false
 	}
 	publicPath := strings.Join(segments[:len(segments)-1], "/")
+
+	if mediaPath, ok := r.resolveComposedPreview(publicPath, query); ok {
+		return &Parsed{PublicPath: publicPath, MediaPath: mediaPath, UpstreamPath: "/" + mediaPath + "/" + file, Query: query}, true
+	}
+
 	mediaPath, ok := r.ResolvePlayback(publicPath, user)
 	if !ok {
 		return nil, false
