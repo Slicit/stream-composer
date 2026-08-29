@@ -1,12 +1,10 @@
-import { useRef, useState, type FormEvent } from 'react'
-import Cropper, { type Area } from 'react-easy-crop'
+import { useState, type FormEvent } from 'react'
 import { api, ApiError } from '@/api/client'
 import { useAuth } from '@/auth/AuthContext'
-import { cropImageToFile } from '@/lib/cropImage'
+import { AvatarCropField } from '@/components/AvatarCropField'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Dialog,
   DialogContent,
@@ -21,18 +19,10 @@ interface EditProfileDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024
-
-function initials(username: string): string {
-  return username.slice(0, 2).toUpperCase()
-}
-
-// The account dropdown's "Edit" action: a password change (see
+// The account dropdown's "Edit" action: an avatar upload (see
+// AvatarCropField), two-factor setup/disable, and a password change (see
 // Api::AuthController#update_me — username/role/quota stay
-// administrator-only) plus a self-service avatar upload, cropped
-// client-side with react-easy-crop so the server only ever receives a
-// square image, never an arbitrary one it would have to reject or
-// letterbox.
+// administrator-only).
 export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps) {
   const { user, refresh } = useAuth()
   const [currentPassword, setCurrentPassword] = useState('')
@@ -42,13 +32,14 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
   const [success, setSuccess] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const [avatarSrc, setAvatarSrc] = useState<string | null>(null)
-  const [crop, setCrop] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
-  const [avatarError, setAvatarError] = useState<string | null>(null)
-  const [uploadingAvatar, setUploadingAvatar] = useState(false)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const [otpSecret, setOtpSecret] = useState<string | null>(null)
+  const [qrCodeSvg, setQrCodeSvg] = useState<string | null>(null)
+  const [otpCode, setOtpCode] = useState('')
+  const [otpError, setOtpError] = useState<string | null>(null)
+  const [otpSubmitting, setOtpSubmitting] = useState(false)
+  const [disablePassword, setDisablePassword] = useState('')
+  const [disableError, setDisableError] = useState<string | null>(null)
+  const [disabling, setDisabling] = useState(false)
 
   function reset() {
     setCurrentPassword('')
@@ -56,51 +47,56 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
     setConfirmPassword('')
     setError(null)
     setSuccess(false)
-    resetAvatarPicker()
+    resetTwoFactorSetup()
+    setDisablePassword('')
+    setDisableError(null)
   }
 
-  function resetAvatarPicker() {
-    if (avatarSrc) URL.revokeObjectURL(avatarSrc)
-    setAvatarSrc(null)
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-    setCroppedAreaPixels(null)
-    setAvatarError(null)
+  function resetTwoFactorSetup() {
+    setOtpSecret(null)
+    setQrCodeSvg(null)
+    setOtpCode('')
+    setOtpError(null)
   }
 
-  function pickAvatarFile(file: File) {
-    setAvatarError(null)
-    if (!file.type.startsWith('image/')) {
-      setAvatarError('Choose an image file.')
-      return
-    }
-    if (file.size > MAX_AVATAR_BYTES) {
-      setAvatarError('Choose an image under 5MB.')
-      return
-    }
-    if (avatarSrc) URL.revokeObjectURL(avatarSrc)
-    setAvatarSrc(URL.createObjectURL(file))
-    setCrop({ x: 0, y: 0 })
-    setZoom(1)
-  }
-
-  async function saveAvatar() {
-    if (!avatarSrc || !croppedAreaPixels) return
-    setAvatarError(null)
-    setUploadingAvatar(true)
+  async function startTwoFactorSetup() {
+    setOtpError(null)
     try {
-      const cropped = await cropImageToFile(avatarSrc, croppedAreaPixels)
-      if (cropped.size > MAX_AVATAR_BYTES) {
-        setAvatarError('The cropped image is still over 5MB — try zooming in less.')
-        return
-      }
-      await api.putRaw('/api/auth/me/avatar', cropped)
-      await refresh()
-      resetAvatarPicker()
+      const data = await api.post<{ otpSecret: string; qrCodeSvg: string }>('/api/two-factor/setup')
+      setOtpSecret(data.otpSecret)
+      setQrCodeSvg(data.qrCodeSvg)
     } catch (err) {
-      setAvatarError(err instanceof ApiError ? err.message : 'Could not upload the avatar.')
+      setOtpError(err instanceof ApiError ? err.message : 'Could not start two-factor setup.')
+    }
+  }
+
+  async function enableTwoFactor(e: FormEvent) {
+    e.preventDefault()
+    setOtpError(null)
+    setOtpSubmitting(true)
+    try {
+      await api.post('/api/two-factor/enable', { code: otpCode })
+      await refresh()
+      resetTwoFactorSetup()
+    } catch (err) {
+      setOtpError(err instanceof ApiError ? err.message : 'Could not enable two-factor authentication.')
     } finally {
-      setUploadingAvatar(false)
+      setOtpSubmitting(false)
+    }
+  }
+
+  async function disableTwoFactor(e: FormEvent) {
+    e.preventDefault()
+    setDisableError(null)
+    setDisabling(true)
+    try {
+      await api.post('/api/two-factor/disable', { currentPassword: disablePassword })
+      await refresh()
+      setDisablePassword('')
+    } catch (err) {
+      setDisableError(err instanceof ApiError ? err.message : 'Could not disable two-factor authentication.')
+    } finally {
+      setDisabling(false)
     }
   }
 
@@ -137,70 +133,95 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit profile</DialogTitle>
-          <DialogDescription>Avatar and password.</DialogDescription>
+          <DialogDescription>Avatar, two-factor authentication and password.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 border-b pb-4">
-          <Label>Avatar</Label>
-          {avatarError && (
-            <p className="text-sm text-destructive" role="alert">
-              {avatarError}
-            </p>
+        <div className="border-b pb-4">
+          {user && (
+            <AvatarCropField
+              avatarUrl={user.avatar}
+              username={user.username}
+              uploadUrl="/api/auth/me/avatar"
+              onUploaded={() => refresh()}
+            />
           )}
-          {avatarSrc ? (
-            <div className="flex flex-col gap-3">
-              <div className="relative h-56 w-full overflow-hidden rounded-md bg-muted">
-                <Cropper
-                  image={avatarSrc}
-                  crop={crop}
-                  zoom={zoom}
-                  aspect={1}
-                  cropShape="round"
-                  onCropChange={setCrop}
-                  onZoomChange={setZoom}
-                  onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
+        </div>
+
+        <div className="flex flex-col gap-3 border-b pb-4">
+          <Label>Two-factor authentication</Label>
+          {user?.otpEnabled ? (
+            <form className="flex flex-col gap-3" onSubmit={disableTwoFactor}>
+              <p className="text-sm text-muted-foreground">Two-factor authentication is on.</p>
+              {disableError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {disableError}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="disable-2fa-password">Confirm your password to disable it</Label>
+                <Input
+                  id="disable-2fa-password"
+                  type="password"
+                  value={disablePassword}
+                  onChange={(e) => setDisablePassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
                 />
               </div>
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={0.01}
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-                aria-label="Zoom"
-                className="w-full"
-              />
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={resetAvatarPicker} disabled={uploadingAvatar}>
+              <Button type="submit" variant="outline" size="sm" disabled={disabling} className="self-start">
+                {disabling ? 'Disabling…' : 'Disable two-factor authentication'}
+              </Button>
+            </form>
+          ) : otpSecret ? (
+            <form className="flex flex-col gap-3" onSubmit={enableTwoFactor}>
+              <p className="text-sm text-muted-foreground">Scan this code with your authenticator app, or enter the secret manually.</p>
+              {qrCodeSvg && (
+                <div
+                  className="h-40 w-40 self-center [&_svg]:h-full [&_svg]:w-full"
+                  // The server (rqrcode) renders a plain, non-interactive
+                  // QR SVG from this account's own just-generated secret —
+                  // no user-authored content ever reaches this markup.
+                  dangerouslySetInnerHTML={{ __html: qrCodeSvg }}
+                />
+              )}
+              <code className="self-center rounded bg-muted px-2 py-1 text-xs">{otpSecret}</code>
+              {otpError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {otpError}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="otp-code">6-digit code</Label>
+                <Input
+                  id="otp-code"
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value)}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={resetTwoFactorSetup} disabled={otpSubmitting}>
                   Cancel
                 </Button>
-                <Button type="button" variant="outline" size="sm" onClick={saveAvatar} disabled={uploadingAvatar || !croppedAreaPixels}>
-                  {uploadingAvatar ? 'Uploading…' : 'Save avatar'}
+                <Button type="submit" variant="outline" size="sm" disabled={otpSubmitting}>
+                  {otpSubmitting ? 'Enabling…' : 'Enable'}
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
-            <div className="flex items-center gap-3">
-              <Avatar className="h-14 w-14">
-                <AvatarImage src={user?.avatar ?? undefined} alt="" />
-                <AvatarFallback>{user ? initials(user.username) : ''}</AvatarFallback>
-              </Avatar>
-              <input
-                ref={fileInput}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) pickAvatarFile(file)
-                  e.target.value = ''
-                }}
-              />
-              <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
-                Change avatar
+            <>
+              <p className="text-sm text-muted-foreground">Two-factor authentication is off.</p>
+              {otpError && (
+                <p className="text-sm text-destructive" role="alert">
+                  {otpError}
+                </p>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={startTwoFactorSetup} className="self-start">
+                Enable two-factor authentication
               </Button>
-            </div>
+            </>
           )}
         </div>
 

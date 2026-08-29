@@ -1,9 +1,8 @@
 module Api
   class AuthController < ApplicationController
-    before_action :require_user!, only: %i[stop_impersonating avatar]
+    include AvatarUploadable
 
-    MAX_AVATAR_BYTES = 5 * 1024 * 1024
-    AVATAR_IMAGE_EXTENSIONS = { "image/png" => "png", "image/jpeg" => "jpg", "image/webp" => "webp" }.freeze
+    before_action :require_user!, only: %i[stop_impersonating avatar]
 
     def login
       user = User.authenticate_credentials(params[:username], params[:password])
@@ -84,25 +83,11 @@ module Api
     end
 
     # Self-service avatar upload — cropped client-side (see
-    # EditProfileDialog), uploaded here as raw image bytes with the
+    # AvatarCropField), uploaded here as raw image bytes with the
     # cropper's own Content-Type, same no-multipart-parsing pattern as
-    # Api::ChannelsController#background.
+    # Api::ChannelsController#background. See AvatarUploadable.
     def avatar
-      ext = AVATAR_IMAGE_EXTENSIONS[request.content_type]
-      return render_error(:bad_request, "Avatars must be PNG, JPEG or WebP.") unless ext
-
-      body = request.body.read
-      return render_error(:bad_request, "The uploaded file was empty.") if body.blank?
-      return render_error(:bad_request, "Avatars must be 5MB or smaller.") if body.bytesize > MAX_AVATAR_BYTES
-
-      dir = Rails.public_path.join("uploads", "avatars")
-      FileUtils.mkdir_p(dir)
-      current_user.remove_avatar_file
-      filename = "#{current_user.id}.#{ext}"
-      File.binwrite(dir.join(filename), body)
-
-      current_user.update!(avatar: "/uploads/avatars/#{filename}")
-      render json: { user: current_user.as_public_json }
+      store_avatar!(current_user)
     end
 
     private

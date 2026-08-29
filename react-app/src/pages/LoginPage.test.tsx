@@ -60,4 +60,67 @@ describe('LoginPage', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Wrong username or password.')
   })
+
+  it('asks for a 2FA code when the server requires it, then signs in with the right code', async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => jsonResponse({ user: null }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByLabelText('Username')).toBeInTheDocument())
+
+    fetchMock.mockImplementationOnce(() => jsonResponse({ twoFactorRequired: true, challengeToken: 'the-challenge-token' }))
+    await userEvent.type(screen.getByLabelText('Username'), 'totp-alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'correct-horse-1')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    expect(await screen.findByText('Enter your code')).toBeInTheDocument()
+
+    fetchMock.mockImplementationOnce((url: string, init?: RequestInit) => {
+      expect(url).toBe('/api/auth/login/verify-2fa')
+      expect(JSON.parse(init!.body as string)).toEqual({ challengeToken: 'the-challenge-token', code: '123456' })
+      return jsonResponse({
+        user: { id: 'u1', username: 'totp-alice', role: 'viewer' as const, email: null, emailConfirmed: false, otpEnabled: true, streamQuota: 0, compositorQuota: 0, avatar: null, createdAt: '2026-01-01', lastLoginAt: null },
+      })
+    })
+    await userEvent.type(screen.getByLabelText('Code'), '123456')
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => url === '/api/auth/login/verify-2fa')
+      expect(call).toBeTruthy()
+    })
+  })
+
+  it('shows the server error on a wrong 2FA code, without leaving the code step', async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => jsonResponse({ user: null }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByLabelText('Username')).toBeInTheDocument())
+
+    fetchMock.mockImplementationOnce(() => jsonResponse({ twoFactorRequired: true, challengeToken: 'the-challenge-token' }))
+    await userEvent.type(screen.getByLabelText('Username'), 'totp-alice')
+    await userEvent.type(screen.getByLabelText('Password'), 'correct-horse-1')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    await screen.findByText('Enter your code')
+
+    fetchMock.mockImplementationOnce(() => jsonResponse({ error: 'Invalid code.' }, 401))
+    await userEvent.type(screen.getByLabelText('Code'), '000000')
+    await userEvent.click(screen.getByRole('button', { name: 'Verify' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid code.')
+    expect(screen.getByText('Enter your code')).toBeInTheDocument()
+  })
 })
