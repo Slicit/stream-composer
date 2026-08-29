@@ -8,6 +8,7 @@ module Api
     def login
       user = User.authenticate_credentials(params[:username], params[:password])
       return render_unauthorized("Wrong username or password.") unless user
+      return render_error(:forbidden, "Confirm your email before signing in.") if user.email_confirmation_required?
 
       sign_in(user)
       user.update_column(:last_login_at, Time.current)

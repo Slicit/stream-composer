@@ -83,6 +83,15 @@ services:
       # Set by the TLS overlay; left unset here so DOMAIN stays optional
       # for anyone building the base file's image on its own.
       DOMAIN: ${DOMAIN:-}
+      # UserMailer's confirmation-link host — falls back to DOMAIN, then
+      # localhost:5173, if unset (see UserMailer#frontend_base_url).
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
+      SMTP_ADDRESS: ${SMTP_ADDRESS:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_DOMAIN: ${SMTP_DOMAIN:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@example.com}
       TZ: ${TZ:-UTC}
     volumes:
       # Channel background-image uploads (Api::ChannelsController#background)

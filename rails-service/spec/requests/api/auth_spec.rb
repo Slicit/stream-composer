@@ -21,6 +21,25 @@ RSpec.describe "Api::Auth", type: :request do
       expect(response).to have_http_status(:unauthorized)
       expect(JSON.parse(response.body)["error"]).to eq("Wrong username or password.")
     end
+
+    it "refuses a self-registered account that has not confirmed its email yet" do
+      unconfirmed = User.create!(username: "unconfirmed", password: "correct-horse-1", role: "viewer", email: "unconfirmed@example.com")
+      post "/api/auth/login", params: { username: "unconfirmed", password: "correct-horse-1" }, as: :json
+      expect(response).to have_http_status(:forbidden)
+      expect(response.cookies["sc_session"]).to be_blank
+      expect(unconfirmed.reload.last_login_at).to be_nil
+    end
+
+    it "signs in an account with no email at all (every admin-created account) without any confirmation gate" do
+      post "/api/auth/login", params: { username: "alice", password: "correct-horse-1" }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "signs in a self-registered account once its email is confirmed" do
+      confirmed = User.create!(username: "confirmed", password: "correct-horse-1", role: "viewer", email: "confirmed@example.com", email_confirmed_at: Time.current)
+      post "/api/auth/login", params: { username: "confirmed", password: "correct-horse-1" }, as: :json
+      expect(response).to have_http_status(:ok)
+    end
   end
 
   describe "GET /api/auth/me" do

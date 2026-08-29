@@ -12,6 +12,10 @@ Rails.application.routes.draw do
   get "internal/:token/sessions/:digest", to: "internal/sessions#show"
 
   namespace :api do
+    post "register", to: "registrations#create"
+    post "confirm-email", to: "email_confirmations#create"
+    post "confirm-email/resend", to: "email_confirmations#resend"
+
     post "auth/login", to: "auth#login"
     delete "auth/logout", to: "auth#logout"
     get "auth/me", to: "auth#me"

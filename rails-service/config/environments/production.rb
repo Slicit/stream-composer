@@ -74,4 +74,22 @@ Rails.application.configure do
   # allows this host, just needed again here since config.hosts only
   # otherwise carries the public-facing DOMAIN in production.
   config.hosts << "rails"
+
+  # Self-registration confirmation emails (UserMailer) — real SMTP if
+  # SMTP_ADDRESS is set, otherwise Rails' :test delivery method. Left
+  # unset behaves the same as dev/test: email confirmation is a new
+  # opt-in capability, not something every existing install must wire up
+  # immediately just to upgrade.
+  if ENV["SMTP_ADDRESS"].present?
+    config.action_mailer.delivery_method = :smtp
+    config.action_mailer.smtp_settings = {
+      address: ENV["SMTP_ADDRESS"], port: ENV.fetch("SMTP_PORT", 587).to_i,
+      user_name: ENV["SMTP_USERNAME"].presence, password: ENV["SMTP_PASSWORD"].presence,
+      domain: ENV["SMTP_DOMAIN"].presence, authentication: :plain, enable_starttls_auto: true,
+    }
+  else
+    config.action_mailer.delivery_method = :test
+  end
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = false
 end

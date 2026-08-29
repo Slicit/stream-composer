@@ -39,4 +39,9 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Always :test here, independent of any ambient SMTP_* env vars a
+  # developer's shell might carry — tests must never depend on them.
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = true
 end

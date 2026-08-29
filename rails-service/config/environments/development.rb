@@ -63,4 +63,22 @@ Rails.application.configure do
   # stack. Development-only; a real deployment sets config.hosts (or PROXY
   # headers) for its own actual hostname instead.
   config.hosts << "rails"
+
+  # Self-registration confirmation emails (UserMailer) — real SMTP if
+  # SMTP_ADDRESS is set, otherwise Rails' :test delivery method so nothing
+  # real needs configuring to exercise the flow (inspect
+  # ActionMailer::Base.deliveries, or `docker compose logs rails`, which
+  # still logs "Sent mail to ..." under :test).
+  if ENV["SMTP_ADDRESS"].present?
+    config.action_mailer.delivery_method = :smtp
+    config.action_mailer.smtp_settings = {
+      address: ENV["SMTP_ADDRESS"], port: ENV.fetch("SMTP_PORT", 587).to_i,
+      user_name: ENV["SMTP_USERNAME"].presence, password: ENV["SMTP_PASSWORD"].presence,
+      domain: ENV["SMTP_DOMAIN"].presence, authentication: :plain, enable_starttls_auto: true,
+    }
+  else
+    config.action_mailer.delivery_method = :test
+  end
+  config.action_mailer.perform_deliveries = true
+  config.action_mailer.raise_delivery_errors = true
 end
