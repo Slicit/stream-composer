@@ -102,6 +102,20 @@ services:
       - "18081:8080"
     networks: [scmig-net]
 
+  # A real SMTP server that never leaves this box — self-registration's
+  # confirmation email actually goes through a genuine SMTP handshake
+  # instead of Rails' :test-delivery log-only fallback, so the full flow
+  # (including a real e2e spec) can be proven end to end. Its web UI/API
+  # on :8025 lists every message it's ever received; nothing it accepts
+  # is ever relayed anywhere.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: scmig-mailpit
+    restart: unless-stopped
+    ports:
+      - "18025:8025"   # web UI + REST API (see e2e/global-setup.ts)
+    networks: [scmig-net]
+
   postgres:
     image: postgres:16-alpine
     container_name: scmig-postgres
@@ -122,9 +136,17 @@ services:
       dockerfile: Dockerfile.dev
     container_name: scmig-rails
     restart: unless-stopped
-    depends_on: [postgres]
+    depends_on: [postgres, mailpit]
     environment:
       DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_development
+      # Real SMTP delivery through mailpit (see that service's own
+      # comment) rather than Rails' :test fallback — no username/password:
+      # mailpit accepts unauthenticated SMTP, and the mail gem skips AUTH
+      # entirely when SMTP_USERNAME is blank.
+      SMTP_ADDRESS: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: dev@stream-composer.test
+      PUBLIC_HOST: localhost:15173
       # Lets `bundle exec rspec` run correctly no matter how it's invoked
       # (RAILS_ENV defaults to "test" via rails_helper.rb) — see the
       # comment on config/database.yml's test: section for why this has

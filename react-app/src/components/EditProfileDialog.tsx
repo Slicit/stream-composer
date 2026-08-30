@@ -278,7 +278,9 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                   dangerouslySetInnerHTML={{ __html: qrCodeSvg }}
                 />
               )}
-              <code className="self-center rounded bg-muted px-2 py-1 text-xs">{otpSecret}</code>
+              <code data-testid="otp-secret" className="self-center rounded bg-muted px-2 py-1 text-xs">
+                {otpSecret}
+              </code>
               {otpError && (
                 <p className="text-sm text-destructive" role="alert">
                   {otpError}

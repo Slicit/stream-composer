@@ -84,8 +84,10 @@ Rails.application.configure do
     config.action_mailer.delivery_method = :smtp
     config.action_mailer.smtp_settings = {
       address: ENV["SMTP_ADDRESS"], port: ENV.fetch("SMTP_PORT", 587).to_i,
-      user_name: ENV["SMTP_USERNAME"].presence, password: ENV["SMTP_PASSWORD"].presence,
-      domain: ENV["SMTP_DOMAIN"].presence, authentication: :plain, enable_starttls_auto: true,
+      domain: ENV["SMTP_DOMAIN"].presence, enable_starttls_auto: true,
+      # See development.rb's identical block for why authentication: is
+      # conditional rather than always :plain.
+      **(ENV["SMTP_USERNAME"].present? ? { user_name: ENV["SMTP_USERNAME"], password: ENV["SMTP_PASSWORD"].presence, authentication: :plain } : {}),
     }
   else
     config.action_mailer.delivery_method = :test
