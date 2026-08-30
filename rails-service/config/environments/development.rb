@@ -86,4 +86,15 @@ Rails.application.configure do
   end
   config.action_mailer.perform_deliveries = true
   config.action_mailer.raise_delivery_errors = true
+
+  if ENV["CI"].present?
+    # The e2e Playwright job boots this stack from a fresh CI checkout,
+    # which has config/credentials.yml.enc (tracked in git) but never the
+    # real, gitignored config/master.key that decrypts it — same problem
+    # as test.rb's identical block, just gated here so a real development
+    # box (which does have the real key) is never affected.
+    config.active_record.encryption.primary_key = "insecure-ci-only-primary-key-001"
+    config.active_record.encryption.deterministic_key = "insecure-ci-only-deterministic-2"
+    config.active_record.encryption.key_derivation_salt = "insecure-ci-only-derivation-salt3"
+  end
 end

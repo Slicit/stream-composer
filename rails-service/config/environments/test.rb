@@ -44,4 +44,15 @@ Rails.application.configure do
   # developer's shell might carry — tests must never depend on them.
   config.action_mailer.delivery_method = :test
   config.action_mailer.perform_deliveries = true
+
+  # ActiveRecord::Encryption normally derives its keys from
+  # config/credentials.yml.enc via config/master.key — a real, gitignored
+  # secret. The test environment must never depend on that file existing:
+  # CI checks out credentials.yml.enc (tracked in git) but never the key
+  # that decrypts it, so without this every otp_secret-touching spec fails
+  # with ActiveRecord::Encryption::Errors::Configuration. Fixed, insecure,
+  # test-only keys close that gap.
+  config.active_record.encryption.primary_key = "insecure-test-only-primary-key-01"
+  config.active_record.encryption.deterministic_key = "insecure-test-only-deterministic-2"
+  config.active_record.encryption.key_derivation_salt = "insecure-test-only-derivation-salt3"
 end

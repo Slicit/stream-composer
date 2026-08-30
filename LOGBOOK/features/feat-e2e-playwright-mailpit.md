@@ -83,6 +83,49 @@ really asserted on, instead of only ever being read out of Rails logs.
   does a plain `COPY . .`, no volume). `scmig-rails` has the same
   property. Proposed as a `notes.md` gotcha; see below.
 
+### 2026-08-30 (wiring the suite into `ci-go-rails-react.yml`)
+
+- **Found and fixed a real, previously-broken CI gap, not hypothetical:**
+  the `rails` CI job has never had a `RAILS_MASTER_KEY`, so every spec
+  touching `otp_secret` has been failing in actual CI since the 2FA
+  feature shipped — confirmed by simulating a clean CI checkout (fresh
+  clone, no `config/master.key`) in a throwaway container: 18 of 330
+  examples failed with `ActiveRecord::Encryption::Errors::Configuration`.
+  Not caught earlier because this session's own verification always ran
+  on the dev box, which has the real key.
+
+- **Decision: CI gets fixed, disposable encryption keys, never the real
+  master key.** `test.rb` now sets `config.active_record.encryption.*` to
+  hardcoded insecure values unconditionally; `development.rb` sets the
+  same, gated on `ENV["CI"]` so a real development box (which does have
+  the real key) is unaffected. Confirmed the real master key is never
+  needed at all in either environment: Rails' `require_master_key`
+  defaults to false, so a missing key with `credentials.yml.enc` present
+  (tracked in git) makes `Rails.application.credentials` read as empty
+  rather than raise — the only actual failure was
+  `ActiveRecord::Encryption` demanding its own config be present.
+  Verified directly, not assumed: a throwaway container built from a
+  fresh checkout, in both `test` and `development` RAILS_ENV, with no
+  master key file anywhere, booted cleanly and successfully
+  encrypted/decrypted a real `otp_secret` round-trip.
+- **Why not the real key as a GitHub secret (the simpler alternative):**
+  asked the user directly rather than picking either unilaterally, since
+  it's a security-relevant CI decision this project's own convention
+  flags as needing a documented reason. Chosen because it means the real
+  master key never touches GitHub's secret store at all — CI data is
+  fully disposable, so there's nothing to lose by using throwaway keys
+  instead of duplicating the real one into a second location.
+
+- **The e2e job in CI runs the same `docker-compose.migration.yml` used
+  on the dev box**, built fresh from the checkout (`docker compose up -d
+  --build`), rather than GitHub Actions' `services:` container pattern
+  the `rails` job uses — that pattern publishes containers straight onto
+  the runner's network under `localhost`, which doesn't give
+  `global-setup.ts`/`totp.ts` the named `scmig-rails` container their
+  `docker exec` calls require. The compose approach reuses the exact
+  same container names as local dev, so nothing in the spec files needed
+  to change for CI at all.
+
 ## Verification
 
 Full suite, run together (not just the files touched per change): 6

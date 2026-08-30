@@ -34,6 +34,7 @@ jobs:
       rails: ${{ steps.filter.outputs.rails }}
       react: ${{ steps.filter.outputs.react }}
       go: ${{ steps.filter.outputs.go }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -63,6 +64,16 @@ jobs:
               - *workflow
             go:
               - 'go-service/**'
+              - *workflow
+            # The e2e suite exercises rails+react together against a real
+            # docker-compose stack, so it runs whenever either changes —
+            # plus the compose file itself, which neither the rails nor
+            # react filter above covers (it lives at the repo root, not
+            # under either service directory).
+            e2e:
+              - 'docker-compose.migration.yml'
+              - 'rails-service/**'
+              - 'react-app/**'
               - *workflow
 
   rails:
@@ -172,3 +183,71 @@ jobs:
       - name: Run tests
         working-directory: react-app
         run: npm test
+
+  e2e:
+    name: End-to-end tests (Playwright)
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: react-app/package-lock.json
+
+      - name: Install react-app dependencies
+        working-directory: react-app
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: react-app
+        run: npx playwright install --with-deps chromium
+
+      # No RAILS_MASTER_KEY anywhere in this job, deliberately: this stack
+      # boots in development mode, same as the dev box, but from a fresh
+      # checkout with no access to the real (gitignored) master key that
+      # decrypts config/credentials.yml.enc. development.rb's CI-gated
+      # block supplies fixed, insecure, disposable ActiveRecord::Encryption
+      # keys instead — the same fix test.rb already needed for the rspec
+      # job, applied to the one other environment that needs it. Verified
+      # directly (not assumed): a throwaway container booted this image in
+      # development mode with no master key present and successfully
+      # round-tripped an encrypted otp_secret.
+      - name: Build and start the dev stack
+        env:
+          CI: 'true'
+        run: docker compose -f docker-compose.migration.yml up -d --build
+
+      - name: Wait for the stack to come up
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:15173/ >/dev/null && curl -sf http://localhost:18025/api/v1/messages >/dev/null; then
+              echo "stack is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "stack did not come up in time"
+          docker compose -f docker-compose.migration.yml logs
+          exit 1
+
+      - name: Run Playwright tests
+        working-directory: react-app
+        env:
+          MAILPIT_URL: http://localhost:18025
+        run: npx playwright test
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: react-app/test-results/
+          retention-days: 7
+
+      - name: Tear down the dev stack
+        if: always()
+        run: docker compose -f docker-compose.migration.yml down -v
