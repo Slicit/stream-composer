@@ -223,8 +223,18 @@ jobs:
 
       - name: Wait for the stack to come up
         run: |
+          # react/mailpit respond to HTTP as soon as their own process is
+          # listening, regardless of rails' state - but on the dev box this
+          # never mattered, since its postgres volume is long-lived and
+          # already migrated. CI starts from a brand-new, empty volume, so
+          # rails' own boot (its CMD runs db:prepare && db:seed before the
+          # server ever listens - see Dockerfile.dev) has to be waited on
+          # explicitly too, or global-setup.ts's docker exec ... bin/rails
+          # runner races a database that doesn't have its tables yet.
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:15173/ >/dev/null && curl -sf http://localhost:18025/api/v1/messages >/dev/null; then
+            if curl -sf http://localhost:15173/ >/dev/null \
+              && curl -sf http://localhost:18025/api/v1/messages >/dev/null \
+              && docker compose -f docker-compose.migration.yml exec -T rails bin/rails runner 'exit(ActiveRecord::Base.connection.table_exists?(:users) ? 0 : 1)' >/dev/null 2>&1; then
               echo "stack is up"
               exit 0
             fi
