@@ -138,6 +138,15 @@ services:
     restart: unless-stopped
     depends_on: [postgres, mailpit]
     environment:
+      # docker compose does NOT propagate the invoking shell's arbitrary
+      # env vars into the container automatically — only explicit
+      # interpolation like this does. Without it, development.rb's
+      # `if ENV["CI"].present?` block never sees CI=true inside the
+      # container even when the CI runner's own shell has it, which is
+      # exactly what broke the e2e job's first real run (global-setup.ts's
+      # docker exec hit the real ActiveRecord::Encryption config, not the
+      # CI-only fallback).
+      CI: ${CI:-}
       DATABASE_URL: postgres://scmig:${POSTGRES_PASSWORD:-migration-dev-secret}@postgres:5432/scmig_development
       # Real SMTP delivery through mailpit (see that service's own
       # comment) rather than Rails' :test fallback — no username/password:
