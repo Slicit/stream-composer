@@ -126,6 +126,44 @@ really asserted on, instead of only ever being read out of Rails logs.
   same container names as local dev, so nothing in the spec files needed
   to change for CI at all.
 
+- **The first three real CI runs each failed for a different reason, in
+  a chain, only found by getting real log access** (`gh auth login` on
+  the box — the API and the logged-out web UI both refuse job logs even
+  on a public repo, `Must have admin rights to Repository`). Worth
+  recording in order, since each one looked like it could plausibly be
+  the fix on its own and wasn't:
+  1. `development.rb`'s `ENV["CI"].present?` block was correct, but
+     `docker compose` does not propagate the invoking shell's arbitrary
+     env vars into a container automatically — only explicit
+     interpolation does. The workflow step's own `env: CI: 'true'` only
+     affected the `docker compose up` command's process, never the
+     container it started, so `global-setup.ts`'s `docker exec` hit the
+     *real* `ActiveRecord::Encryption` config every time. Fixed with
+     `CI: ${CI:-}` in the rails service's `environment:` block in
+     `docker-compose.migration.yml`, and confirmed directly — `CI=true
+     docker compose up -d rails` then `docker exec scmig-rails printenv
+     CI` actually returns `true` — before trusting it in CI again.
+  2. That fix's own commit touched only `docker-compose.migration.yml`,
+     and the workflow's top-level `on.push`/`on.pull_request` `paths:`
+     list never included that file (only the job-level `changes` filter,
+     added when the e2e job itself was wired in, did) — so the commit
+     never triggered a CI run *at all*. `gh run list` showing zero runs
+     for that SHA was the tell. Added the same path to the trigger list.
+  3. With both of those actually fixed, real CI got 5 of 6 e2e specs
+     green on the very next run — the first live confirmation the
+     master-key/CI-propagation fixes genuinely work end to end, not just
+     in local simulation. The one failure was unrelated: CI's runner
+     defaults to 2 workers (2 CPUs) where the dev box's 1 CPU always
+     defaulted to 1, and `admin-user-edit.spec.ts`'s two tests both
+     mutate the same seeded `e2e-target` fixture account — a real race
+     across workers that `fullyParallel: true` had always been capable
+     of triggering but never had the CPU count to actually hit locally.
+     Fixed with an explicit `workers: 1` in `playwright.config.ts`: this
+     suite's specs share fixed, mutable fixture accounts from
+     `global-setup.ts` rather than creating isolated data per test, so
+     serial execution is the actual requirement the design already
+     assumed, not an optimization being given up.
+
 ## Verification
 
 Full suite, run together (not just the files touched per change): 6
@@ -134,6 +172,11 @@ specs green — `admin-user-edit.spec.ts` (2, pre-existing), `registration.spec.
 (2), `two-factor.spec.ts` (1, real QR/secret through a real generated code,
 backup-codes reveal, sign-out, and the real two-step login UI including a
 rejected wrong code before a correct one succeeds).
+
+Green on the dev box was never sufficient proof by itself for the CI
+work above — confirmed on real GitHub Actions (`gh run view`, not
+assumed from local reproduction): `rails`/`react`/`go`/`e2e` jobs all
+passing on `migration/go-rails-react` as of commit `998fcfd`.
 
 `registration.spec.ts` was live-verified against real SMTP delivery:
 register through the real form, poll Mailpit's `/api/v1/messages` until
