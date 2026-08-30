@@ -14,12 +14,14 @@ on:
       - 'rails-service/**'
       - 'react-app/**'
       - 'go-service/**'
+      - 'docker-compose.migration.yml'
       - '.github/workflows/ci-go-rails-react.yml'
   pull_request:
     paths:
       - 'rails-service/**'
       - 'react-app/**'
       - 'go-service/**'
+      - 'docker-compose.migration.yml'
       - '.github/workflows/ci-go-rails-react.yml'
   workflow_dispatch:
 
